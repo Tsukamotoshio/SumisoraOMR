@@ -52,7 +52,8 @@ Source: "jdk\*"; DestDir: "{app}\jdk"; Flags: ignoreversion recursesubdirs creat
 Source: "jianpu-ly.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Input\Do_You_Hear_the_People_Sing.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
 Source: "Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
-Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
+Source: "README_EN.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion isreadme
+Source: "读我.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
