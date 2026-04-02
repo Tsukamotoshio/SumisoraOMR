@@ -2,7 +2,7 @@
 # Batch sheet music (PDF/JPG/PNG) to numbered notation (jianpu) PDF converter.
 # Pipeline: input image/PDF -> Audiveris (OMR) -> MusicXML -> music21 -> MIDI -> jianpu-ly -> LilyPond -> jianpu PDF
 #
-# Copyright (c) 2026 志雄. All rights reserved.
+# Copyright (c) 2026 Tsukamotoshio. All rights reserved.
 # SPDX-License-Identifier: MIT
 # See LICENSE file for full license text.
 
@@ -2352,7 +2352,7 @@ def main() -> None:
     setup_logging(get_app_base_dir())
     log_message('=========================================')
     log_message(f'批量乐谱(PDF/JPG/PNG) -> 简谱 PDF 转换工具 v{APP_VERSION}')
-    log_message('版权所有 © 2026 志雄  保留所有权利')
+    log_message('版权所有 © 2026 Tsukamotoshio  保留所有权利')
     log_message('=========================================')
     try:
         process_bulk_input_to_jianpu(AppConfig())
