@@ -41,7 +41,7 @@ if exist "%BASE_DIR%jdk\bin\java.exe" (
 
 echo [1/3] 正在准备最小运行时素材...
 if not exist "%AUDIVERIS_RUNTIME_SRC%\bin\Audiveris.bat" (
-    call "%AUDIVERIS_SOURCE%\gradlew.bat" --console=plain :app:installDist
+    call "%AUDIVERIS_SOURCE%\gradlew.bat" -p "%AUDIVERIS_SOURCE%" --console=plain :app:installDist
     if errorlevel 1 (
         echo [ERROR] Audiveris 运行时构建失败。
         exit /b 1
