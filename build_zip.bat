@@ -68,8 +68,9 @@ if exist "%BASE_DIR%package-assets\tessdata"   robocopy "%BASE_DIR%package-asset
 if exist "%BASE_DIR%jdk\bin\java.exe"          robocopy "%BASE_DIR%jdk"                     "%STAGE_DIR%\jdk"                /E /NFL /NDL /NJH /NJS /NC /NS >nul
 if exist "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       copy /y "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       "%STAGE_DIR%\Input\" >nul
 if exist "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" copy /y "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" "%STAGE_DIR%\Input\" >nul
-copy /y "%BASE_DIR%jianpu-ly.py"       "%STAGE_DIR%\" >nul
-copy /y "%BASE_DIR%README.md"          "%STAGE_DIR%\" >nul
+copy /y "%BASE_DIR%jianpu-ly.py"           "%STAGE_DIR%\" >nul
+copy /y "%BASE_DIR%README_EN.md"           "%STAGE_DIR%\README.md" >nul
+copy /y "%BASE_DIR%读我.md"               "%STAGE_DIR%\" >nul
 copy /y "%BASE_DIR%THIRD_PARTY_NOTICES.md" "%STAGE_DIR%\" >nul
 copy /y "%BASE_DIR%LICENSE"            "%STAGE_DIR%\" >nul
 
