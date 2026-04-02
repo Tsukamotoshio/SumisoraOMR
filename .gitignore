@@ -9,6 +9,7 @@ audiveris_job_*/
 build/
 dist/
 installer-dist/
+releases/
 
 # 转换产物
 Output/
