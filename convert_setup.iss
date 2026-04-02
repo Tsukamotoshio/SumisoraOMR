@@ -66,10 +66,18 @@ Type: files; Name: "{autodesktop}\{#MyAppName}.lnk"
 Filename: "{app}\{#MyAppExeName}"; Description: "立即运行 {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  MODE_FRESH     = 0;
+  MODE_UPGRADE   = 1;
+  MODE_REPAIR    = 2;
+  MODE_DOWNGRADE = 3;
+
 var
-  IsUpgradeMode: Boolean;
-  IsRepairMode: Boolean;
-  IsDowngradeMode: Boolean;
+  InstallMode: Integer;
+  InstalledVer: String;
+  MaintenancePage: TWizardPage;
+  RadioRepair: TNewRadioButton;
+  RadioRemove: TNewRadioButton;
   DesktopIconCheckbox: TNewCheckBox;
   InstallCompleted: Boolean;
 
@@ -122,57 +130,92 @@ begin
 end;
 
 function InitializeSetup: Boolean;
-var
-  InstalledVer: String;
-  MsgResult: Integer;
 begin
   Result := True;
+  // 仅检测已安装版本并记录模式，不弹任何对话框
   InstalledVer := GetInstalledVersion;
-  if InstalledVer = '' then Exit;
-
+  if InstalledVer = '' then
+  begin
+    InstallMode := MODE_FRESH;
+    Exit;
+  end;
   case CompareVersions(InstalledVer, '{#MyAppVersion}') of
-    -1: // 旧版已安装 → 升级
+    -1: InstallMode := MODE_UPGRADE;
+     0: InstallMode := MODE_REPAIR;
+     1: InstallMode := MODE_DOWNGRADE;
+  end;
+end;
+
+// 打开安装向导后再根据检测结果展示对应页面，并将窗口置顶
+procedure InitializeWizard;
+var
+  LabelDesc: TNewStaticText;
+begin
+  WizardForm.FormStyle := fsStayOnTop;
+
+  if InstallMode = MODE_FRESH then Exit;
+
+  // 创建维护选项页
+  case InstallMode of
+    MODE_UPGRADE:
+      MaintenancePage := CreateCustomPage(wpWelcome, '升级确认',
+        '检测到旧版本 ' + InstalledVer + ' 已安装');
+    MODE_REPAIR:
+      MaintenancePage := CreateCustomPage(wpWelcome, '维护选项',
+        '版本 {#MyAppVersion} 已安装在您的系统中');
+    MODE_DOWNGRADE:
+      MaintenancePage := CreateCustomPage(wpWelcome, '版本警告',
+        '检测到已安装更高版本 ' + InstalledVer);
+  end;
+
+  LabelDesc := TNewStaticText.Create(MaintenancePage);
+  LabelDesc.Parent := MaintenancePage.Surface;
+  LabelDesc.Left := 0;
+  LabelDesc.Top := 0;
+  LabelDesc.Width := MaintenancePage.SurfaceWidth;
+  LabelDesc.WordWrap := True;
+  LabelDesc.AutoSize := True;
+
+  case InstallMode of
+    MODE_UPGRADE:
     begin
-      IsUpgradeMode := True;
-      if MsgBox(
-           '检测到已安装旧版本 ' + InstalledVer + '。' + #13#10#13#10 +
-           '点击"是"将自动卸载旧版并安装 {#MyAppVersion}，' + #13#10 +
-           'Input / Output 文件夹中的内容不会被删除。' + #13#10#13#10 +
-           '是否继续升级？',
-           mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDNO then
-        Result := False;
+      LabelDesc.Caption :=
+        '点击"下一步"将自动卸载旧版本并安装 {#MyAppVersion}。' + #13#10 +
+        'Input / Output 文件夹中的内容不会受到影响。';
     end;
-    0: // 同版本 → 修复或卸载
+    MODE_REPAIR:
     begin
-      IsRepairMode := True;
-      MsgResult := MsgBox(
-        '已安装相同版本 {#MyAppVersion}。' + #13#10#13#10 +
-        '  是(Y) — 重新安装（修复损坏的文件）' + #13#10 +
-        '  否(N) — 卸载此软件' + #13#10 +
-        '  取消   — 退出',
-        mbConfirmation, MB_YESNOCANCEL);
-      if MsgResult = IDCANCEL then
-        Result := False
-      else if MsgResult = IDNO then
-      begin
-        ShellExec('', GetUninstallerPath, '/SILENT', '', SW_SHOW, ewNoWait, MsgResult);
-        Result := False;
-      end;
+      LabelDesc.Caption := '请选择要执行的操作：';
+
+      RadioRepair := TNewRadioButton.Create(MaintenancePage);
+      RadioRepair.Parent := MaintenancePage.Surface;
+      RadioRepair.Left := ScaleX(8);
+      RadioRepair.Top := LabelDesc.Top + ScaleY(28);
+      RadioRepair.Width := MaintenancePage.SurfaceWidth - ScaleX(8);
+      RadioRepair.Height := ScaleY(17);
+      RadioRepair.Caption := '修复安装（重新安装所有程序文件）';
+      RadioRepair.Checked := True;
+
+      RadioRemove := TNewRadioButton.Create(MaintenancePage);
+      RadioRemove.Parent := MaintenancePage.Surface;
+      RadioRemove.Left := ScaleX(8);
+      RadioRemove.Top := RadioRepair.Top + RadioRepair.Height + ScaleY(10);
+      RadioRemove.Width := MaintenancePage.SurfaceWidth - ScaleX(8);
+      RadioRemove.Height := ScaleY(17);
+      RadioRemove.Caption := '卸载 {#MyAppName}';
+      RadioRemove.Checked := False;
     end;
-    1: // 更高版本已安装 → 降级警告
+    MODE_DOWNGRADE:
     begin
-      IsDowngradeMode := True;
-      if MsgBox(
-           '警告：当前已安装更高版本 ' + InstalledVer + '。' + #13#10 +
-           '降级到 {#MyAppVersion} 可能导致功能异常。' + #13#10#13#10 +
-           '是否仍要继续？',
-           mbError, MB_YESNO or MB_DEFBUTTON2) = IDNO then
-        Result := False;
+      LabelDesc.Caption :=
+        '警告：降级安装 {#MyAppVersion} 可能导致功能异常。' + #13#10#13#10 +
+        '建议先完整卸载当前版本再安装目标版本。' + #13#10 +
+        '如需继续降级，请点击"下一步"；否则请点击"取消"。';
     end;
   end;
 end;
 
-// 升级/降级时在安装文件复制前静默卸载旧版（行业标准做法）
+// 升级/降级时在复制文件前静默卸载旧版
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   UninstallerPath: String;
@@ -180,7 +223,7 @@ var
 begin
   Result := '';
   NeedsRestart := False;
-  if IsUpgradeMode or IsDowngradeMode then
+  if (InstallMode = MODE_UPGRADE) or (InstallMode = MODE_DOWNGRADE) then
   begin
     UninstallerPath := GetUninstallerPath;
     if (UninstallerPath <> '') and FileExists(UninstallerPath) then
@@ -192,10 +235,35 @@ begin
   end;
 end;
 
-// 快捷方式选项移至安装完成页，始终跳过"附加任务"选择页
+// 始终跳过附加任务页；非全新安装时跳过目录选择页
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PageID = wpSelectTasks);
+  Result := False;
+  if PageID = wpSelectTasks then
+  begin
+    Result := True;
+    Exit;
+  end;
+  if InstallMode <> MODE_FRESH then
+    if (PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) then
+      Result := True;
+end;
+
+// 维护页"下一步"：选择卸载时启动卸载程序并关闭向导
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  if Assigned(MaintenancePage) and (CurPageID = MaintenancePage.ID) then
+  begin
+    if Assigned(RadioRemove) and RadioRemove.Checked then
+    begin
+      ShellExec('', GetUninstallerPath, '/SILENT', '', SW_SHOW, ewNoWait, ResultCode);
+      WizardForm.Close;
+      Result := False;
+    end;
+  end;
 end;
 
 // 在完成页添加"创建桌面快捷方式"复选框
@@ -206,9 +274,9 @@ begin
     DesktopIconCheckbox := TNewCheckBox.Create(WizardForm);
     DesktopIconCheckbox.Parent := WizardForm.FinishedPage;
     DesktopIconCheckbox.SetBounds(
-      WizardForm.FinishedLabel.Left,
-      WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(12),
-      WizardForm.FinishedPage.ClientWidth - WizardForm.FinishedLabel.Left * 2,
+      WizardForm.RunList.Left,
+      WizardForm.RunList.Top + WizardForm.RunList.Height + ScaleY(4),
+      WizardForm.RunList.Width,
       ScaleY(17));
     DesktopIconCheckbox.Caption := '创建桌面快捷方式（{#MyAppName}）';
     DesktopIconCheckbox.Checked := True;
@@ -240,4 +308,10 @@ begin
       SW_SHOWNORMAL)
   else
     DeleteFile(ShortcutPath);
+end;
+
+// 卸载进度窗口同样置顶
+procedure InitializeUninstallProgressForm;
+begin
+  UninstallProgressForm.FormStyle := fsStayOnTop;
 end;
