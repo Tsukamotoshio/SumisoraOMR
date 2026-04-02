@@ -275,7 +275,7 @@ begin
     DesktopIconCheckbox.Parent := WizardForm.FinishedPage;
     DesktopIconCheckbox.SetBounds(
       WizardForm.RunList.Left,
-      WizardForm.RunList.Top + WizardForm.RunList.Height + ScaleY(4),
+      WizardForm.RunList.Top + WizardForm.RunList.Height + ScaleY(4) - ScaleY(17),
       WizardForm.RunList.Width,
       ScaleY(17));
     DesktopIconCheckbox.Caption := '创建桌面快捷方式（{#MyAppName}）';
