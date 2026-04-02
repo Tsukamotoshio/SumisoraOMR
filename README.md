@@ -9,8 +9,7 @@
 ## 功能简介
 
 - 批量读取 `Input` 文件夹中的五线谱乐谱文件
-- 自动执行转换链路：`五线谱 → MXL/MusicXML → MIDI → 简谱 PDF`
-- 输出简谱 PDF 到 `Output` 文件夹，转换完毕后自动打开该文件夹
+- 自动识别并转换为简谱 PDF，转换完毕后自动打开 `Output` 文件夹
 - 可选同时生成 MIDI 文件
 - 已转换过的文件自动跳过，避免重复转换
 - 支持中文、日文等文件名场景的兼容处理
@@ -28,7 +27,7 @@
 ## 使用方法
 
 1. 将待转换的五线谱文件（PDF / PNG / JPG）放入 `Input` 文件夹
-2. 运行程序 `ConvertTool.exe`（或 `convert.py`）
+2. 运行程序 `ConvertTool.exe`
 3. 按提示确认是否开始转换、是否生成 MIDI
 4. 转换结果会保存到 `Output` 文件夹
 
@@ -39,8 +38,6 @@
 - `Input/`：放入原始五线谱文件（PDF / PNG / JPG）
 - `Output/`：保存生成的简谱 PDF / MIDI
 - `logs/`：自动记录运行日志
-- `convert.py`：主程序源码
-- `convert_setup.iss`：安装包脚本
 - `THIRD_PARTY_NOTICES.md`：第三方组件许可证说明
 
 ---
@@ -65,12 +62,12 @@
 
 ---
 
-## 第三方说明
+## 许可证
 
-本工具使用了第三方组件（如 `Audiveris`、`LilyPond`、`music21` 等）。
-相关版权和许可证请参见：
+本项目以 **MIT License** 开源发布，详见 `LICENSE` 文件。
 
-- `THIRD_PARTY_NOTICES.md`
+本工具包含第三方组件（如 Audiveris、LilyPond、music21 等），
+其各自的版权与许可证信息请参见 `THIRD_PARTY_NOTICES.md`。
 
 ---
 
