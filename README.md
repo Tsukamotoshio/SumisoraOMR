@@ -64,7 +64,7 @@
 
 ## 许可证
 
-本项目以 **MIT License** 开源发布，详见 `LICENSE` 文件。
+本项目采用 **MIT License** 授权，详见 `LICENSE` 文件。
 
 本工具包含第三方组件（如 Audiveris、LilyPond、music21 等），
 其各自的版权与许可证信息请参见 `THIRD_PARTY_NOTICES.md`。
