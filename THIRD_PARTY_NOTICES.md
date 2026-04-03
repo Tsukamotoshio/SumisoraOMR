@@ -30,6 +30,15 @@ This package includes or invokes the following third-party components:
 - Home: <https://ssb22.user.srcf.net/mwrhome/jianpu-ly.html>
 - Upstream: <https://github.com/ssb22/jianpu-ly>
 
+## waifu2x-ncnn-vulkan
+- Version: `20250915`
+- License: MIT
+- Copyright: © 2019 nihui
+- Upstream: <https://github.com/nihui/waifu2x-ncnn-vulkan>
+- Note: Bundled as a GPU-accelerated (Vulkan) super-resolution pre-processor
+  for low-resolution sheet music images. Invoked as an external subprocess;
+  not linked or modified. License text is included in `waifu2x-runtime/LICENSE`.
+
 ## Eclipse Temurin JDK
 - Version: `25.0.2+10` (Temurin-25.0.2+10)
 - Implementor: Eclipse Adoptium

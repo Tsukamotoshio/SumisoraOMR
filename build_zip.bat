@@ -5,7 +5,7 @@ chcp 65001 >nul
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%"
 
-set "APP_VERSION=0.1.1"
+set "APP_VERSION=0.1.2"
 set "APP_NAME=ConvertTool"
 set "ZIP_NAME=%APP_NAME%-Portable-%APP_VERSION%"
 set "STAGE_DIR=%BASE_DIR%zip-stage\%ZIP_NAME%"
@@ -36,6 +36,15 @@ if exist "%BASE_DIR%package-assets\lilypond-runtime\bin" (
         if exist "%BASE_DIR%lilypond-2.24.4\%%D" robocopy "%BASE_DIR%lilypond-2.24.4\%%D" "%PACKAGE_ASSETS%\lilypond-runtime\%%D" /E /NFL /NDL /NJH /NJS /NC /NS >nul
     )
     if exist "%AUDIVERIS_SOURCE%\app\dev\tessdata" robocopy "%AUDIVERIS_SOURCE%\app\dev\tessdata" "%PACKAGE_ASSETS%\tessdata" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+    if exist "%BASE_DIR%package-assets\waifu2x-runtime\waifu2x-ncnn-vulkan.exe" (
+        echo [INFO] waifu2x-runtime 包已就绪。
+    ) else if exist "%BASE_DIR%waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
+        mkdir "%PACKAGE_ASSETS%\waifu2x-runtime"
+        robocopy "%BASE_DIR%waifu2x-ncnn-vulkan" "%PACKAGE_ASSETS%\waifu2x-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+        echo [INFO] waifu2x-runtime 已复制。
+    ) else (
+        echo [WARN] 未找到 waifu2x-ncnn-vulkan 目录，跳过超分辨率模块打包。
+    )
 )
 
 :: ── 步骤 2：PyInstaller（如已存在则跳过）────────────────────────────────────
@@ -64,15 +73,16 @@ mkdir "%STAGE_DIR%\Output"
 robocopy "%BASE_DIR%dist\%APP_NAME%"               "%STAGE_DIR%"                            /E /NFL /NDL /NJH /NJS /NC /NS >nul
 robocopy "%BASE_DIR%package-assets\lilypond-runtime" "%STAGE_DIR%\lilypond-runtime"         /E /NFL /NDL /NJH /NJS /NC /NS >nul
 robocopy "%BASE_DIR%package-assets\audiveris-runtime" "%STAGE_DIR%\audiveris-runtime"       /E /NFL /NDL /NJH /NJS /NC /NS >nul
-if exist "%BASE_DIR%package-assets\tessdata"   robocopy "%BASE_DIR%package-assets\tessdata" "%STAGE_DIR%\tessdata"           /E /NFL /NDL /NJH /NJS /NC /NS >nul
-if exist "%BASE_DIR%jdk\bin\java.exe"          robocopy "%BASE_DIR%jdk"                     "%STAGE_DIR%\jdk"                /E /NFL /NDL /NJH /NJS /NC /NS >nul
+if exist "%BASE_DIR%package-assets\tessdata"        robocopy "%BASE_DIR%package-assets\tessdata"        "%STAGE_DIR%\tessdata"        /E /NFL /NDL /NJH /NJS /NC /NS >nul
+if exist "%BASE_DIR%package-assets\waifu2x-runtime" robocopy "%BASE_DIR%package-assets\waifu2x-runtime" "%STAGE_DIR%\waifu2x-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+if exist "%BASE_DIR%jdk\bin\java.exe"               robocopy "%BASE_DIR%jdk"                            "%STAGE_DIR%\jdk"             /E /NFL /NDL /NJH /NJS /NC /NS >nul
 if exist "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       copy /y "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       "%STAGE_DIR%\Input\" >nul
 if exist "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" copy /y "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" "%STAGE_DIR%\Input\" >nul
-copy /y "%BASE_DIR%jianpu-ly.py"           "%STAGE_DIR%\" >nul
-copy /y "%BASE_DIR%README_EN.md"           "%STAGE_DIR%\README.md" >nul
-copy /y "%BASE_DIR%读我.md"               "%STAGE_DIR%\" >nul
-copy /y "%BASE_DIR%THIRD_PARTY_NOTICES.md" "%STAGE_DIR%\" >nul
-copy /y "%BASE_DIR%LICENSE"            "%STAGE_DIR%\" >nul
+copy /y "%BASE_DIR%jianpu-ly.py"            "%STAGE_DIR%\" >nul
+copy /y "%BASE_DIR%README_EN.txt"           "%STAGE_DIR%\README.txt" >nul
+copy /y "%BASE_DIR%读我.txt"               "%STAGE_DIR%\" >nul
+copy /y "%BASE_DIR%THIRD_PARTY_NOTICES.md"  "%STAGE_DIR%\" >nul
+copy /y "%BASE_DIR%LICENSE"                 "%STAGE_DIR%\" >nul
 
 :: ── 步骤 4：压缩为 zip ────────────────────────────────────────────────────────
 if not exist "%BASE_DIR%installer-dist" mkdir "%BASE_DIR%installer-dist"

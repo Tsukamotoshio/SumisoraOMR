@@ -35,6 +35,12 @@ try:
 except Exception:
     PdfReader = None
 
+try:
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
+    HAS_PILLOW = True
+except ImportError:
+    HAS_PILLOW = False
+
 JIANPU_MAP = {
     'C': '1',
     'D': '2',
@@ -72,11 +78,12 @@ DEFAULT_AUDIVERIS_MIN_JAVA_VERSION = 25
 RUNTIME_ASSETS_DIR_NAME = 'package-assets'
 AUDIVERIS_RUNTIME_DIR_NAME = 'audiveris-runtime'
 LILYPOND_RUNTIME_DIR_NAME = 'lilypond-runtime'
+WAIFU2X_RUNTIME_DIR_NAME = 'waifu2x-runtime'
 AUDIVERIS_INSTALL_DIR_NAME = 'Audiveris'
 AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris-5.10.2', 'audiveris')
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 5
-APP_VERSION = '0.1.1'
+APP_VERSION = '0.1.2'
 AUDIVERIS_MSI_NAMES = [
     'Audiveris-5.10.2-windows-x86_64.msi',
     'Audiveris.msi',
@@ -1552,6 +1559,232 @@ def prepare_subprocess_command(cmd: list[str]) -> list[str]:
     return cmd
 
 
+# ========== 图像预处理（OMR 质量提升）==========
+# 基于 Audiveris 官方文档 https://audiveris.github.io/audiveris/_pages/guides/advanced/improved_input/
+# 流程：waifu2x GPU 超分辨率（低分辨率图像）+ Pillow 去噪/锐化/亮度对比度增强
+
+# 图像最小边像素阈值：低于此值的图像使用 waifu2x 超分辨率放大
+LOW_RES_PIXEL_THRESHOLD = 1200
+# Audiveris 允许处理的最大像素总数（超出则报 Too large image 并拒绝识别）
+AUDIVERIS_MAX_PIXELS = 20_000_000
+# Laplacian stddev on 500×500 thumbnail below this → image is blurry, use aggressive sharpening
+BLURRY_SHARPNESS_THRESHOLD = 30.0
+
+
+def find_waifu2x_executable() -> Optional[Path]:
+    """Search for waifu2x-ncnn-vulkan in app directory, common install paths, and PATH.
+    waifu2x-ncnn-vulkan uses Vulkan GPU acceleration by default."""
+    exe_names = ['waifu2x-ncnn-vulkan.exe', 'waifu2x-ncnn-vulkan']
+    candidates: list[Path] = []
+
+    for base_dir in get_runtime_search_roots():
+        for exe_name in exe_names:
+            candidates.extend([
+                base_dir / exe_name,
+                base_dir / WAIFU2X_RUNTIME_DIR_NAME / exe_name,
+                base_dir / RUNTIME_ASSETS_DIR_NAME / WAIFU2X_RUNTIME_DIR_NAME / exe_name,
+                base_dir / 'waifu2x-ncnn-vulkan' / exe_name,
+                base_dir / 'tools' / exe_name,
+            ])
+
+    packaged_waifu2x_dir = find_packaged_runtime_dir(WAIFU2X_RUNTIME_DIR_NAME)
+    if packaged_waifu2x_dir is not None:
+        for exe_name in exe_names:
+            candidates.append(packaged_waifu2x_dir / exe_name)
+
+    program_files = os.environ.get('PROGRAMFILES', r'C:\Program Files')
+    local_app_data = os.environ.get('LOCALAPPDATA', '')
+    for root in [Path(program_files), Path(local_app_data) / 'Programs']:
+        for exe_name in exe_names:
+            candidates.append(root / 'waifu2x-ncnn-vulkan' / exe_name)
+
+    for exe_name in exe_names:
+        found = shutil.which(exe_name)
+        if found:
+            candidates.append(Path(found))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def is_low_resolution_image(image_path: Path) -> bool:
+    """Return True if either image dimension is below LOW_RES_PIXEL_THRESHOLD."""
+    if not HAS_PILLOW:
+        return False
+    try:
+        with Image.open(image_path) as img:
+            return min(img.size) < LOW_RES_PIXEL_THRESHOLD
+    except Exception:
+        return False
+
+
+def upscale_image_with_waifu2x(input_path: Path, output_path: Path, scale: int = 2) -> bool:
+    """Upscale an image using waifu2x-ncnn-vulkan (GPU via Vulkan by default, scale 2x or 4x).
+    Falls back gracefully if waifu2x-ncnn-vulkan is not installed."""
+    waifu2x = find_waifu2x_executable()
+    if waifu2x is None:
+        log_message(
+            '未找到 waifu2x-ncnn-vulkan，跳过超分辨率放大。'
+            '（可从 https://github.com/nihui/waifu2x-ncnn-vulkan 下载）',
+            logging.WARNING,
+        )
+        return False
+    cmd = [str(waifu2x), '-i', str(input_path), '-o', str(output_path), '-s', str(scale), '-n', '1']
+    log_message(f'使用 waifu2x-ncnn-vulkan 进行 {scale}x GPU 超分辨率处理...')
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+        if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
+            log_message(f'waifu2x 超分辨率完成: {output_path.name}')
+            return True
+        detail = (result.stderr or result.stdout or '').strip()[:200]
+        log_message(f'waifu2x 处理失败（退出码 {result.returncode}）: {detail}', logging.WARNING)
+        return False
+    except (OSError, subprocess.SubprocessError) as exc:
+        log_message(f'waifu2x 调用异常: {exc}', logging.WARNING)
+        return False
+
+
+def _measure_laplacian_stddev(img: Image.Image) -> float:
+    """Return the edge-response stddev of a 500×500 thumbnail — proxy for image sharpness.
+    Uses Pillow's built-in FIND_EDGES filter (3×3 Laplacian kernel).
+    Lower value means blurrier image.  Returns 100.0 if measurement fails (assume sharp)."""
+    try:
+        thumb = img.convert('L').resize((500, 500), Image.LANCZOS)
+        edges = thumb.filter(ImageFilter.FIND_EDGES)
+        return ImageStat.Stat(edges).stddev[0]
+    except Exception:
+        return 100.0
+
+
+def enhance_image_with_pillow(input_path: Path, output_path: Path) -> bool:
+    """Apply adaptive image enhancements to improve OMR accuracy using Pillow.
+    Pipeline follows the official Audiveris/GIMP guide:
+      1. Convert to grayscale  — Audiveris prefers grayscale input for its adaptive binarizer.
+      2. Sharpness detection   — selects normal vs. blurry enhancement mode.
+      - Normal mode  (stddev >= BLURRY_SHARPNESS_THRESHOLD):
+          Gaussian blur (1.5) → autocontrast 10% cutoff → Unsharp mask (1.0, 150).
+      - Blurry mode  (stddev < threshold):
+          autocontrast 10% cutoff → strong Unsharp mask (radius=3.0, percent=300).
+    Always saves to output_path as a lossless PNG (grayscale).
+    Returns True on success."""
+    if not HAS_PILLOW:
+        return False
+    try:
+        with Image.open(input_path) as img:
+            # Step 1: Convert to grayscale — matches Audiveris scanning guide recommendation
+            gray = img.convert('L')
+            sharpness = _measure_laplacian_stddev(gray)
+            if sharpness < BLURRY_SHARPNESS_THRESHOLD:
+                log_message(
+                    f'检测到模糊图像（锐度指数={sharpness:.1f}），使用强化锐化模式进行增强。')
+                # Blurry mode: autocontrast first to recover range, then strong sharpening
+                leveled = ImageOps.autocontrast(gray, cutoff=10)
+                result_img = leveled.filter(
+                    ImageFilter.UnsharpMask(radius=3.0, percent=300, threshold=2))
+            else:
+                # Normal mode: Gaussian blur → autocontrast (GIMP color curve step) → Unsharp mask
+                denoised = gray.filter(ImageFilter.GaussianBlur(radius=1.5))
+                leveled = ImageOps.autocontrast(denoised, cutoff=10)
+                result_img = leveled.filter(
+                    ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=3))
+            result_img.save(output_path)
+        return True
+    except Exception as exc:
+        log_message(f'Pillow 图像增强失败: {exc}', logging.WARNING)
+        return False
+
+
+def fit_image_within_pixel_limit(image_path: Path, work_dir: Path, max_pixels: int = AUDIVERIS_MAX_PIXELS) -> Optional[Path]:
+    """If the image has more pixels than max_pixels, proportionally downscale it and save
+    to a new file in work_dir.  Returns the downscaled path, or None if no resize was needed
+    (or Pillow is unavailable)."""
+    if not HAS_PILLOW:
+        return None
+    try:
+        with Image.open(image_path) as img:
+            w, h = img.size
+            if w * h <= max_pixels:
+                return None
+            import math
+            scale = math.sqrt(max_pixels / (w * h))
+            new_w = max(1, int(w * scale))
+            new_h = max(1, int(h * scale))
+            log_message(
+                f'图像尺寸 {w}×{h} ({w * h:,} px) 超出 Audiveris 上限 {max_pixels:,} px，'
+                f'自动缩小至 {new_w}×{new_h} ({new_w * new_h:,} px)。'
+            )
+            resized = img.resize((new_w, new_h), Image.LANCZOS)
+            out_path = work_dir / f'resized_{image_path.stem}.png'
+            resized.save(out_path)
+            return out_path
+    except Exception as exc:
+        log_message(f'图像降采样失败: {exc}', logging.WARNING)
+        return None
+
+
+def preprocess_image_for_omr(image_path: Path, work_dir: Path) -> Optional[Path]:
+    """Pre-process a raster image (PNG/JPG) to improve Audiveris OMR accuracy.
+    Based on the Audiveris improved-input guide:
+      Step 1 (low-res only): upscale 2x with waifu2x-ncnn-vulkan (Vulkan GPU, default).
+      Step 2: denoise + sharpen + brightness/contrast enhancement via Pillow.
+      Step 3: downscale to Audiveris pixel limit (20 M px) if still oversized.
+    Returns the preprocessed image path on success, or None if preprocessing was not applied."""
+    if not HAS_PILLOW:
+        return None
+    if image_path.suffix.lower() not in {'.png', '.jpg', '.jpeg'}:
+        return None
+
+    work_dir.mkdir(parents=True, exist_ok=True)
+    current_path = image_path
+    intermediate: Optional[Path] = None
+
+    # Step 1: super-resolution upscaling for low-resolution images (GPU accelerated)
+    if is_low_resolution_image(current_path):
+        upscaled_path = work_dir / f'upscaled_{image_path.name}'
+        if upscale_image_with_waifu2x(current_path, upscaled_path, scale=2):
+            current_path = upscaled_path
+            intermediate = upscaled_path
+        else:
+            log_message('超分辨率放大失败，将直接进行图像增强。', logging.WARNING)
+
+    # Step 2: Pillow noise-reduction + sharpening + brightness/contrast (lossless PNG output)
+    enhanced_path = work_dir / f'enhanced_{image_path.stem}.png'
+    if enhance_image_with_pillow(current_path, enhanced_path):
+        if intermediate is not None:
+            safe_remove_file(intermediate)
+        current_path = enhanced_path
+        intermediate = None
+    elif intermediate is not None:
+        # Enhancement failed but upscaling succeeded; keep the upscaled copy
+        current_path = intermediate
+        intermediate = None
+    else:
+        return None
+
+    # Step 3: enforce Audiveris pixel limit — downscale if still oversized
+    rescaled = fit_image_within_pixel_limit(current_path, work_dir)
+    if rescaled is not None:
+        safe_remove_file(current_path)
+        current_path = rescaled
+
+    log_message('图像预处理完成，将使用增强图像进行 OMR 识别。')
+    return current_path
+
+
 def prepare_audiveris_paths(input_path: Path, output_dir: Path) -> tuple[Path, Path, Optional[Path]]:
     """
     Copy the input to an ASCII-safe filename and create an isolated Audiveris job directory.
@@ -1588,9 +1821,34 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     safe_input_path, safe_output_dir, cleanup_input_copy = prepare_audiveris_paths(input_path, output_dir)
+    # Keep a reference to the original (unprocessed) path so fallback retry can use it.
+    original_safe_input_path = safe_input_path
 
-    def invoke_audiveris(target_dir: Path, sheet_number: Optional[int] = None) -> tuple[int, str, str, Optional[Path]]:
+    # Pre-process raster images (PNG/JPG) to improve OMR accuracy before passing to Audiveris.
+    # For PDF inputs Audiveris renders pages internally, so preprocessing is skipped.
+    omr_preprocessed_path: Optional[Path] = None
+    omr_rescaled_path: Optional[Path] = None
+    if safe_input_path.suffix.lower() in {'.png', '.jpg', '.jpeg'}:
+        preprocessed = preprocess_image_for_omr(safe_input_path, safe_output_dir.parent)
+        if preprocessed is not None:
+            omr_preprocessed_path = preprocessed
+            safe_input_path = preprocessed
+
+        # Enforce Audiveris pixel limit (20 M px); downscale if needed regardless of
+        # whether preprocessing was applied, since even an unmodified high-res original
+        # can exceed the limit.
+        rescaled = fit_image_within_pixel_limit(safe_input_path, safe_output_dir.parent)
+        if rescaled is not None:
+            omr_rescaled_path = rescaled
+            safe_input_path = rescaled
+
+    def invoke_audiveris(
+        target_dir: Path,
+        sheet_number: Optional[int] = None,
+        input_path_override: Optional[Path] = None,
+    ) -> tuple[int, str, str, Optional[Path]]:
         """Run Audiveris once for a given output dir and optional sheet number; return (exit_code, stdout, stderr, mxl_path)."""
+        effective_input = input_path_override if input_path_override is not None else safe_input_path
         target_dir.mkdir(parents=True, exist_ok=True)
         cmd = [
             str(exe),
@@ -1600,9 +1858,9 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
         ]
         if sheet_number is not None:
             cmd.extend(['-sheets', str(sheet_number)])
-        cmd.extend(['-output', str(target_dir), str(safe_input_path)])
+        cmd.extend(['-output', str(target_dir), str(effective_input)])
         return_code, stdout, stderr = run_subprocess_with_spinner(cmd, cwd=str(exe.parent), java_exe=java_exe)
-        exported_file = find_first_musicxml_file(target_dir, safe_input_path.stem)
+        exported_file = find_first_musicxml_file(target_dir, effective_input.stem)
         return return_code, stdout, stderr, exported_file
 
     try:
@@ -1632,20 +1890,121 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
                     success_pages.append(page_number)
                     log_message(f'第 {page_number} 页已成功导出。')
                 else:
+                    page_combined = (page_stderr or '') + '\n' + (page_stdout or '')
+                    no_staves_kw = ['Created scores: []', 'Sheet flagged as invalid', 'No good interline', 'Too few black pixels', 'no staves']
+                    page_reason = '（图像过于模糊或无法检测五线谱）' if any(k.lower() in page_combined.lower() for k in no_staves_kw) else ''
                     detail_parts = [part.strip() for part in (page_stderr, page_stdout) if part and part.strip()]
                     detail = '\n'.join(detail_parts)
-                    log_message(f'第 {page_number} 页无法识别为有效五线谱，已跳过。{detail[:240]}', logging.WARNING)
+                    log_message(f'第 {page_number} 页无法识别为有效五线谱，已跳过。{page_reason}{detail[:240]}', logging.WARNING)
             if success_pages:
                 log_message(f'Audiveris 已按页完成导出，成功页: {success_pages}')
                 return safe_output_dir
 
-        detail_parts = [part.strip() for part in (stderr, stdout) if part and part.strip()]
-        detail = '\n'.join(detail_parts)
-        log_message('\nAudiveris 执行失败: ' + (detail or '未知错误。'), logging.WARNING)
+        combined = (stdout or '') + '\n' + (stderr or '')
+
+        # ── Retry: CURVES crash → re-run with original (unprocessed) image ──────────
+        # Audiveris fully recognises the score but its CURVES step (slur/tie detection)
+        # sometimes crashes on preprocessed images.  Retry with the original file.
+        is_curves_crash = (
+            'Error processing stub' in combined
+            and ('Error in export' in combined or 'transcription did not complete' in combined.lower())
+        )
+        preprocessing_was_applied = (
+            omr_preprocessed_path is not None or omr_rescaled_path is not None
+        )
+        if is_curves_crash and preprocessing_was_applied:
+            log_message(
+                'Audiveris 在连音线处理步骤（CURVES）中发生错误，'
+                '尝试使用原始图像跳过预处理后重试...', logging.WARNING
+            )
+            safe_remove_tree(safe_output_dir)
+            r2_code, r2_out, r2_err, r2_exported = invoke_audiveris(
+                safe_output_dir, input_path_override=original_safe_input_path
+            )
+            if r2_code == 0 or r2_exported is not None:
+                if r2_code != 0:
+                    log_message('重试时 Audiveris 返回非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
+                log_message('使用原始图像重试成功。')
+                return safe_output_dir
+            # Update combined for the next error-classification check
+            stdout, stderr = r2_out, r2_err
+            combined = (stdout or '') + '\n' + (stderr or '')
+
+        # Report specific CURVES / export-error message if still failing
+        if is_curves_crash or (
+            'Error in export' in combined
+            and 'Error processing stub' in combined
+        ):
+            log_message(
+                '\n'
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+                '  ✗  Audiveris 识别了五线谱但导出失败\n'
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+                '  Audiveris 已检测到五线谱结构，但在曲线/连音线处理步骤（CURVES）\n'
+                '  中发生内部崩溃，导致乐谱无法正常导出。\n'
+                '\n'
+                '  可能原因：\n'
+                '  • 图像中包含复杂的连音线或延音线，触发了 Audiveris 的已知崩溃\n'
+                '  • 手机拍摄图像中的阴影/倾斜线条被误识别为连音弧线\n'
+                '  • 单张图像包含多页内容，使曲线跨页处理失败\n'
+                '\n'
+                '  建议操作：\n'
+                '  • 优先使用 PDF 版本（推荐），PDF 版本不受此限制\n'
+                '  • 如使用拍摄图像，可尝试每次只包含 1-2 个系统（裁剪后分批处理）\n'
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+                logging.WARNING,
+            )
+            return None
+
+        # Check for "no staves found" - typically happens with blurry / low-contrast images
+        no_staves_keywords = [
+            'Created scores: []',
+            'Sheet flagged as invalid',
+            'No good interline',
+            'Too few black pixels',
+            'no staves',
+        ]
+        is_no_staves = any(kw.lower() in combined.lower() for kw in no_staves_keywords)
+        if is_no_staves:
+            sharpness_hint = ''
+            if safe_input_path.suffix.lower() in {'.png', '.jpg', '.jpeg'} and HAS_PILLOW:
+                try:
+                    with Image.open(safe_input_path) as _img:
+                        _val = _measure_laplacian_stddev(_img)
+                    sharpness_hint = f'（当前图像锐度指数：{_val:.1f}，建议 ≥ 30）'
+                except Exception:
+                    pass
+            log_message(
+                '\n'
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+                '  ✗  无法识别图像中的五线谱\n'
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+                f'  Audiveris 无法在输入图像中检测到有效的五线谱结构。{sharpness_hint}\n'
+                '\n'
+                '  可能原因：\n'
+                '  • 图像过于模糊或对比度过低，五线谱线条无法被识别\n'
+                '  • 扫描分辨率不足（建议 ≥ 150 DPI，最短边 ≥ 1200 像素）\n'
+                '  • 图像内容不是标准印刷五线谱（如手写谱、草稿等）\n'
+                '\n'
+                '  建议操作：\n'
+                '  • 使用更高质量或分辨率更高的扫描版本重试\n'
+                '  • 如使用手机拍摄，请确保拍摄时光线充足、图像清晰\n'
+                '  • 如图像原本清晰但识别失败，请确认其为标准印刷五线谱\n'
+                '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+                logging.WARNING,
+            )
+        else:
+            detail_parts = [part.strip() for part in (stderr, stdout) if part and part.strip()]
+            detail = '\n'.join(detail_parts)
+            log_message('\nAudiveris 执行失败: ' + (detail or '未知错误。'), logging.WARNING)
         return None
     finally:
         if cleanup_input_copy is not None:
             safe_remove_file(cleanup_input_copy)
+        if omr_preprocessed_path is not None:
+            safe_remove_file(omr_preprocessed_path)
+        if omr_rescaled_path is not None:
+            safe_remove_file(omr_rescaled_path)
 
 
 def render_midi_from_score(score, midi_path: Path) -> bool:
@@ -2020,7 +2379,7 @@ def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics
                 preamble
                 + '\n\\score {\n<<\n'
                 + jianpu_section
-                + f'\n>>\n\\header{{\n  title="{safe_title}"\n  instrument=""\n  tagline=##f\n}}\n\\layout{{}}\n}}\n'
+                + f'\n>>\n\\header{{\n  title=""\n  instrument=""\n  tagline=##f\n}}\n\\layout{{}}\n}}\n'
             )
             extra_markup = title_markup + lyrics_markup
             if extra_markup and '\\score {' in rebuilt and '\\fill-line { \\fontsize #3 \\bold' not in rebuilt.split('\\score {', 1)[0]:
@@ -2032,11 +2391,11 @@ def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics
     text = re.sub(r'% === BEGIN 5-LINE STAFF ===.*?% === END 5-LINE STAFF ===\s*', '', text, flags=re.S)
     text = re.sub(r'^instrument=.*$', '', text, flags=re.M)
     text = re.sub(r'instrument="[^"]*"', 'instrument=""', text)
-    if f'title="{safe_title}"' not in text and f'title = "{safe_title}"' not in text:
-        if '\\paper {' in text:
-            text = text.replace('\\paper {', f'\\header {{ title="{safe_title}" tagline=##f }}\n\\paper {{', 1)
-        else:
-            text = f'\\header {{ title="{safe_title}" tagline=##f }}\n' + text
+    # Use our custom title markup and set header title to empty to avoid duplicates
+    if '\\paper {' in text:
+        text = text.replace('\\paper {', f'\\header {{ title="" tagline=##f }}\n\\paper {{', 1)
+    else:
+        text = f'\\header {{ title="" tagline=##f }}\n' + text
     extra_markup = title_markup + lyrics_markup
     if extra_markup and '\\score {' in text and '\\fill-line { \\fontsize #3 \\bold' not in text.split('\\score {', 1)[0]:
         text = text.replace('\\score {', extra_markup + '\\score {', 1)
@@ -2121,13 +2480,12 @@ def generate_jianpu_pdf_from_mxl(
     source_path: Path | None = None,
 ) -> bool:
     """
-    Generate a jianpu PDF from MusicXML: parse → export MIDI → rebuild score → render jianpu PDF.
-    Uses a temporary MIDI file when midi_output_path is None.
+    Generate a jianpu PDF from MusicXML: parse MXL → render jianpu PDF directly.
+    MIDI is only created when midi_output_path is explicitly provided.
+    Using MXL-parsed score directly avoids MIDI quantization errors (pitch/rhythm loss).
     """
     txt_path = temp_dir / f'{mxl_path.stem}.jianpu.txt'
     ly_path = temp_dir / f'{mxl_path.stem}.jianpu.ly'
-    midi_path = midi_output_path or (temp_dir / f'{mxl_path.stem}.normalized.mid')
-    cleanup_temp_midi = midi_output_path is None
 
     try:
         source_score = converter.parse(str(mxl_path))
@@ -2135,26 +2493,20 @@ def generate_jianpu_pdf_from_mxl(
         apply_score_title(source_score, title)
         lyrics_lines = collect_preserved_lyrics_lines(source_score, source_path)
 
-        if not render_midi_from_score(source_score, midi_path):
-            log_message('MXL -> MIDI 失败，无法继续生成简谱 PDF。', logging.WARNING)
-            return False
+        # Generate MIDI output only when explicitly requested — not needed for jianpu rendering
+        if midi_output_path is not None:
+            if not render_midi_from_score(source_score, midi_output_path):
+                log_message('MXL -> MIDI 生成失败，跳过 MIDI 输出，继续生成简谱 PDF。', logging.WARNING)
 
-        score = load_score_from_midi(midi_path)
-        if score is None:
-            log_message('MIDI -> 乐谱重建失败，无法继续生成简谱 PDF。', logging.WARNING)
-            return False
-
-        apply_score_title(score, title)
-        log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> MIDI -> 简谱 PDF')
-        return render_score_to_jianpu_pdf(score, title, output_pdf_path, temp_dir, txt_path, ly_path, lyrics_lines)
+        # Use the MXL-parsed score directly — preserves exact note durations and pitches
+        log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
+        return render_score_to_jianpu_pdf(source_score, title, output_pdf_path, temp_dir, txt_path, ly_path, lyrics_lines)
     except Exception as exc:
         log_message(f'生成简谱 PDF 失败: {mxl_path.name}，原因: {exc}', logging.WARNING)
         return False
     finally:
         safe_remove_file(txt_path)
         safe_remove_file(ly_path)
-        if cleanup_temp_midi:
-            safe_remove_file(midi_path)
 
 
 def collect_duplicate_names(
