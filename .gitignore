@@ -3,6 +3,7 @@ jdk/
 package-assets/
 lilypond-2.24.4/
 audiveris-5.10.2/
+waifu2x-ncnn-vulkan/
 audiveris_job_*/
 
 # 构建输出

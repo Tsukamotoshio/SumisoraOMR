@@ -71,7 +71,7 @@ where py >nul 2>nul
 if errorlevel 1 set "PYTHON_CMD=python"
 
 echo [2/3] 正在构建可执行文件...
-call %PYTHON_CMD% -m PyInstaller --noconfirm --clean --onedir --console --name ConvertTool --collect-all music21 --collect-submodules reportlab convert.py
+call %PYTHON_CMD% -m PyInstaller --noconfirm --clean --onedir --console --name ConvertTool --collect-all music21 --collect-submodules reportlab --collect-submodules core convert.py
 if errorlevel 1 (
     echo [ERROR] PyInstaller 打包失败。
     exit /b 1

@@ -12,7 +12,13 @@ set "STAGE_DIR=%BASE_DIR%zip-stage\%ZIP_NAME%"
 set "OUTPUT_ZIP=%BASE_DIR%installer-dist\%ZIP_NAME%.zip"
 
 :: ── 步骤 1：package-assets（如已存在则跳过）──────────────────────────────────
-if exist "%BASE_DIR%package-assets\lilypond-runtime\bin" (
+:: 需同时满足：lilypond-runtime 和 waifu2x-runtime（如本地有源文件）均已就绪
+set "ASSETS_READY=1"
+if not exist "%BASE_DIR%package-assets\lilypond-runtime\bin" set "ASSETS_READY=0"
+if exist "%BASE_DIR%waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
+    if not exist "%BASE_DIR%package-assets\waifu2x-runtime\waifu2x-ncnn-vulkan.exe" set "ASSETS_READY=0"
+)
+if "%ASSETS_READY%"=="1" (
     echo [跳过] package-assets 已存在，无需重新准备。
 ) else (
     set "AUDIVERIS_SOURCE=%BASE_DIR%audiveris-5.10.2"
@@ -59,6 +65,7 @@ if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
         --name %APP_NAME% ^
         --collect-all music21 ^
         --collect-submodules reportlab ^
+        --collect-submodules core ^
         convert.py
     if errorlevel 1 ( echo [ERROR] PyInstaller 打包失败。& exit /b 1 )
 )
