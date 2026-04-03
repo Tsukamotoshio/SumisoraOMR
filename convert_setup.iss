@@ -1,5 +1,5 @@
 #define MyAppName "简谱转换工具"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "ConvertTool.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
@@ -48,12 +48,13 @@ Source: "dist\ConvertTool\*"; DestDir: "{app}"; Flags: ignoreversion recursesubd
 Source: "package-assets\lilypond-runtime\*"; DestDir: "{app}\lilypond-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\audiveris-runtime\*"; DestDir: "{app}\audiveris-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\tessdata\*"; DestDir: "{app}\tessdata"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "package-assets\waifu2x-runtime\*"; DestDir: "{app}\waifu2x-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "jdk\*"; DestDir: "{app}\jdk"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "jianpu-ly.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Input\Do_You_Hear_the_People_Sing.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
 Source: "Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
-Source: "README_EN.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion isreadme
-Source: "读我.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "README_EN.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion isreadme
+Source: "读我.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 

@@ -56,6 +56,15 @@ for %%D in (bin etc lib libexec licenses share) do (
     if exist "%BASE_DIR%lilypond-2.24.4\%%D" robocopy "%BASE_DIR%lilypond-2.24.4\%%D" "%PACKAGE_ASSETS%\lilypond-runtime\%%D" /E /NFL /NDL /NJH /NJS /NC /NS >nul
 )
 if exist "%AUDIVERIS_SOURCE%\app\dev\tessdata" robocopy "%AUDIVERIS_SOURCE%\app\dev\tessdata" "%PACKAGE_ASSETS%\tessdata" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+if exist "%BASE_DIR%package-assets\waifu2x-runtime\waifu2x-ncnn-vulkan.exe" (
+    echo [INFO] waifu2x-runtime 包已就绪，无需重新复制。
+) else if exist "%BASE_DIR%waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
+    mkdir "%PACKAGE_ASSETS%\waifu2x-runtime"
+    robocopy "%BASE_DIR%waifu2x-ncnn-vulkan" "%PACKAGE_ASSETS%\waifu2x-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+    echo [INFO] waifu2x-runtime 已复制。
+) else (
+    echo [WARN] 未找到 waifu2x-ncnn-vulkan 目录，跳过超分辨率模块打包。
+)
 
 set "PYTHON_CMD=py -3"
 where py >nul 2>nul
