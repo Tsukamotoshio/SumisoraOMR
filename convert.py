@@ -2616,7 +2616,8 @@ def process_bulk_input_to_jianpu(config: AppConfig | None = None) -> ConversionS
     summary = ConversionSummary()
 
     if not input_dir.exists() or not input_dir.is_dir():
-        log_message('未找到 Input 文件夹。请在脚本目录下创建 Input 文件夹并放入 PDF/JPG/PNG 乐谱文件。', logging.WARNING)
+        input_dir.mkdir(parents=True, exist_ok=True)
+        log_message('已自动创建 Input 文件夹，请将 PDF/JPG/PNG 乐谱文件放入后重新运行。', logging.WARNING)
         return summary
 
     source_files = sorted([p for p in input_dir.iterdir() if is_supported_score_file(p)])
