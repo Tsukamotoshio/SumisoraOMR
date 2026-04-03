@@ -35,6 +35,37 @@ A tool to batch-convert Western staff notation PDFs into Jianpu (numbered musica
 
 ---
 
+## Running from Source / 源码运行
+
+If you want to run `convert.py` directly instead of using the packaged executable, install the Python dependencies first:
+
+如果你想直接运行 `convert.py` 而非使用打包版本，请先安装 Python 依赖：
+
+```bash
+pip install -r requirements.txt
+```
+
+Or install manually / 或手动安装：
+
+```bash
+pip install music21 pillow reportlab
+```
+
+You will also need the following external tools placed in the corresponding directories (same layout as the packaged release):
+此外还需要将以下外部工具放置在对应目录（与打包版本的目录结构相同）：
+
+- `audiveris-5.10.2/` — Audiveris OMR engine
+- `lilypond-2.24.4/` — LilyPond engraving engine
+- `jdk/` — Java runtime (required by Audiveris)
+
+Then run / 然后运行：
+
+```bash
+python convert.py
+```
+
+---
+
 ## Directory Structure / 目录说明
 
 - `Input/` — Place source sheet music files here / 放入原始五线谱文件（PDF / PNG / JPG）

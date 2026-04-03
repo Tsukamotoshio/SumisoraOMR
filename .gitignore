@@ -12,6 +12,7 @@ installer-dist/
 releases/
 
 # 转换产物
+Input/
 Output/
 logs/
 conversion_history.json
