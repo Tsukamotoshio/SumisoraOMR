@@ -12,7 +12,9 @@ from .config import (
     LOGGER,
     AppConfig,
     ConversionSummary,
+    OMREngine,
 )
+from .oemer_runner import check_oemer_available, run_oemer_batch
 from .renderer import generate_jianpu_pdf_from_mxl
 from .utils import (
     build_runtime_paths,
@@ -32,16 +34,39 @@ from .utils import (
 )
 
 
-def process_single_input_to_jianpu(source_file: Path, file_temp_dir: Path, output_pdf: Path, output_midi: Optional[Path]) -> bool:
-    """Process one input file: Audiveris → find MXL → generate jianpu PDF (optionally MIDI)."""
-    audiveris_out = run_audiveris_batch(source_file, output_dir=file_temp_dir)
-    if audiveris_out is None:
-        log_message(f'跳过 {source_file.name}，Audiveris 处理失败。', logging.WARNING)
+def process_single_input_to_jianpu(
+    source_file: Path,
+    file_temp_dir: Path,
+    output_pdf: Path,
+    output_midi: Optional[Path],
+    engine: OMREngine = OMREngine.AUDIVERIS,
+) -> bool:
+    """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
+
+    Parameters
+    ----------
+    source_file:   Input score file (PDF / PNG / JPG).
+    file_temp_dir: Per-job temporary directory.
+    output_pdf:    Destination jianpu PDF path.
+    output_midi:   Destination MIDI path, or None to skip MIDI generation.
+    engine:        OMR engine to use (AUDIVERIS or OEMER).
+    """
+    engine_name = engine.value.upper()
+
+    if engine is OMREngine.OEMER:
+        omr_out = run_oemer_batch(source_file, output_dir=file_temp_dir)
+        engine_label = 'oemer'
+    else:
+        omr_out = run_audiveris_batch(source_file, output_dir=file_temp_dir)
+        engine_label = 'Audiveris'
+
+    if omr_out is None:
+        log_message(f'跳过 {source_file.name}，{engine_label} 处理失败。', logging.WARNING)
         return False
 
-    mxl_file = find_first_musicxml_file(audiveris_out, source_file.stem)
+    mxl_file = find_first_musicxml_file(omr_out, source_file.stem)
     if mxl_file is None:
-        log_message(f'未找到 Audiveris 输出的 MXL 文件，跳过 {source_file.name}。', logging.WARNING)
+        log_message(f'未找到 {engine_label} 输出的 MXL 文件，跳过 {source_file.name}。', logging.WARNING)
         return False
 
     return generate_jianpu_pdf_from_mxl(
@@ -54,9 +79,15 @@ def process_single_input_to_jianpu(source_file: Path, file_temp_dir: Path, outpu
     )
 
 
-def process_single_pdf_to_jianpu(pdf_file: Path, file_temp_dir: Path, output_pdf: Path, output_midi: Optional[Path]) -> bool:
+def process_single_pdf_to_jianpu(
+    pdf_file: Path,
+    file_temp_dir: Path,
+    output_pdf: Path,
+    output_midi: Optional[Path],
+    engine: OMREngine = OMREngine.AUDIVERIS,
+) -> bool:
     """Backward-compatible alias for process_single_input_to_jianpu."""
-    return process_single_input_to_jianpu(pdf_file, file_temp_dir, output_pdf, output_midi)
+    return process_single_input_to_jianpu(pdf_file, file_temp_dir, output_pdf, output_midi, engine)
 
 
 def process_bulk_input_to_jianpu(config: AppConfig | None = None) -> ConversionSummary:
@@ -94,6 +125,23 @@ def process_bulk_input_to_jianpu(config: AppConfig | None = None) -> ConversionS
     midi_answer = input('是否同时生成 MIDI 文件?（Y/N） ').strip().upper()
     generate_midi = midi_answer == 'Y'
 
+    # ── 引擎选择（experimental-v0.2.0 新增）──────────────────────────────
+    engine = config.omr_engine
+    if engine is OMREngine.AUDIVERIS:
+        log_message('[引擎选择] 可选 OMR 引擎：1=Audiveris（默认）  2=oemer（实验性）')
+        engine_answer = input('请输入引擎编号（直接回车使用默认 Audiveris）：').strip()
+        if engine_answer == '2':
+            if check_oemer_available():
+                engine = OMREngine.OEMER
+                log_message('[引擎选择] 使用 oemer 引擎。')
+            else:
+                log_message('[引擎选择] oemer 不可用，回退到 Audiveris。', logging.WARNING)
+                engine = OMREngine.AUDIVERIS
+        else:
+            log_message('[引擎选择] 使用 Audiveris 引擎。')
+    else:
+        log_message(f'[引擎选择] 已由配置指定: {engine.value}')
+
     output_dir.mkdir(parents=True, exist_ok=True)
     duplicate_names = collect_duplicate_names(source_files, output_dir, generate_midi, history)
     skip_all_existing = confirm_skip_all_existing(duplicate_names)
@@ -117,7 +165,7 @@ def process_bulk_input_to_jianpu(config: AppConfig | None = None) -> ConversionS
         safe_remove_tree(file_temp_dir)
         file_temp_dir.mkdir(parents=True, exist_ok=True)
 
-        if process_single_input_to_jianpu(source_file, file_temp_dir, output_pdf, output_midi):
+        if process_single_input_to_jianpu(source_file, file_temp_dir, output_pdf, output_midi, engine):
             log_message(f'已生成简谱 PDF: {output_pdf.name}')
             summary.success += 1
             summary.generated_pdfs.append(output_pdf.name)
@@ -158,10 +206,11 @@ def wait_for_exit_key(prompt: str = 'Conversion complete. Press any key to exit.
 def main() -> None:
     """Entry point: initialise logging, run batch conversion, wait for keypress before exit."""
     setup_logging(get_app_base_dir())
-    log_message('=========================================')
+    log_message('===========================================')
     log_message(f'批量乐谱(PDF/JPG/PNG) -> 简谱 PDF 转换工具 v{APP_VERSION}')
     log_message('版权所有 © 2026 Tsukamotoshio  保留所有权利')
-    log_message('=========================================')
+    log_message('[实验版] 支持双 OMR 引擎：Audiveris / oemer')
+    log_message('===========================================')
     try:
         process_bulk_input_to_jianpu(AppConfig())
     except EOFError:
