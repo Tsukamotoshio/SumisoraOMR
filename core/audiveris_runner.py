@@ -56,6 +56,21 @@ def prepare_audiveris_paths(input_path: Path, output_dir: Path) -> tuple[Path, P
     return safe_input_path, safe_output_dir, safe_input_path
 
 
+def _copy_preprocessed_ref(src: Optional[Path], dest_dir: Path) -> None:
+    """Copy the preprocessed reference image into *dest_dir* as ``_preprocessed_ref.png``.
+
+    Called just before each successful return in :func:`run_audiveris_batch` so that
+    the pipeline can offer the enhanced/deskewed image as the editor workspace reference
+    instead of the raw original input.  Silently skips if *src* is ``None`` or missing.
+    """
+    if src is None or not src.exists():
+        return
+    try:
+        shutil.copy2(str(src), str(dest_dir / '_preprocessed_ref.png'))
+    except OSError:
+        pass
+
+
 def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> Optional[Path]:
     """
     Run Audiveris OMR on the input file; falls back to per-page processing for multi-page PDFs.
@@ -123,6 +138,7 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
             if return_code != 0:
                 log_message('Audiveris 返回了非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
             log_message('Audiveris 执行完成。')
+            _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
             return safe_output_dir
 
         page_count = get_pdf_page_count(safe_input_path)
@@ -146,6 +162,7 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
                     log_message(f'第 {page_number} 页无法识别为有效五线谱，已跳过。{page_reason}{detail[:240]}', logging.WARNING)
             if success_pages:
                 log_message(f'Audiveris 已按页完成导出，成功页: {success_pages}')
+                _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
                 return safe_output_dir
 
         combined = (stdout or '') + '\n' + (stderr or '')
@@ -173,6 +190,7 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
                 if r2_code != 0:
                     log_message('重试时 Audiveris 返回非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
                 log_message('使用原始图像重试成功。')
+                _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
                 return safe_output_dir
             # Update combined for the next error-classification check
             stdout, stderr = r2_out, r2_err
