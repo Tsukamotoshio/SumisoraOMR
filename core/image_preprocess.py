@@ -14,6 +14,12 @@ try:
 except ImportError:
     HAS_PILLOW = False
 
+try:
+    import numpy as _numpy_sentinel  # noqa: F401 — availability check only
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+
 from .config import (
     LOGGER,
     RUNTIME_ASSETS_DIR_NAME,
@@ -136,11 +142,141 @@ def _measure_laplacian_stddev(img: 'Image.Image') -> float:
         return 100.0
 
 
+def autocrop_image(img: 'Image.Image', padding: int = 30) -> 'Image.Image':
+    """Crop away content-free borders from a sheet-music image.
+
+    Two detection modes are selected automatically:
+
+    **Scan mode** (image mean > 180 — mostly white background like a flatbed scan):
+        Finds the axis-aligned bounding box of dark content pixels (< 240) and
+        crops to it.
+
+    **Photo mode** (image mean ≤ 180 — photo of a page on a dark / patterned surface):
+        Finds rows and columns whose *average brightness* exceeds the overall
+        image mean.  These are "bright" rows / columns that belong to the white
+        paper page, rather than the dark background material behind it.
+        This is robust to complex backgrounds (fabric, desk, etc.) that would
+        fool a simple per-pixel threshold.
+
+    In both modes the crop is skipped when the result would shrink the image
+    by less than 5  % on either axis (negligible margins).
+    """
+    if not HAS_NUMPY:
+        return img
+    try:
+        import numpy as np
+    except ImportError:
+        return img
+
+    gray = np.array(img.convert('L') if img.mode != 'L' else img, dtype=np.float32)
+    h, w = gray.shape
+    avg_brightness = float(gray.mean())
+
+    if avg_brightness > 180:
+        # ── Scan mode ────────────────────────────────────────────────────
+        mask = gray.astype(np.uint8) < 240
+        rows = np.any(mask, axis=1)
+        cols = np.any(mask, axis=0)
+        if not rows.any() or not cols.any():
+            return img
+        rmin = int(np.where(rows)[0][0])
+        rmax = int(np.where(rows)[0][-1])
+        cmin = int(np.where(cols)[0][0])
+        cmax = int(np.where(cols)[0][-1])
+    else:
+        # ── Photo mode ──────────────────────────────────────────────────
+        # Rows / columns that mostly contain white paper have HIGH average
+        # brightness; rows of dark background material have LOW average
+        # brightness.  Using the overall image mean as the threshold naturally
+        # splits the two groups for a wide range of ambient conditions.
+        threshold = avg_brightness
+        row_means = gray.mean(axis=1)
+        col_means = gray.mean(axis=0)
+        paper_rows = np.where(row_means > threshold)[0]
+        paper_cols = np.where(col_means > threshold)[0]
+        if not len(paper_rows) or not len(paper_cols):
+            return img
+        rmin = int(paper_rows[0])
+        rmax = int(paper_rows[-1])
+        cmin = int(paper_cols[0])
+        cmax = int(paper_cols[-1])
+
+    rmin = max(0, rmin - padding)
+    rmax = min(h - 1, rmax + padding)
+    cmin = max(0, cmin - padding)
+    cmax = min(w - 1, cmax + padding)
+
+    new_w = cmax - cmin + 1
+    new_h = rmax - rmin + 1
+    if new_w >= w * 0.95 and new_h >= h * 0.95:
+        return img  # margins are negligible — skip crop
+
+    log_message(f'自动裁剪：{w}×{h} → {new_w}×{new_h}')
+    return img.crop((cmin, rmin, cmax + 1, rmax + 1))
+
+
+def deskew_image(img: 'Image.Image', max_angle: float = 7.0, step: float = 0.5) -> 'Image.Image':
+    """Detect and correct page rotation (skew) using the projection-profile method.
+
+    Scans angles in [-*max_angle*, +*max_angle*] at *step*-degree increments.
+    For each angle the binary analysis thumbnail is rotated and its row-sum
+    (horizontal projection) is computed.  The angle whose projection variance is
+    highest corresponds to the configuration where staff lines are most sharply
+    aligned with the horizontal axis — i.e., the image is level.
+
+    The correction is then applied to *img* at full resolution (bicubic resampling,
+    expanded canvas, white fill for newly-exposed corners).
+
+    Returns *img* unchanged when:
+    - numpy is unavailable
+    - the detected correction angle is < 0.2° (no meaningful skew)
+    """
+    if not HAS_NUMPY:
+        return img
+    try:
+        import numpy as np
+    except ImportError:
+        return img
+
+    # Downscale to ≤ 800 px wide for fast analysis (preserves angle resolution)
+    gray = img.convert('L') if img.mode != 'L' else img
+    w, h = gray.size
+    thumb = gray.resize((800, int(h * 800 / w)), Image.LANCZOS) if w > 800 else gray
+
+    # Binarise: dark ink (content) → 255, white background → 0
+    arr = np.array(thumb, dtype=np.float32)
+    threshold = float(arr.mean())
+    binary_pil = Image.fromarray(((arr < threshold) * 255).astype(np.uint8))
+
+    best_angle = 0.0
+    best_score = -1.0
+    for angle in np.arange(-max_angle, max_angle + step / 2.0, step):
+        rotated = binary_pil.rotate(float(angle), expand=False, fillcolor=0)
+        score = float(np.array(rotated, dtype=np.float32).sum(axis=1).var())
+        if score > best_score:
+            best_score = score
+            best_angle = float(angle)
+
+    if abs(best_angle) < 0.2:
+        return img  # skew is negligible
+
+    log_message(f'梯度修正：检测到倒斜 {best_angle:+.1f}°，正在修正...')
+    fill = 255 if img.mode in ('L', 'RGB', 'RGBA') else 0
+    return img.rotate(
+        best_angle,
+        expand=True,
+        fillcolor=fill,
+        resample=Image.BICUBIC,
+    )
+
+
 def enhance_image_with_pillow(input_path: Path, output_path: Path) -> bool:
     """Apply adaptive image enhancements to improve OMR accuracy using Pillow.
     Pipeline follows the official Audiveris/GIMP guide:
       1. Convert to grayscale  — Audiveris prefers grayscale input for its adaptive binarizer.
-      2. Sharpness detection   — selects normal vs. blurry enhancement mode.
+      2. Deskew               — correct page rotation using projection-profile method.
+      3. Auto-crop            — remove large white/grey margins.
+      4. Sharpness detection  — selects normal vs. blurry enhancement mode.
       - Normal mode  (stddev >= BLURRY_SHARPNESS_THRESHOLD):
           Gaussian blur (1.5) → autocontrast 10% cutoff → Unsharp mask (1.0, 150).
       - Blurry mode  (stddev < threshold):
@@ -153,6 +289,13 @@ def enhance_image_with_pillow(input_path: Path, output_path: Path) -> bool:
         with Image.open(input_path) as img:
             # Step 1: Convert to grayscale — matches Audiveris scanning guide recommendation
             gray = img.convert('L')
+            # Step 2: Auto-crop — remove background (fabric / desk) or white margins.
+            # Do this BEFORE deskew so the projection-profile method works on
+            # clean paper content rather than a noisy background.
+            gray = autocrop_image(gray)
+            # Step 3: Deskew — correct page tilt on the now-clean content
+            gray = deskew_image(gray)
+            # Step 4: Sharpness-adaptive enhancement
             sharpness = _measure_laplacian_stddev(gray)
             if sharpness < BLURRY_SHARPNESS_THRESHOLD:
                 log_message(

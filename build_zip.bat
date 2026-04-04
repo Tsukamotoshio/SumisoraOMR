@@ -5,7 +5,7 @@ chcp 65001 >nul
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%"
 
-set "APP_VERSION=0.1.2"
+set "APP_VERSION=0.1.3"
 set "APP_NAME=ConvertTool"
 set "ZIP_NAME=%APP_NAME%-Portable-%APP_VERSION%"
 set "STAGE_DIR=%BASE_DIR%zip-stage\%ZIP_NAME%"
