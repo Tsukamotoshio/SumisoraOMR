@@ -27,28 +27,40 @@ def _read_single_key() -> str:
     """Read exactly one keypress (no Enter required) on Windows.
 
     Returns ESC as ``'\\x1b'``, ignores extended keys (arrows etc.).
-    Falls back to ``input()`` on non-Windows platforms.
+    Falls back to ``input()`` when msvcrt is unavailable or stdin is not a
+    real console (e.g. VS Code integrated terminal, piped stdin).
     """
     if sys.platform == 'win32':
-        import msvcrt
-        while True:
-            ch = msvcrt.getwch()
-            if ch in ('\x00', '\xe0'):
-                msvcrt.getwch()  # discard second byte of extended key
-                continue
-            return ch
-    else:
-        # Unix fallback: raw tty single-character read
-        import termios
-        import tty
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
         try:
-            tty.setraw(fd)
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        return ch
+            import msvcrt
+            while True:
+                ch = msvcrt.getwch()
+                if ch in ('\x00', '\xe0'):
+                    msvcrt.getwch()  # discard second byte of extended key
+                    continue
+                return ch
+        except (OSError, IOError):
+            pass  # fall through to input() fallback
+    elif sys.platform != 'win32':
+        try:
+            import termios
+            import tty
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = sys.stdin.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            return ch
+        except (OSError, IOError, AttributeError):
+            pass  # fall through to input() fallback
+    # Fallback: read a full line; treat first character as the keystroke
+    try:
+        line = input().strip()
+        return line[0].lower() if line else '\n'
+    except (EOFError, KeyboardInterrupt):
+        return '\x1b'  # treat EOF / Ctrl-C as ESC / exit
 
 
 def _open_directory(path: Path) -> None:
@@ -138,6 +150,17 @@ class TUI:
             except KeyboardInterrupt:
                 self._header('退出')
                 self.console.print('\n[yellow]已取消，程序退出。[/yellow]\n')
+                break
+            except SystemExit:
+                break
+            except Exception as exc:  # noqa: BLE001
+                # Catch unexpected exceptions so the program exits gracefully
+                # rather than showing a raw Python traceback to the user.
+                import traceback
+                self.console.clear()
+                self.console.print(f'[bold red]程序遇到意外错误，已退出：[/bold red]\n{exc}')
+                self.console.print('[dim](详细信息已写入 logs 目录)[/dim]')
+                log_message(f'TUI 意外崩溃:\n{traceback.format_exc()}', logging.ERROR)
                 break
 
     # ── Screen: Main Menu ─────────────────────────────────────────────────────
@@ -358,12 +381,21 @@ class TUI:
                 return
 
     def _do_regenerate(self, txt_path: Path, title: str, output_dir: Path) -> None:
-        """Regenerate jianpu PDF from an edited .jianpu.txt via jianpu-ly → LilyPond."""
+        """Regenerate jianpu PDF from an edited .jianpu.txt via jianpu-ly → LilyPond.
+
+        The editor workspace file has a human-readable ``#``-prefixed comment
+        header prepended by ``_build_editor_header()``.  jianpu-ly.py does NOT
+        treat ``#`` as a line comment inside score content — it only skips them
+        inside its own documentation output routine.  We therefore write a
+        temporary copy of the file with all ``#`` comment lines stripped before
+        passing it to ``render_jianpu_ly``.
+        """
+        import tempfile
         from .renderer import sanitize_generated_lilypond_file
         from .runtime_finder import render_jianpu_ly, render_lilypond_pdf
         from .utils import safe_remove_file
 
-        self._header(f'简谱编辑器 — 生成中 ...')
+        self._header('简谱编辑器 — 生成中 ...')
         self.console.print()
         self.console.print(f'  正在从校对文件生成简谱 PDF：[cyan]{title}[/cyan]')
         self.console.print()
@@ -372,9 +404,23 @@ class TUI:
         output_dir.mkdir(parents=True, exist_ok=True)
         success = False
         out_pdf: Optional[Path] = None
+        clean_txt_path: Optional[Path] = None
 
         try:
-            if render_jianpu_ly(txt_path, ly_path):
+            # Strip "# comment" header lines — jianpu-ly parses # as a sharp
+            # accidental token, causing "Unrecognised command # in score" errors.
+            raw = txt_path.read_text(encoding='utf-8', errors='ignore')
+            clean = '\n'.join(
+                line for line in raw.splitlines() if not line.startswith('#')
+            )
+            with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8', suffix='.jianpu.txt',
+                dir=txt_path.parent, delete=False,
+            ) as tmp:
+                tmp.write(clean)
+                clean_txt_path = Path(tmp.name)
+
+            if render_jianpu_ly(clean_txt_path, ly_path):
                 sanitize_generated_lilypond_file(ly_path, title)
                 pdf_result = render_lilypond_pdf(ly_path)
                 if pdf_result is not None and pdf_result.exists():
@@ -385,6 +431,8 @@ class TUI:
         except Exception as exc:
             log_message(f'重新生成 PDF 时发生错误: {exc}', logging.WARNING)
         finally:
+            if clean_txt_path is not None:
+                safe_remove_file(clean_txt_path)
             safe_remove_file(ly_path)
 
         self._header(f'简谱编辑器 — 生成结果')
