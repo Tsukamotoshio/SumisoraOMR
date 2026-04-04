@@ -19,6 +19,9 @@ import os as _os
 
 def _bootstrap_venv() -> None:
     """Re-launch with the venv Python when dependencies are not importable."""
+    # When frozen by PyInstaller all deps are already bundled — skip venv detection
+    if getattr(_sys, 'frozen', False):
+        return
     try:
         import rich  # noqa: F401 — cheapest sentinel for "venv is active"
         return  # already in the right environment
