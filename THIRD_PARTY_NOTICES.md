@@ -19,6 +19,14 @@ This package includes or invokes the following third-party components:
 - Upstream: <https://github.com/cuthbertLab/music21>
 - Documentation: <https://www.music21.org/music21docs/>
 
+## Pillow
+- Version: `12.2.0`
+- License: HPND (Historical Permission Notice and Disclaimer)
+- Upstream: <https://github.com/python-pillow/Pillow>
+- Documentation: <https://pillow.readthedocs.io/>
+- Note: Used for sheet music image preprocessing (noise reduction, deskewing,
+  sharpening, brightness/contrast enhancement) before OMR recognition.
+
 ## ReportLab
 - Version: `4.4.10`
 - License: BSD-3-Clause
@@ -54,7 +62,14 @@ This package includes or invokes the following third-party components:
 - Note: PyInstaller’s bootloader (the `.exe` wrapper) carries a special exception
   that explicitly permits packaging non-GPL applications. The resulting executable
   is therefore **not** required to be GPL-licensed.
-
+## Rich
+- Version: `14.3.3`
+- License: MIT
+- Copyright: © 2020 Will McGugan
+- Upstream: <https://github.com/Textualize/rich>
+- Documentation: <https://rich.readthedocs.io/>
+- Note: Used for the terminal UI (TUI) state machine — panels, colour markup,
+  and styled console output.
 ---
 
 ## Important note

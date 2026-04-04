@@ -1,5 +1,5 @@
 music21>=9.9.1
-pillow>=10.0.0
+pillow>=12.2.0
 reportlab>=4.4.10
-rich>=13.0.0
+rich>=14.3.3
 pyinstaller>=6.19.0

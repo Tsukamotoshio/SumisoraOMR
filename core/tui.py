@@ -181,6 +181,7 @@ class TUI:
         self.console.print('  [bold]6[/bold]  帮助')
         self.console.print('  [bold]7[/bold]  退出')
         self.console.print()
+        self.console.print('  [dim]© 2026 Tsukamotoshio. All rights reserved.[/dim]')
         self._status_bar('按数字键选择功能  │  ESC 或 7 退出')
 
         key = _read_single_key()
