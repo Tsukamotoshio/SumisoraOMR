@@ -2,3 +2,15 @@ music21>=9.9.1
 pillow>=10.0.0
 reportlab>=4.4.10
 pyinstaller>=6.19.0
+
+# ── experimental-v0.2.0: oemer 引擎（可选） ──────────────────────────────
+# oemer 是基于深度学习的端到端 OMR 引擎，仅支持图片输入（非 PDF）。
+# 默认使用 onnxruntime 推理；如需 TensorFlow 推理，改用 oemer[tf]。
+# 安装后可在运行时选择 oemer 引擎替代 Audiveris。
+#
+#   pip install oemer            # onnxruntime (推荐)
+#   pip install oemer[tf]        # TensorFlow
+#
+# PDF → 图片转换（oemer 不支持 PDF，需以下任一依赖）：
+#   pip install pymupdf          # 推荐，无需外部工具
+#   pip install pdf2image        # 需额外安装 poppler-utils
