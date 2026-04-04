@@ -2,6 +2,7 @@
 # 拆分自 convert.py
 import logging
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -41,6 +42,7 @@ ALLOWED_JIANPU_DURATIONS = [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1
 SUPPORTED_INPUT_SUFFIXES = {'.pdf', '.png', '.jpg', '.jpeg'}
 ENABLE_LYRICS_OUTPUT = False
 MAX_AUDIVERIS_SECONDS = 1800
+MAX_OEMER_SECONDS = 600
 DEFAULT_AUDIVERIS_MIN_JAVA_VERSION = 25
 RUNTIME_ASSETS_DIR_NAME = 'package-assets'
 AUDIVERIS_RUNTIME_DIR_NAME = 'audiveris-runtime'
@@ -50,12 +52,28 @@ AUDIVERIS_INSTALL_DIR_NAME = 'Audiveris'
 AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris-5.10.2', 'audiveris')
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 5
-APP_VERSION = '0.1.2'
+APP_VERSION = '0.1.3'
 AUDIVERIS_MSI_NAMES = [
     'Audiveris-5.10.2-windows-x86_64.msi',
     'Audiveris.msi',
     'audiveris.msi',
 ]
+
+
+# ──────────────────────────────────────────────
+# OMR 引擎枚举（experimental-v0.2.0 新增）
+# ──────────────────────────────────────────────
+class OMREngine(Enum):
+    """可选的光学乐谱识别 (OMR) 引擎。
+    
+    AUDIVERIS: 基于 Java 的传统 OMR 引擎，支持 PDF/图片输入，
+               输出 MusicXML (.mxl)。需要本地 JDK + Audiveris 安装。
+    OEMER:     基于深度学习的端到端 OMR 引擎（pip install oemer），
+               仅支持图片输入，输出 .musicxml。
+               不依赖 Java，但需要 Python 环境中安装 oemer。
+    """
+    AUDIVERIS = 'audiveris'
+    OEMER = 'oemer'
 
 # ──────────────────────────────────────────────
 # 全局 Logger（延迟由 utils.setup_logging 初始化）
@@ -69,11 +87,12 @@ LOGGER = logging.getLogger('convert')
 # ──────────────────────────────────────────────
 @dataclass(frozen=True)
 class AppConfig:
-    """应用目录结构：输入、输出、临时、日志文件夹名称。"""
+    """应用目录结构：输入、输出、临时、日志文件夹名称，以及 OMR 引擎选择。"""
     input_dir_name: str = 'Input'
     output_dir_name: str = 'Output'
-    temp_dir_name: str = 'audiveris-temp'
+    temp_dir_name: str = 'omr-temp'
     logs_dir_name: str = 'logs'
+    omr_engine: OMREngine = OMREngine.AUDIVERIS
 
 
 @dataclass

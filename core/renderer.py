@@ -469,6 +469,76 @@ def render_score_to_jianpu_pdf(
     return False
 
 
+# ── Editor workspace helpers ─────────────────────────────────────────────────
+
+_EDITOR_HEADER_TEMPLATE = """\
+# ================================================================
+# 简谱校对文件 — {title}
+# 本文件由 OMR（光学乐谱识别）自动生成，您可以手动修改后重新生成 PDF
+# 保存并关闭记事本，工具将使用本文件重新排版输出简谱 PDF
+# ================================================================
+#
+# 【简谱符号说明】
+#  数字音符：  1=Do  2=Re  3=Mi  4=Fa  5=Sol  6=La  7=Si  0=休止符
+#  升降号：    #1=升Do  b3=降Mi（写在数字前面）
+#  高八度：    1'=高音Do  1''=超高音Do（单引号 ' 写在数字后面）
+#  低八度：    1,=低音Do  1,,=超低音Do（逗号 , 写在数字后面）
+#  时值（四分音符=1拍）：
+#    1        四分音符（1 拍）
+#    1 -      二分音符（2 拍）
+#    1 - -    附点二分（3 拍）
+#    1 - - -  全音符（4 拍）
+#    q1       八分音符（半拍）
+#    s1       十六分音符（1/4 拍）
+#    d1       三十二分音符（1/8 拍）
+#    1.       附点四分音符（1.5 拍）
+#    q1.      附点八分音符（0.75 拍）
+#  小节线：    用 | 分隔小节
+#  换行排版：  NextPart（不影响音高，仅控制排版换行）
+#  注意：以 # 开头的行是注释，不影响转换
+# ================================================================
+
+"""
+
+
+def _build_editor_header(title: str) -> str:
+    """Return a #-prefixed instructional header for the editor .jianpu.txt file."""
+    return _EDITOR_HEADER_TEMPLATE.format(title=title)
+
+
+def _save_editor_files(
+    title: str,
+    txt_path: Path,
+    source_path: Optional[Path],
+    editor_workspace_dir: Path,
+) -> None:
+    """Copy the jianpu.txt (prepending a human-readable header) and the original
+    source file into *editor_workspace_dir* so the user can later manually edit
+    and re-render the score."""
+    try:
+        editor_workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        # Sanitise the title for use as a filename stem
+        safe_title = title.strip()
+        for ch in r'\/:*?"<>|':
+            safe_title = safe_title.replace(ch, '_')
+        if not safe_title:
+            safe_title = 'untitled'
+
+        # Save annotated jianpu.txt
+        dest_txt = editor_workspace_dir / f'{safe_title}.jianpu.txt'
+        if txt_path.exists():
+            original = txt_path.read_text(encoding='utf-8', errors='ignore')
+            dest_txt.write_text(_build_editor_header(title) + original, encoding='utf-8')
+
+        # Copy the original source file as a reference image
+        if source_path is not None and source_path.exists():
+            dest_src = editor_workspace_dir / f'{safe_title}.source{source_path.suffix.lower()}'
+            shutil.copy2(str(source_path), str(dest_src))
+    except OSError as exc:
+        log_message(f'保存编辑器工作区文件失败: {exc}', logging.WARNING)
+
+
 def generate_jianpu_pdf_from_mxl(
     mxl_path: Path,
     output_pdf_path: Path,
@@ -476,11 +546,16 @@ def generate_jianpu_pdf_from_mxl(
     midi_output_path: Optional[Path] = None,
     preferred_title: Optional[str] = None,
     source_path: Optional[Path] = None,
+    editor_workspace_dir: Optional[Path] = None,
 ) -> bool:
     """
     Generate a jianpu PDF from MusicXML: parse MXL → render jianpu PDF directly.
     MIDI is only created when midi_output_path is explicitly provided.
     Using MXL-parsed score directly avoids MIDI quantization errors (pitch/rhythm loss).
+
+    If *editor_workspace_dir* is given, the intermediate .jianpu.txt and the
+    original source file are preserved there so the user can manually proofread
+    and re-render via the built-in editor.
     """
     txt_path = temp_dir / f'{mxl_path.stem}.jianpu.txt'
     ly_path = temp_dir / f'{mxl_path.stem}.jianpu.ly'
@@ -498,7 +573,15 @@ def generate_jianpu_pdf_from_mxl(
 
         # Use the MXL-parsed score directly — preserves exact note durations and pitches
         log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
-        return render_score_to_jianpu_pdf(source_score, title, output_pdf_path, temp_dir, txt_path, ly_path, lyrics_lines)
+        result = render_score_to_jianpu_pdf(
+            source_score, title, output_pdf_path, temp_dir, txt_path, ly_path, lyrics_lines
+        )
+
+        # Preserve editor workspace files when the conversion succeeded
+        if result and editor_workspace_dir is not None:
+            _save_editor_files(title, txt_path, source_path, editor_workspace_dir)
+
+        return result
     except Exception as exc:
         log_message(f'生成简谱 PDF 失败: {mxl_path.name}，原因: {exc}', logging.WARNING)
         return False
