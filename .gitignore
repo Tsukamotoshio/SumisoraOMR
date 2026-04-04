@@ -31,3 +31,7 @@ __pycache__/
 test_score.png
 
 editor-workspace/
+
+# 毕业设计文档（本地存档，不纳入版本控制）
+docs/SRS.md
+docs/Architecture.md
