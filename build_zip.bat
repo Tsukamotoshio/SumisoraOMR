@@ -95,8 +95,13 @@ copy /y "%BASE_DIR%LICENSE"                 "%STAGE_DIR%\" >nul
 if not exist "%BASE_DIR%installer-dist" mkdir "%BASE_DIR%installer-dist"
 if exist "%OUTPUT_ZIP%" del /q "%OUTPUT_ZIP%"
 
-powershell -NoProfile -Command ^
-  "Compress-Archive -Path '%BASE_DIR%zip-stage\%ZIP_NAME%' -DestinationPath '%OUTPUT_ZIP%' -CompressionLevel Optimal"
+set "SEVENZIP=C:\Program Files\7-Zip\7z.exe"
+if exist "%SEVENZIP%" (
+    "%SEVENZIP%" a -tzip -mx=5 "%OUTPUT_ZIP%" "%BASE_DIR%zip-stage\%ZIP_NAME%" >nul
+) else (
+    powershell -NoProfile -Command ^
+      "Compress-Archive -Path '%BASE_DIR%zip-stage\%ZIP_NAME%' -DestinationPath '%OUTPUT_ZIP%' -CompressionLevel Optimal"
+)
 if errorlevel 1 ( echo [ERROR] 压缩失败。& exit /b 1 )
 
 rmdir /s /q "%BASE_DIR%zip-stage"
