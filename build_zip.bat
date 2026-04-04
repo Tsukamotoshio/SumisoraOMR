@@ -58,12 +58,16 @@ if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
     echo [跳过] dist\%APP_NAME% 已存在，无需重新打包。
 ) else (
     echo [2/3] 正在构建可执行文件...
-    set "PYTHON_CMD=py -3"
-    where py >nul 2>nul
-    if errorlevel 1 set "PYTHON_CMD=python"
+    set "PYTHON_CMD="
+    if exist "%BASE_DIR%.venv\Scripts\python.exe" set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
+    if not defined PYTHON_CMD (
+        where py >nul 2>nul
+        if not errorlevel 1 (set "PYTHON_CMD=py -3") else (set "PYTHON_CMD=python")
+    )
     call %PYTHON_CMD% -m PyInstaller --noconfirm --clean --onedir --console ^
         --name %APP_NAME% ^
         --collect-all music21 ^
+        --collect-all rich ^
         --collect-submodules reportlab ^
         --collect-submodules core ^
         convert.py

@@ -255,9 +255,15 @@ var
 begin
   WizardForm.FormStyle := fsStayOnTop;
 
-  // 升级时强制指向新版本目录（防止 InnoSetup 沿用注册表中旧路径）
+  // 升级时：若检测到旧目录则沿用旧路径（尊重用户的自定义安装位置），
+  // 否则回退到默认版本化路径；目录选择页不会被跳过，用户可自行确认或修改
   if InstallMode = MODE_UPGRADE then
-    WizardForm.DirEdit.Text := ExpandConstant('{autopf}\ConvertTool-{#MyAppVersion}');
+  begin
+    if OldInstallDir <> '' then
+      WizardForm.DirEdit.Text := OldInstallDir
+    else
+      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\ConvertTool-{#MyAppVersion}');
+  end;
 
   if InstallMode = MODE_FRESH then Exit;
 
@@ -355,8 +361,11 @@ begin
     Result := True;
     Exit;
   end;
-  if InstallMode <> MODE_FRESH then
+  if InstallMode = MODE_REPAIR then
     if (PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) then
+      Result := True;
+  if InstallMode = MODE_DOWNGRADE then
+    if PageID = wpSelectProgramGroup then
       Result := True;
 end;
 

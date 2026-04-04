@@ -66,12 +66,15 @@ if exist "%BASE_DIR%package-assets\waifu2x-runtime\waifu2x-ncnn-vulkan.exe" (
     echo [WARN] 未找到 waifu2x-ncnn-vulkan 目录，跳过超分辨率模块打包。
 )
 
-set "PYTHON_CMD=py -3"
-where py >nul 2>nul
-if errorlevel 1 set "PYTHON_CMD=python"
+set "PYTHON_CMD="
+if exist "%BASE_DIR%.venv\Scripts\python.exe" set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
+if not defined PYTHON_CMD (
+    where py >nul 2>nul
+    if not errorlevel 1 (set "PYTHON_CMD=py -3") else (set "PYTHON_CMD=python")
+)
 
 echo [2/3] 正在构建可执行文件...
-call %PYTHON_CMD% -m PyInstaller --noconfirm --clean --onedir --console --name ConvertTool --collect-all music21 --collect-submodules reportlab --collect-submodules core convert.py
+call %PYTHON_CMD% -m PyInstaller --noconfirm --clean --onedir --console --name ConvertTool --collect-all music21 --collect-all rich --collect-submodules reportlab --collect-submodules core convert.py
 if errorlevel 1 (
     echo [ERROR] PyInstaller 打包失败。
     exit /b 1
