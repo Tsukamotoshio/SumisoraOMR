@@ -1,5 +1,5 @@
 #define MyAppName "简谱转换工具"
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.1.3"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "ConvertTool.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
@@ -10,7 +10,7 @@ AppId={{D5D0D1C4-0E83-4A2E-BE8E-3D5A0A93F101}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\ConvertTool
+DefaultDirName={autopf}\ConvertTool-{#MyAppVersion}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer-dist
@@ -53,7 +53,7 @@ Source: "jdk\*"; DestDir: "{app}\jdk"; Flags: ignoreversion recursesubdirs creat
 Source: "jianpu-ly.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Input\Do_You_Hear_the_People_Sing.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
 Source: "Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
-Source: "README_EN.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion isreadme
+Source: "README_EN.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
 Source: "读我.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
@@ -77,12 +77,16 @@ const
 var
   InstallMode: Integer;
   InstalledVer: String;
+  OldInstallDir: String;       // 旧版安装目录（升级时用于数据迁移）
   MaintenancePage: TWizardPage;
   RadioRepair: TNewRadioButton;
   RadioRemove: TNewRadioButton;
   DesktopIconCheckbox: TNewCheckBox;
   InstallCompleted: Boolean;
 
+// ──────────────────────────────────────────────────────────────────────────────
+// 版本比较：返回 -1 / 0 / 1
+// ──────────────────────────────────────────────────────────────────────────────
 function CompareVersions(V1, V2: String): Integer;
 var
   P1, P2, N1, N2: Integer;
@@ -104,6 +108,9 @@ begin
   end;
 end;
 
+// ──────────────────────────────────────────────────────────────────────────────
+// 通过注册表（同 AppId）读取已安装版本号
+// ──────────────────────────────────────────────────────────────────────────────
 function GetInstalledVersion: String;
 var
   RegKey: String;
@@ -111,7 +118,23 @@ begin
   RegKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{D5D0D1C4-0E83-4A2E-BE8E-3D5A0A93F101}_is1';
   if not RegQueryStringValue(HKLM64, RegKey, 'DisplayVersion', Result) then
     if not RegQueryStringValue(HKLM, RegKey, 'DisplayVersion', Result) then
-      Result := '';
+      if not RegQueryStringValue(HKCU, RegKey, 'DisplayVersion', Result) then
+        Result := '';
+end;
+
+// 通过注册表读取旧版安装目录
+function GetInstalledDir: String;
+var
+  RegKey: String;
+begin
+  RegKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{D5D0D1C4-0E83-4A2E-BE8E-3D5A0A93F101}_is1';
+  if not RegQueryStringValue(HKLM64, RegKey, 'InstallLocation', Result) then
+    if not RegQueryStringValue(HKLM, RegKey, 'InstallLocation', Result) then
+      if not RegQueryStringValue(HKCU, RegKey, 'InstallLocation', Result) then
+        Result := '';
+  // 去掉末尾反斜杠
+  if (Length(Result) > 0) and (Result[Length(Result)] = '\') then
+    Delete(Result, Length(Result), 1);
 end;
 
 function GetUninstallerPath: String;
@@ -121,7 +144,8 @@ begin
   RegKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{D5D0D1C4-0E83-4A2E-BE8E-3D5A0A93F101}_is1';
   S := '';
   if not RegQueryStringValue(HKLM64, RegKey, 'UninstallString', S) then
-    RegQueryStringValue(HKLM, RegKey, 'UninstallString', S);
+    if not RegQueryStringValue(HKLM, RegKey, 'UninstallString', S) then
+      RegQueryStringValue(HKCU, RegKey, 'UninstallString', S);
   if (Length(S) >= 2) and (S[1] = '"') then
   begin
     Delete(S, 1, 1);
@@ -131,29 +155,109 @@ begin
   Result := S;
 end;
 
-function InitializeSetup: Boolean;
+// ──────────────────────────────────────────────────────────────────────────────
+// 检测旧版（0.1.x）未通过注册表留下的安装目录（ConvertTool 或 ConvertTool-0.1.x）
+// 用于修复"0.1版无法被识别"的问题
+// ──────────────────────────────────────────────────────────────────────────────
+function GetOldUnregisteredDir: String;
+var
+  Candidates: array[0..7] of String;
+  i: Integer;
 begin
-  Result := True;
-  // 仅检测已安装版本并记录模式，不弹任何对话框
-  InstalledVer := GetInstalledVersion;
-  if InstalledVer = '' then
+  Result := '';
+  Candidates[0] := ExpandConstant('{autopf}\ConvertTool');
+  Candidates[1] := ExpandConstant('{autopf}\ConvertTool-0.1');
+  Candidates[2] := ExpandConstant('{autopf}\ConvertTool-0.1.0');
+  Candidates[3] := ExpandConstant('{autopf}\ConvertTool-0.1.1');
+  Candidates[4] := ExpandConstant('{autopf}\ConvertTool-0.1.2');
+  Candidates[5] := ExpandConstant('{pf64}\ConvertTool');
+  Candidates[6] := ExpandConstant('{pf32}\ConvertTool');
+  Candidates[7] := ExpandConstant('{pf}\ConvertTool');
+  for i := 0 to 7 do
   begin
-    InstallMode := MODE_FRESH;
-    Exit;
-  end;
-  case CompareVersions(InstalledVer, '{#MyAppVersion}') of
-    -1: InstallMode := MODE_UPGRADE;
-     0: InstallMode := MODE_REPAIR;
-     1: InstallMode := MODE_DOWNGRADE;
+    if FileExists(Candidates[i] + '\ConvertTool.exe') then
+    begin
+      Result := Candidates[i];
+      Exit;
+    end;
   end;
 end;
 
-// 打开安装向导后再根据检测结果展示对应页面，并将窗口置顶
+// ──────────────────────────────────────────────────────────────────────────────
+// 数据迁移：将旧目录的 Input / Output / conversion_history.json 拷贝到新目录
+// 使用 robocopy（Windows 7+ 内建），仅复制旧文件中比新目录更新的内容
+// ──────────────────────────────────────────────────────────────────────────────
+procedure MigrateUserData(FromDir: String; ToDir: String);
+var
+  ResultCode: Integer;
+begin
+  if (FromDir = '') or not DirExists(FromDir) then Exit;
+  if FromDir = ToDir then Exit;
+
+  // 迁移 Input 文件夹（仅复制尚未存在于目标的文件）
+  if DirExists(FromDir + '\Input') then
+    Exec(ExpandConstant('{sys}\robocopy.exe'),
+         '"' + FromDir + '\Input" "' + ToDir + '\Input" /E /XC /XN /XO /NJH /NJS /NP /R:1 /W:1',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  // 迁移 Output 文件夹
+  if DirExists(FromDir + '\Output') then
+    Exec(ExpandConstant('{sys}\robocopy.exe'),
+         '"' + FromDir + '\Output" "' + ToDir + '\Output" /E /XC /XN /XO /NJH /NJS /NP /R:1 /W:1',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  // 迁移转换历史记录（如目标不存在则复制）
+  if FileExists(FromDir + '\conversion_history.json') then
+    if not FileExists(ToDir + '\conversion_history.json') then
+      FileCopy(FromDir + '\conversion_history.json',
+               ToDir + '\conversion_history.json', False);
+end;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 初始化：检测已安装版本，处理旧版（包括 0.1.x 无注册表记录的情况）
+// ──────────────────────────────────────────────────────────────────────────────
+function InitializeSetup: Boolean;
+begin
+  Result := True;
+  OldInstallDir := '';
+
+  InstalledVer := GetInstalledVersion;
+  if InstalledVer <> '' then
+  begin
+    // 通过同 AppId 找到已安装版本
+    OldInstallDir := GetInstalledDir;
+    case CompareVersions(InstalledVer, '{#MyAppVersion}') of
+      -1: InstallMode := MODE_UPGRADE;
+       0: InstallMode := MODE_REPAIR;
+       1: InstallMode := MODE_DOWNGRADE;
+    end;
+    Exit;
+  end;
+
+  // 注册表中未找到 → 尝试检测旧版（0.1.x）遗留目录
+  OldInstallDir := GetOldUnregisteredDir;
+  if OldInstallDir <> '' then
+  begin
+    InstalledVer := '0.1';
+    InstallMode  := MODE_UPGRADE;
+    Exit;
+  end;
+
+  InstallMode := MODE_FRESH;
+end;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 向导初始化：升级时强制新版本目录；根据模式显示维护页
+// ──────────────────────────────────────────────────────────────────────────────
 procedure InitializeWizard;
 var
   LabelDesc: TNewStaticText;
 begin
   WizardForm.FormStyle := fsStayOnTop;
+
+  // 升级时强制指向新版本目录（防止 InnoSetup 沿用注册表中旧路径）
+  if InstallMode = MODE_UPGRADE then
+    WizardForm.DirEdit.Text := ExpandConstant('{autopf}\ConvertTool-{#MyAppVersion}');
 
   if InstallMode = MODE_FRESH then Exit;
 
@@ -183,7 +287,8 @@ begin
     begin
       LabelDesc.Caption :=
         '点击"下一步"将自动卸载旧版本并安装 {#MyAppVersion}。' + #13#10 +
-        'Input / Output 文件夹中的内容不会受到影响。';
+        '您的 Input / Output 文件夹及转换历史将自动迁移到新目录。' + #13#10 +
+        '旧目录中的用户文件不会被删除。';
     end;
     MODE_REPAIR:
     begin
@@ -217,7 +322,10 @@ begin
   end;
 end;
 
-// 升级/降级时在复制文件前静默卸载旧版
+// ──────────────────────────────────────────────────────────────────────────────
+// 升级/降级：复制文件前静默卸载旧版
+// 若旧版为 0.1.x（无注册表记录），跳过卸载步骤，直接进行数据迁移
+// ──────────────────────────────────────────────────────────────────────────────
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   UninstallerPath: String;
@@ -234,6 +342,7 @@ begin
                   SW_HIDE, ewWaitUntilTerminated, ResultCode) then
         Result := '旧版本自动卸载失败（错误码 ' + IntToStr(ResultCode) + '），请手动卸载后重试。';
     end;
+    // 若为 0.1.x 目录检测（无正式卸载程序），跳过卸载，后续仅做数据迁移
   end;
 end;
 
@@ -288,15 +397,27 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssDone then
+  begin
     InstallCompleted := True;
+    // 安装完成后迁移旧版用户数据（Input / Output / conversion_history.json）
+    if (InstallMode = MODE_UPGRADE) and (OldInstallDir <> '') then
+      MigrateUserData(OldInstallDir, ExpandConstant('{app}'));
+  end;
 end;
 
-// 安装完成（用户点击"完成"）后根据复选框创建或跳过桌面快捷方式
+// ──────────────────────────────────────────────────────────────────────────────
+// 安装完成后：
+//   1. 根据复选框创建或跳过桌面快捷方式
+//   2. 按系统语言自动打开对应说明文档（非静默模式）
+// ──────────────────────────────────────────────────────────────────────────────
 procedure DeinitializeSetup;
 var
-  ShortcutPath: String;
+  ShortcutPath, ReadmeFile: String;
+  ResultCode: Integer;
 begin
   if not InstallCompleted then Exit;
+
+  // 桌面快捷方式
   ShortcutPath := ExpandConstant('{autodesktop}\{#MyAppName}.lnk');
   if Assigned(DesktopIconCheckbox) and DesktopIconCheckbox.Checked then
     CreateShellLink(
@@ -310,6 +431,17 @@ begin
       SW_SHOWNORMAL)
   else
     DeleteFile(ShortcutPath);
+
+  // 按系统语言自动打开说明文档（非静默模式）
+  if not WizardSilent then
+  begin
+    if ExpandConstant('{language}') = 'chinesesimplified' then
+      ReadmeFile := ExpandConstant('{app}\读我.txt')
+    else
+      ReadmeFile := ExpandConstant('{app}\README.txt');
+    if FileExists(ReadmeFile) then
+      ShellExec('open', ReadmeFile, '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+  end;
 end;
 
 // 卸载进度窗口同样置顶

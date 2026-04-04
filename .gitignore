@@ -29,3 +29,5 @@ __pycache__/
 
 # 测试输出
 test_score.png
+
+editor-workspace/
