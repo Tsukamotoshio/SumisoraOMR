@@ -18,10 +18,35 @@ from .utils import get_app_base_dir, log_message, setup_logging
 # ──────────────────────────────────────────────────────────────────────────────
 EDITOR_WORKSPACE_DIR_NAME = 'editor-workspace'
 PAGE_SIZE = 10
+# Fixed UI dimensions — the terminal window is resized to these on launch.
+_UI_COLS = 40
+_UI_ROWS = 30
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 低层输入辅助
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _resize_terminal_window() -> None:
+    """Best-effort: resize the host terminal window to _UI_COLS × _UI_ROWS.
+
+    Uses the xterm ``\033[8;rows;colst`` resize escape (supported by
+    Windows Terminal, modern conhost VT mode, and most Unix terminals)
+    and additionally calls ``mode con`` on Windows for legacy conhost.
+    All errors are silently ignored — the program still works if resize fails.
+    """
+    try:
+        sys.stdout.write(f'\033[8;{_UI_ROWS};{_UI_COLS}t')
+        sys.stdout.flush()
+    except OSError:
+        pass
+    if sys.platform == 'win32':
+        try:
+            subprocess.run(
+                ['cmd', '/c', f'mode con cols={_UI_COLS} lines={_UI_ROWS}'],
+                capture_output=True, check=False, timeout=2,
+            )
+        except OSError:
+            pass
 
 def _read_single_key() -> str:
     """Read exactly one keypress (no Enter required) on Windows.
@@ -100,7 +125,7 @@ class TUI:
     """
 
     def __init__(self, config: Optional[AppConfig] = None) -> None:
-        self.console = Console()
+        self.console = Console(width=_UI_COLS)
         self.config = config or AppConfig()
         self.running = True
         self.current_screen = 'main'
@@ -133,6 +158,7 @@ class TUI:
     # ── Main loop ─────────────────────────────────────────────────────────────
 
     def run(self) -> None:
+        _resize_terminal_window()
         base_dir = get_app_base_dir()
         setup_logging(base_dir)
         while self.running:
@@ -181,7 +207,8 @@ class TUI:
         self.console.print('  [bold]6[/bold]  帮助')
         self.console.print('  [bold]7[/bold]  退出')
         self.console.print()
-        self.console.print('  [dim]© 2026 Tsukamotoshio. All rights reserved.[/dim]')
+        self.console.print('[dim]© 2026 Tsukamotoshio.[/dim]', justify='center')
+        self.console.print('[dim]All rights reserved.[/dim]', justify='center')
         self._status_bar('按数字键选择功能  │  ESC 或 7 退出')
 
         key = _read_single_key()
@@ -274,7 +301,7 @@ class TUI:
             for idx, f in enumerate(page_files, start=1):
                 stem = f.stem  # e.g. "Scarborough Fair.jianpu"
                 title = stem[:-len('.jianpu')] if stem.endswith('.jianpu') else stem
-                self.console.print(f'  [bold]{idx}[/bold]  {title}')
+                self.console.print(f'  [bold]{idx}[/bold]  {title}', no_wrap=True, overflow='ellipsis')
 
             self.console.print()
 
@@ -326,9 +353,9 @@ class TUI:
         while True:
             self._header(f'简谱编辑器 — {title}')
             self.console.print()
-            self.console.print(f'  待校对乐谱：[cyan]{title}[/cyan]')
+            self.console.print(f'  待校对乐谱：[cyan]{title}[/cyan]', no_wrap=True, overflow='ellipsis')
             if source_file is not None:
-                self.console.print(f'  参考图像：  [dim]{source_file.name}[/dim]')
+                self.console.print(f'  参考图像：  [dim]{source_file.name}[/dim]', no_wrap=True, overflow='ellipsis')
             else:
                 self.console.print('  [dim]  （未找到参考图像）[/dim]')
             self.console.print()
@@ -398,7 +425,7 @@ class TUI:
 
         self._header('简谱编辑器 — 生成中 ...')
         self.console.print()
-        self.console.print(f'  正在从校对文件生成简谱 PDF：[cyan]{title}[/cyan]')
+        self.console.print(f'  正在从校对文件生成简谱 PDF：[cyan]{title}[/cyan]', no_wrap=True, overflow='ellipsis')
         self.console.print()
 
         ly_path = txt_path.with_suffix('.ly')
@@ -440,7 +467,7 @@ class TUI:
         self.console.print()
         if success and out_pdf is not None:
             self.console.print(f'  [bold green]✓ 简谱 PDF 已生成：[/bold green]')
-            self.console.print(f'    [dim]{out_pdf}[/dim]')
+            self.console.print(f'    [dim]{out_pdf}[/dim]', no_wrap=True, overflow='ellipsis')
             try:
                 _open_file_default(out_pdf)
             except OSError:
