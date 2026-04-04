@@ -119,17 +119,7 @@ This project was developed using **Vibe Coding**, assisted by **GitHub Copilot**
 
 ---
 
-## Changelog / 更新日志
-
-### v0.1.1
-- Auto-open `Output` folder after conversion / 转换完成后自动打开 `Output` 文件夹
-- Show "completed but no new files" when all inputs were already converted / 转换全部失败或无实际新增文件时提示"已完成，但无新增文件"
-- Added support for PNG / JPG / JPEG input formats / 新增支持 PNG / JPG / JPEG 格式输入
-- Fixed: "Music engraving by LilyPond" watermark text appearing at end of output PDF / 修复：输出简谱 PDF 末尾出现水印文字的问题
-- Expanded known limitations section / 完善已知缺陷与局限说明
-
----
 
 ## Version / 版本
 
-Current version / 当前版本：`0.1.1`
+Current version / 当前版本：`0.1.2`
