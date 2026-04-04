@@ -19,7 +19,7 @@ from .utils import get_app_base_dir, log_message, setup_logging
 EDITOR_WORKSPACE_DIR_NAME = 'editor-workspace'
 PAGE_SIZE = 10
 # Fixed UI dimensions — the terminal window is resized to these on launch.
-_UI_COLS = 40
+_UI_COLS = 43
 _UI_ROWS = 30
 
 # ──────────────────────────────────────────────────────────────────────────────
