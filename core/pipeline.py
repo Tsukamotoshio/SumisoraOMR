@@ -81,13 +81,19 @@ def process_single_input_to_jianpu(
         )
         return False
 
+    # Prefer the preprocessed (enhanced/deskewed) image saved by audiveris_runner as the
+    # editor workspace reference.  Falls back to the original source file for PDFs or when
+    # preprocessing was skipped.
+    _ref_candidate = omr_out / '_preprocessed_ref.png'
+    effective_source = _ref_candidate if _ref_candidate.exists() else source_file
+
     return generate_jianpu_pdf_from_mxl(
         mxl_file,
         output_pdf,
         file_temp_dir,
         output_midi,
         preferred_title=source_file.stem,
-        source_path=source_file,
+        source_path=effective_source,
         editor_workspace_dir=editor_workspace_dir,
     )
 
