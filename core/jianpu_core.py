@@ -236,6 +236,77 @@ def split_duration_chunks(duration: float) -> list[float]:
     return chunks or [0.125]
 
 
+# ── Integer 64th-note unit validation (matches jianpu-ly.py's barLength arithmetic) ──────────
+
+# jianpu-ly.py sets barLength = int(64 * num / denom) and uses integer Fraction arithmetic.
+# Map each allowed quarter-length duration to its 64th-note unit count.
+_DURATION_TO_UNITS: dict[float, int] = {
+    4.0: 64, 3.0: 48, 2.0: 32, 1.5: 24, 1.0: 16,
+    0.75: 12, 0.5: 8, 0.375: 6, 0.25: 4, 0.1875: 3, 0.125: 2,
+}
+_ALLOWED_UNITS_DESC: list[tuple[int, float]] = sorted(
+    ((u, d) for d, u in _DURATION_TO_UNITS.items()), reverse=True
+)  # [(64, 4.0), (48, 3.0), ..., (2, 0.125)]
+
+
+def _parse_bar_units(time_signature: str) -> int:
+    """Convert a 'num/denom' time signature string to jianpu-ly barLength (integer 64th-note units)."""
+    try:
+        num_s, denom_s = time_signature.split('/')
+        return int(64 * int(num_s) / int(denom_s))
+    except (ValueError, ZeroDivisionError, AttributeError):
+        return 64  # fallback: 4/4
+
+
+def pad_measure_to_bar(notes: list[JianpuNote], bar_units: int) -> list[JianpuNote]:
+    """Guarantee notes sum to exactly *bar_units* in integer 64th-note units.
+
+    This is the final safety net before the jianpu-ly text is assembled.
+    jianpu-ly.py raises a fatal barcheck error whenever barPos > barLength; using
+    integer unit arithmetic here matches its internal Fraction-based calculation and
+    eliminates the floating-point edge cases that repair_jianpu_measure can miss.
+
+    * Overflow: the note that would cross the barline is replaced by a rest that
+      fills exactly the remaining space (split into allowed chunks if needed).
+    * Underflow: a rest is appended to fill the remaining space.
+    """
+    if bar_units <= 0:
+        return list(notes)
+
+    rest_proto = JianpuNote('0', '', 0, 0, 1.0, 0, None, True)
+    total = 0
+    result: list[JianpuNote] = []
+
+    def _fill_rest(remaining: int) -> None:
+        """Append rest chunk(s) to result until *remaining* units are consumed."""
+        while remaining >= 2:
+            for u, dur in _ALLOWED_UNITS_DESC:
+                if u <= remaining:
+                    result.append(clone_jianpu_note(rest_proto, dur))
+                    remaining -= u
+                    break
+            else:
+                break  # no chunk fits (remaining < 2 units)
+
+    for note in notes:
+        u = _DURATION_TO_UNITS.get(note.duration) or max(2, round(note.duration * 16))
+        if total >= bar_units:
+            break
+        if total + u > bar_units:
+            # This note overflows — replace its tail with rest(s)
+            _fill_rest(bar_units - total)
+            total = bar_units
+            break
+        result.append(note)
+        total += u
+
+    # Pad any underflow with rest(s)
+    if total < bar_units:
+        _fill_rest(bar_units - total)
+
+    return result
+
+
 def repair_jianpu_measure(measure_notes: list[JianpuNote], measure_length: float) -> list[JianpuNote]:
     """Trim overflowing notes and pad with rests so the measure total equals the time-signature length."""
     tol = 0.01
@@ -491,10 +562,14 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> 
     header.append(time_signature)
     header.append('')
 
+    bar_units = _parse_bar_units(time_signature)
     measures_per_line = 4
     for i in range(0, len(measures), measures_per_line):
         line_measures = measures[i:i + measures_per_line]
-        measure_texts = [' '.join(jianpu_note_token(note) for note in measure) for measure in line_measures]
+        measure_texts = [
+            ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(m, bar_units))
+            for m in line_measures
+        ]
         header.append(' | '.join(measure_texts) + ' |')
 
     return '\n'.join(header)

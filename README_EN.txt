@@ -2,7 +2,7 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: 0.1.3
+Version: 0.2.0-experimental
 
 Batch-convert Western staff notation PDFs into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
@@ -13,7 +13,21 @@ Tip: Type H or ? at the prompt for in-app help. Type Q to quit at any time.
 What's New
 ----------
 
-0.1.3 (current)
+0.2.0-experimental (current)
+  - Brand-new Rich TUI menu interface, replacing the old command-line prompts.
+  - Added Oemer deep-learning OMR engine (better for phone photos or
+    uneven-lighting images).
+  - Automatic engine routing: PDF input → Audiveris; image input → Oemer.
+  - Built-in Jianpu editor workspace: intermediate files are preserved after
+    conversion so you can proofread and regenerate the PDF with one click.
+  - Improved editor reference image: white-border crop + rotation correction,
+    full RGB color — easy to read at a glance.
+  - Smart Audiveris OCR language selection: CJK filenames use eng+chi_sim;
+    all others use eng, reducing interference on Western lyric recognition.
+  - Automatic Audiveris retry for PDFs: on first-attempt failure, retries
+    without the OCR language constraint to reduce text-recognition noise.
+
+0.1.3
   - After installation the correct README is now opened automatically
     according to your system language.
   - The installation folder is now versioned (ConvertTool-0.1.3).
