@@ -1,5 +1,6 @@
 #define MyAppName "简谱转换工具"
 #define MyAppVersion "0.2.0-experimental"
+#define MyAppVersionNumeric "0.2.0.0"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "ConvertTool.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
@@ -28,12 +29,12 @@ CloseApplicationsFilter=*.exe
 RestartApplications=no
 ShowLanguageDialog=no
 AppCopyright={#MyAppCopyright}
-VersionInfoVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersionNumeric}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} 安装程序
 VersionInfoCopyright={#MyAppCopyright}
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersionNumeric}
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
