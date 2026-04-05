@@ -24,6 +24,25 @@ _CHROMATIC_FLAT: dict[int, tuple[str, str]] = {
 _FLAT_KEY_SEMITONES: frozenset = frozenset({1, 3, 5, 6, 8, 10, 11})
 
 
+def _get_first_note_tonic(score) -> tuple[int, str]:
+    """Return (pitch_class 0-11, display_name) of the first non-rest sounding note.
+
+    This is used as the Movable-Do reference: the very first note is treated as
+    scale degree 1 (do).  Falls back to C (pitch class 0) if no note is found.
+    """
+    try:
+        part = score.parts[0] if score.parts else score.flatten()
+        for element in part.flatten().notesAndRests:
+            if isinstance(element, m21note.Note) and element.pitch is not None:
+                return element.pitch.pitchClass, element.pitch.name
+            if isinstance(element, m21chord.Chord) and element.pitches:
+                top = max(element.pitches, key=lambda p: p.midi)
+                return top.pitchClass, top.name
+    except Exception:
+        pass
+    return 0, 'C'
+
+
 def duration_suffix(q_len: float, dots: int) -> str:
     """Convert a quarter-length duration to a jianpu-ly text notation suffix (dashes, underscores, dots)."""
     tol = 0.01
@@ -554,21 +573,8 @@ def choose_measures_per_line(measures: list[list[JianpuNote]]) -> int:
 
 def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str]:
     """Parse a score into jianpu format; return (measures, header_lines, time_sig)."""
-    try:
-        key_obj = score.analyze('key') if score else None
-    except Exception:
-        key_obj = None
-
-    key_header = '1=C'
-    key_tonic_semitone = 0
-    if key_obj is not None and key_obj.tonic is not None:
-        _tonic_pc = key_obj.tonic.pitchClass
-        if key_obj.mode == 'minor':
-            key_tonic_semitone = (_tonic_pc + 3) % 12
-            key_header = f'6={key_obj.tonic.name}'
-        else:
-            key_tonic_semitone = _tonic_pc
-            key_header = f'1={key_obj.tonic.name}'
+    key_tonic_semitone, tonic_name = _get_first_note_tonic(score)
+    key_header = f'1={tonic_name}'
 
     measures, time_signature = extract_jianpu_measures(score, key_tonic_semitone)
     header_lines: list[str] = [f'{key_header} {time_signature}', '']
@@ -584,24 +590,9 @@ def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str
 
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> str:
     """Build jianpu-ly plain-text (.txt) content, including title, key, time signature, and measures."""
-    try:
-        key_obj = score.analyze('key') if score else None
-    except Exception:
-        key_obj = None
+    key_tonic_semitone, tonic_name = _get_first_note_tonic(score)
 
-    key_tonic_semitone = 0
-    header = ['% jianpu-ly.py', f'title={title}']
-    if key_obj is not None and key_obj.tonic is not None:
-        tonic = key_obj.tonic.name
-        _tonic_pc = key_obj.tonic.pitchClass
-        if key_obj.mode == 'minor':
-            key_tonic_semitone = (_tonic_pc + 3) % 12
-            header.append(f'6={tonic}')
-        else:
-            key_tonic_semitone = _tonic_pc
-            header.append(f'1={tonic}')
-    else:
-        header.append('1=C')
+    header = ['% jianpu-ly.py', f'title={title}', f'1={tonic_name}']
 
     measures, time_signature = extract_strict_jianpu_measures(score, key_tonic_semitone) if use_strict_timing else extract_jianpu_measures(score, key_tonic_semitone)
     header.append(time_signature)
