@@ -103,14 +103,24 @@ def process_single_input_to_jianpu(
                 '    → 解决方案：确认已执行 pip install oemer，或尝试切换到 Audiveris 引擎',
                 logging.WARNING,
             )
+            return False
         else:
+            # Audiveris 失败 → 自动回退到 Oemer
+            # run_oemer_batch 支持 PDF 输入（内部使用 PyMuPDF 将首页转为图片）
             log_message(
-                f'  ✗ Audiveris 处理失败，跳过 {source_file.name}。\n'
-                '    → 可能原因：Java/Audiveris 未正确安装，或乐谱格式不受支持\n'
-                '    → 解决方案：确认 audiveris-runtime 目录存在，或尝试切换到 Oemer 引擎',
+                f'  [自动回退] Audiveris 处理失败，正在尝试使用 Oemer 重试…',
                 logging.WARNING,
             )
-        return False
+            omr_out = run_oemer_batch(source_file, output_dir=file_temp_dir)
+            engine_label = 'Oemer (Audiveris 回退)'
+            if omr_out is None:
+                log_message(
+                    f'  ✗ Audiveris 与 Oemer 均处理失败，跳过 {source_file.name}。\n'
+                    '    → 可能原因：乐谱格式不受支持，或图像/PDF 质量过低\n'
+                    '    → 解决方案：确认 audiveris-runtime 与 oemer 均已正确安装',
+                    logging.WARNING,
+                )
+                return False
 
     # ── Resolve MusicXML path ──────────────────────────────────────────────────
     mxl_file = find_first_musicxml_file(omr_out, source_file.stem)
