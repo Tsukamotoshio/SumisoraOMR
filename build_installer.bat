@@ -66,14 +66,17 @@ if exist "%BASE_DIR%package-assets\waifu2x-runtime\waifu2x-ncnn-vulkan.exe" (
     echo [WARN] 未找到 waifu2x-ncnn-vulkan 目录，跳过超分辨率模块打包。
 )
 
-set "PYTHON_CMD=py -3"
-where py >nul 2>nul
-if errorlevel 1 set "PYTHON_CMD=python"
+set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
+if not exist "%PYTHON_CMD%" (
+    set "PYTHON_CMD=py -3"
+    where py >nul 2>nul
+    if errorlevel 1 set "PYTHON_CMD=python"
+)
 
 :: 将 package-assets\oemer-runtime 中的模型同步到 venv（供 PyInstaller collect_all 打包）
 if exist "%BASE_DIR%package-assets\oemer-runtime\checkpoints\unet_big\model.onnx" (
     echo [INFO] 使用本地 oemer 模型，无需联网下载。
-    %PYTHON_CMD% -c "import oemer,shutil,os; src=os.path.join(r'%BASE_DIR%package-assets\oemer-runtime'); dst=oemer.MODULE_PATH; [shutil.copytree(os.path.join(src,d),os.path.join(dst,d),dirs_exist_ok=True) for d in ('checkpoints','sklearn_models') if os.path.isdir(os.path.join(src,d))]; print('oemer 模型已同步至 venv')"
+    %PYTHON_CMD% "%BASE_DIR%_sync_oemer_to_venv.py" "%BASE_DIR%package-assets\oemer-runtime"
 ) else (
     echo [2/3] 正在预下载 oemer 模型权重（已下载则跳过）...
     call %PYTHON_CMD% download_oemer_models.py
