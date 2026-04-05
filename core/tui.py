@@ -203,12 +203,79 @@ class TUI:
     # ── Screen: Conversion ────────────────────────────────────────────────────
 
     def _screen_convert(self) -> None:
+        import dataclasses
+        from .config import AppConfig, OMREngine
+        from .oemer_runner import _detect_gpu_provider
         from .pipeline import process_bulk_input_to_jianpu
 
         base_dir = get_app_base_dir()
         editor_workspace_dir = base_dir / EDITOR_WORKSPACE_DIR_NAME
 
-        self._header('开始五线谱转换')
+        # ── Engine selection ──────────────────────────────────────────────────
+        self._header('选择识别引擎')
+        self.console.print()
+        self.console.print('  请选择 OMR（光学乐谱识别）引擎：')
+        self.console.print()
+        self.console.print(
+            '  [bold]1[/bold]  [green]自动（按格式选择）[/green]  [bold green]← 推荐[/bold green]'
+        )
+        self.console.print(
+            '         [dim]PDF 输入 → Audiveris；图片（PNG/JPG）输入 → Oemer[/dim]'
+        )
+        self.console.print()
+        self.console.print(
+            '  [bold]2[/bold]  [cyan]Audiveris[/cyan]  [dim]（手动指定，强制用于所有格式）[/dim]'
+        )
+        self.console.print(
+            '         [dim]对印刷扫描件（高分辨率、高对比度 PDF）效果最好[/dim]'
+        )
+        self.console.print(
+            '         [dim]基于传统启发式算法，不依赖 GPU，任何机器均可运行[/dim]'
+        )
+        self.console.print()
+        gpu_info = _detect_gpu_provider()
+        self.console.print(
+            '  [bold]3[/bold]  [cyan]Oemer[/cyan]  [dim]（手动指定，强制用于所有格式）[/dim]'
+        )
+        self.console.print(
+            '         [dim]对拍照乐谱（手机拍摄、光线不均匀、低对比度图像）效果更好[/dim]'
+        )
+        self.console.print(
+            f'         [dim]识别速度取决于 GPU 性能（当前计算设备：{gpu_info}[/dim]'
+        )
+        if 'CPU' in gpu_info and 'cuDNN' in gpu_info:
+            self.console.print(
+                '         [yellow]⚠ 未检测到 cuDNN 9.x — 当前将在 CPU 上运行（速度较慢）[/yellow]'
+            )
+            self.console.print(
+                '           [dim]如需 GPU 加速：安装 CUDA+cuDNN 或 pip install onnxruntime-directml[/dim]'
+            )
+        self.console.print(
+            '         [dim]GPU 优先级：DirectML (任意 GPU) > CUDA+cuDNN > CPU 回退[/dim]'
+        )
+        self.console.print()
+        self._status_bar('按数字键选择引擎  │  ESC / b = 返回')
+
+        engine_key = _read_single_key()
+        if engine_key in ('\x1b', 'b', 'B'):
+            self._pop_screen()
+            return
+
+        if engine_key == '2':
+            selected_engine = OMREngine.AUDIVERIS
+            engine_display = 'Audiveris（强制）'
+        elif engine_key == '3':
+            selected_engine = OMREngine.OEMER
+            engine_display = 'Oemer（强制）'
+        else:
+            # '1' 或任意其他键 → 自动按格式选择（默认）
+            selected_engine = OMREngine.AUTO
+            engine_display = '自动（PDF→Audiveris / 图片→Oemer）'
+
+        config_with_engine = dataclasses.replace(self.config, omr_engine=selected_engine)
+
+        # ── Conversion ────────────────────────────────────────────────────────
+        self._header(f'开始五线谱转换  [dim]（{engine_display}）[/dim]')
         self.console.print()
         self.console.print(
             '[dim]  提示：转换完成后会保留简谱编辑中间文件，'
@@ -218,7 +285,7 @@ class TUI:
 
         try:
             process_bulk_input_to_jianpu(
-                self.config,
+                config_with_engine,
                 editor_workspace_dir=editor_workspace_dir,
             )
         except SystemExit:
@@ -464,13 +531,20 @@ class TUI:
         self.console.print(Panel(
             '[bold]使用步骤[/bold]\n'
             '  1. 将 PDF / PNG / JPG 五线谱文件放入 [cyan]Input[/cyan] 文件夹\n'
-            '  2. 选择「2. 开始五线谱转换」，按提示回答 Y/N\n'
+            '  2. 选择「2. 开始五线谱转换」，选择识别引擎后按提示回答 Y/N\n'
             '  3. 转换结果（简谱 PDF / MIDI）保存在 [cyan]Output[/cyan] 文件夹\n'
             '  4. 如需手动校对，选择「4. 打开简谱编辑器」\n\n'
+            '[bold]引擎选择说明[/bold]\n'
+            '  • [green]自动（推荐）[/green] — PDF → Audiveris；图片（PNG/JPG）→ Oemer\n'
+            '  • [cyan]Audiveris[/cyan] — 手动指定，强制用于所有格式\n'
+            '    基于规则的传统 OMR 引擎，对高对比度印刷乐谱和 PDF 效果最佳\n'
+            '  • [cyan]Oemer[/cyan]     — 手动指定，强制用于所有格式\n'
+            '    基于深度学习的端到端引擎，对手机拍摄或光线不均匀图像更友好\n'
+            '    使用前请确认已安装：pip install oemer\n\n'
             '[bold]简谱编辑器说明[/bold]\n'
             '  • 每次转换后，工具自动保留 OMR 识别的中间文件到 [cyan]editor-workspace[/cyan] 目录\n'
             '  • 在编辑器中选择乐谱，记事本将自动打开供您修改简谱文本\n'
-            '  • 同时会打开原始乐谱图像作为参考（PDF 格式会调用默认查看器）\n'
+            '  • 同时会打开预处理后的乐谱图像作为参考\n'
             '  • 保存并关闭记事本后，选择「开始生成简谱 PDF」即可输出校正后的版本\n\n'
             '[bold]支持格式[/bold]\n'
             '  PDF  ·  PNG  ·  JPG / JPEG\n\n'
@@ -478,7 +552,8 @@ class TUI:
             '  • 转换失败     →  查看「5. 打开日志目录」中的 .log 文件\n'
             '  • 没有输出     →  确认 Input 文件夹中有支持的文件\n'
             '  • 程序缓慢     →  多页 PDF 识别需要数分钟，请耐心等待\n'
-            '  • oemer 引擎   →  将在后续版本中开放（v0.1.3 暂未实装）',
+            '  • Audiveris 失败  →  检查 audiveris-runtime 目录是否存在\n'
+            '  • Oemer 失败      →  执行 pip install oemer 安装引擎',
             title='[bold cyan]简谱转换工具  帮助[/bold cyan]',
             padding=(1, 2),
         ))

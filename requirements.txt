@@ -3,15 +3,24 @@ pillow>=12.2.0
 reportlab>=4.4.10
 rich>=14.3.3
 pyinstaller>=6.19.0
+pymupdf>=1.24.0
+oemer>=0.1.6
 
-# ── experimental-v0.2.0: oemer 引擎（可选） ──────────────────────────────
+# ── ONNX Runtime — DirectML GPU 加速后端 ────────────────────────────────────
+# onnxruntime-directml 通过 Direct3D 12 支持任意 Windows GPU（NVIDIA / AMD / Intel），
+# 无需安装 CUDA 或 cuDNN，是 Windows 分发包的默认推理后端。
+# 注意：与 onnxruntime / onnxruntime-gpu 互斥，三者只能安装其一。
+#   - Windows（推荐）：onnxruntime-directml（任意 GPU）
+#   - Linux/macOS 纯 CPU：onnxruntime
+#   - Linux NVIDIA GPU：onnxruntime-gpu（需 CUDA + cuDNN）
+onnxruntime-directml>=1.20.0
+
+# ── oemer 引擎运行时说明 ────────────────────────────────────────────────────
 # oemer 是基于深度学习的端到端 OMR 引擎，仅支持图片输入（非 PDF）。
-# 默认使用 onnxruntime 推理；如需 TensorFlow 推理，改用 oemer[tf]。
-# 安装后可在运行时选择 oemer 引擎替代 Audiveris。
+# 默认使用 ONNX Runtime（onnxruntime-directml）推理，支持 DirectML GPU 加速。
+# PDF → 图片转换由 pymupdf（已在上方列出）负责，无需额外依赖。
 #
-#   pip install oemer            # onnxruntime (推荐)
-#   pip install oemer[tf]        # TensorFlow
-#
-# PDF → 图片转换（oemer 不支持 PDF，需以下任一依赖）：
-#   pip install pymupdf          # 推荐，无需外部工具
-#   pip install pdf2image        # 需额外安装 poppler-utils
+# 首次使用 oemer 引擎时，程序会自动从 GitHub 下载约 500MB 的神经网络模型权重：
+#   https://github.com/BreezeWhite/oemer/releases/tag/checkpoints
+# 打包分发前请先运行 download_oemer_models.py 预下载，以便将权重文件一并打包：
+#   python download_oemer_models.py

@@ -599,7 +599,7 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
                 subprocess.run([cmd, str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env)
             return True
         except subprocess.CalledProcessError as exc:
-            print('jianpu-ly 命令执行失败:', exc.stderr.decode('utf-8', errors='ignore'))
+            log_message(f'jianpu-ly 命令执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
 
     if find_jianpu_ly_module():
         try:
@@ -607,7 +607,7 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
                 subprocess.run([sys.executable, '-m', 'jianpu_ly', str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env)
             return True
         except subprocess.CalledProcessError as exc:
-            print('jianpu_ly 模块执行失败:', exc.stderr.decode('utf-8', errors='ignore'))
+            log_message(f'jianpu_ly 模块执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
 
     script_path = _ensure_jianpu_script()
     if script_path is None:
@@ -623,7 +623,7 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
             subprocess.run([*python_cmd, str(script_path), str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env)
         return True
     except subprocess.CalledProcessError as exc:
-        print('jianpu-ly 脚本执行失败:', exc.stderr.decode('utf-8', errors='ignore'))
+        log_message(f'jianpu-ly 脚本执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
         return False
 
 
