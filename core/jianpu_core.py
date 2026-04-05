@@ -6,9 +6,22 @@ from music21 import chord as m21chord, meter, note as m21note, stream
 
 from .config import (
     ALLOWED_JIANPU_DURATIONS,
-    JIANPU_MAP,
     JianpuNote,
 )
+
+# ── Movable-Do (首调唱名法) semitone → jianpu numeral tables ─────────────────
+# Diatonic intervals from the reference tonic (0=do, 2=re, 4=mi, …)
+_DIATONIC_SEMITONES: dict[int, str] = {0: '1', 2: '2', 4: '3', 5: '4', 7: '5', 9: '6', 11: '7'}
+# Chromatic (accidental) intervals — (accidental_prefix, numeral)
+_CHROMATIC_SHARP: dict[int, tuple[str, str]] = {
+    1: ('#', '1'), 3: ('#', '2'), 6: ('#', '4'), 8: ('#', '5'), 10: ('#', '6'),
+}
+_CHROMATIC_FLAT: dict[int, tuple[str, str]] = {
+    1: ('b', '2'), 3: ('b', '3'), 6: ('b', '5'), 8: ('b', '6'), 10: ('b', '7'),
+}
+# Keys whose accidentals lean towards flats (pitch-class of the tonic, 0-based)
+# F=5, Bb=10, Eb=3, Ab=8, Db=1, Gb=6, Cb=11
+_FLAT_KEY_SEMITONES: frozenset = frozenset({1, 3, 5, 6, 8, 10, 11})
 
 
 def duration_suffix(q_len: float, dots: int) -> str:
@@ -64,8 +77,13 @@ def get_duration_render(duration: float, dots: int) -> tuple[int, int, int]:
     return 0, 1, dots
 
 
-def note_to_jianpu(element) -> JianpuNote:
-    """Convert a music21 note or rest to a JianpuNote dataclass."""
+def note_to_jianpu(element, key_tonic_semitone: int = 0) -> JianpuNote:
+    """Convert a music21 note or rest to a JianpuNote dataclass (Movable-Do / 首调唱名法).
+
+    *key_tonic_semitone* is the pitch-class (0–11) of the reference tonic
+    (the note that maps to '1' / do).  For C major supply 0, for G major 7, etc.
+    For minor keys pass the *relative-major* tonic (e.g. A-minor → C=0).
+    """
     if isinstance(element, m21note.Rest):
         return JianpuNote(
             symbol='0',
@@ -79,32 +97,48 @@ def note_to_jianpu(element) -> JianpuNote:
         )
 
     pitch = element.pitch
-    base = JIANPU_MAP.get(pitch.step, '?') if pitch is not None else '?'
-    accidental = ''
-    if pitch is not None and pitch.accidental is not None:
-        alter = pitch.accidental.alter
-        if alter == 1:
-            accidental = '#'
-        elif alter == -1:
-            accidental = 'b'
+    if pitch is None:
+        return JianpuNote(
+            symbol='?', accidental='', upper_dots=0, lower_dots=0,
+            duration=float(element.duration.quarterLength),
+            duration_dots=int(getattr(element.duration, 'dots', 0)),
+            midi=None, is_rest=False,
+        )
 
-    upper_dots = 0
-    lower_dots = 0
-    if pitch is not None and pitch.octave is not None:
-        diff = pitch.octave - 4
-        if diff > 0:
-            upper_dots = diff
-        elif diff < 0:
-            lower_dots = -diff
+    # Determine MIDI pitch (C4 = 60)
+    note_midi = pitch.midi
+    if note_midi is None:
+        _step_pc = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+        _alter = int(pitch.accidental.alter) if pitch.accidental else 0
+        _octave = pitch.octave if pitch.octave is not None else 4
+        note_midi = _step_pc.get(pitch.step, 0) + _alter + (_octave + 1) * 12
+
+    # Reference: key tonic at octave 4 (MIDI 60 = C4)
+    key_midi_ref = (key_tonic_semitone % 12) + 60
+    diff = note_midi - key_midi_ref
+    relative_semitone = diff % 12
+    octave_offset = diff // 12
+
+    if relative_semitone in _DIATONIC_SEMITONES:
+        symbol = _DIATONIC_SEMITONES[relative_semitone]
+        accidental = ''
+    else:
+        if key_tonic_semitone in _FLAT_KEY_SEMITONES:
+            accidental, symbol = _CHROMATIC_FLAT[relative_semitone]
+        else:
+            accidental, symbol = _CHROMATIC_SHARP[relative_semitone]
+
+    upper_dots = max(octave_offset, 0)
+    lower_dots = max(-octave_offset, 0)
 
     return JianpuNote(
-        symbol=base,
+        symbol=symbol,
         accidental=accidental,
         upper_dots=upper_dots,
         lower_dots=lower_dots,
         duration=float(element.duration.quarterLength),
         duration_dots=int(getattr(element.duration, 'dots', 0)),
-        midi=getattr(pitch, 'midi', None),
+        midi=note_midi,
         is_rest=False,
     )
 
@@ -360,7 +394,7 @@ def clone_monophonic_element(element, duration: float):
     return new_element
 
 
-def extract_jianpu_measures(score) -> tuple[list[list[JianpuNote]], str]:
+def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[list[JianpuNote]], str]:
     """
     Extract jianpu measure list and time signature from a music21 score.
     Merges polyphony by offset; fills gaps and overflows with rests at bar boundaries.
@@ -376,7 +410,7 @@ def extract_jianpu_measures(score) -> tuple[list[list[JianpuNote]], str]:
     measures: list[list[JianpuNote]] = []
     measure_streams = list(part.getElementsByClass(stream.Measure))
     if not measure_streams:
-        fallback_notes = [note_to_jianpu(element) for element in part.flatten().notesAndRests]
+        fallback_notes = [note_to_jianpu(element, key_tonic_semitone) for element in part.flatten().notesAndRests]
         return ([fallback_notes] if fallback_notes else []), time_signature
 
     tol = 0.01
@@ -401,7 +435,7 @@ def extract_jianpu_measures(score) -> tuple[list[list[JianpuNote]], str]:
         if not by_offset:
             rest = m21note.Rest()
             rest.duration.quarterLength = measure_length
-            measures.append(repair_jianpu_measure([note_to_jianpu(rest)], measure_length))
+            measures.append(repair_jianpu_measure([note_to_jianpu(rest, key_tonic_semitone)], measure_length))
             continue
 
         offsets = sorted(by_offset.keys())
@@ -414,26 +448,26 @@ def extract_jianpu_measures(score) -> tuple[list[list[JianpuNote]], str]:
             if offset > current_offset + tol:
                 rest = m21note.Rest()
                 rest.duration.quarterLength = normalize_jianpu_duration(min(offset - current_offset, measure_length - current_offset))
-                measure_notes.append(note_to_jianpu(rest))
+                measure_notes.append(note_to_jianpu(rest, key_tonic_semitone))
 
             next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else measure_length
             next_offset = min(next_offset, measure_length)
             span = max(min(next_offset - offset, measure_length - offset), 0.125)
             element = clone_monophonic_element(by_offset[offset], span)
-            measure_notes.append(note_to_jianpu(element))
+            measure_notes.append(note_to_jianpu(element, key_tonic_semitone))
             current_offset = next_offset
 
         if current_offset < measure_length - tol:
             rest = m21note.Rest()
             rest.duration.quarterLength = normalize_jianpu_duration(measure_length - current_offset)
-            measure_notes.append(note_to_jianpu(rest))
+            measure_notes.append(note_to_jianpu(rest, key_tonic_semitone))
 
         measures.append(repair_jianpu_measure(measure_notes, measure_length))
 
     return measures, time_signature
 
 
-def extract_strict_jianpu_measures(score) -> tuple[list[list[JianpuNote]], str]:
+def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[list[JianpuNote]], str]:
     """
     Extract jianpu measures by re-slicing all notes strictly by bar length,
     ignoring the score's own Measure objects.
@@ -479,7 +513,7 @@ def extract_strict_jianpu_measures(score) -> tuple[list[list[JianpuNote]], str]:
             piece_total = min(remaining, capacity)
             for piece in split_duration_chunks(piece_total):
                 element_piece = clone_monophonic_element(element_template, piece)
-                current_measure.append(note_to_jianpu(element_piece))
+                current_measure.append(note_to_jianpu(element_piece, key_tonic_semitone))
                 current_pos += piece
             remaining -= piece_total
             if abs(current_pos % bar_length) < tol:
@@ -526,10 +560,17 @@ def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str
         key_obj = None
 
     key_header = '1=C'
+    key_tonic_semitone = 0
     if key_obj is not None and key_obj.tonic is not None:
-        key_header = f'1={key_obj.tonic.name}'
+        _tonic_pc = key_obj.tonic.pitchClass
+        if key_obj.mode == 'minor':
+            key_tonic_semitone = (_tonic_pc + 3) % 12
+            key_header = f'6={key_obj.tonic.name}'
+        else:
+            key_tonic_semitone = _tonic_pc
+            key_header = f'1={key_obj.tonic.name}'
 
-    measures, time_signature = extract_jianpu_measures(score)
+    measures, time_signature = extract_jianpu_measures(score, key_tonic_semitone)
     header_lines: list[str] = [f'{key_header} {time_signature}', '']
 
     measures_per_line = choose_measures_per_line(measures)
@@ -548,17 +589,21 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> 
     except Exception:
         key_obj = None
 
+    key_tonic_semitone = 0
     header = ['% jianpu-ly.py', f'title={title}']
     if key_obj is not None and key_obj.tonic is not None:
         tonic = key_obj.tonic.name
+        _tonic_pc = key_obj.tonic.pitchClass
         if key_obj.mode == 'minor':
+            key_tonic_semitone = (_tonic_pc + 3) % 12
             header.append(f'6={tonic}')
         else:
+            key_tonic_semitone = _tonic_pc
             header.append(f'1={tonic}')
     else:
         header.append('1=C')
 
-    measures, time_signature = extract_strict_jianpu_measures(score) if use_strict_timing else extract_jianpu_measures(score)
+    measures, time_signature = extract_strict_jianpu_measures(score, key_tonic_semitone) if use_strict_timing else extract_jianpu_measures(score, key_tonic_semitone)
     header.append(time_signature)
     header.append('')
 

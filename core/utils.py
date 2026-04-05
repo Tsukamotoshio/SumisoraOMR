@@ -69,6 +69,20 @@ def get_runtime_search_roots() -> list[Path]:
     return roots
 
 
+def _get_logs_dir(base_dir: Path) -> Path:
+    """Return the logs directory.
+
+    When frozen (installed under a protected path such as C:\\Program Files),
+    redirect logs to %LOCALAPPDATA%\\ConvertTool\\logs so that normal users can
+    write log files without requiring administrator privileges.
+    """
+    if getattr(sys, 'frozen', False):
+        local_app_data = os.environ.get('LOCALAPPDATA', '')
+        if local_app_data:
+            return Path(local_app_data) / 'ConvertTool' / AppConfig().logs_dir_name
+    return base_dir / AppConfig().logs_dir_name
+
+
 def setup_logging(base_dir: Path) -> Optional[Path]:
     """Initialise logging to a timestamped file under logs/; return the log file path."""
     global LOG_FILE_PATH
@@ -76,7 +90,7 @@ def setup_logging(base_dir: Path) -> Optional[Path]:
     if LOGGER.handlers:
         return LOG_FILE_PATH
 
-    logs_dir = base_dir / AppConfig().logs_dir_name
+    logs_dir = _get_logs_dir(base_dir)
     logs_dir.mkdir(parents=True, exist_ok=True)
     LOG_FILE_PATH = logs_dir / f'convert-{time.strftime("%Y%m%d-%H%M%S")}.log'
 

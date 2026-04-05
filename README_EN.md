@@ -11,6 +11,9 @@ notation) PDFs, with optional MIDI output.
 What's New in 0.2.0-experimental
 ---------------------------------
 
+- **Movable-Do (首调唱名法):** note numbers are now mapped relative to the
+  key signature — `1` always represents the tonic, and accidentals use the
+  key's natural tendency (sharps for sharp keys, flats for flat keys).
 - Brand-new Rich TUI menu interface, replacing the old command-line prompts.
 - Added Oemer deep-learning OMR engine (better for phone photos or
   uneven-lighting images; requires: pip install oemer).
@@ -23,6 +26,8 @@ What's New in 0.2.0-experimental
 - Smart Audiveris OCR language selection (CJK vs. eng) to reduce
   interference on scores with Western lyrics.
 - Automatic Audiveris retry for PDFs on recognition failure.
+- Installer upgrade: old installation folder is automatically removed after
+  user data has been migrated to the new version directory.
 
 
 Usage

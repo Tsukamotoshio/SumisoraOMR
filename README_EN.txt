@@ -14,6 +14,10 @@ What's New
 ----------
 
 0.2.0-experimental (current)
+  - Movable-Do (首调唱名法): note numbers are now mapped relative to the key
+    signature — '1' always represents the tonic of the current key, and
+    accidentals follow the key's natural tendency (sharps for sharp keys,
+    flats for flat keys).
   - Brand-new Rich TUI menu interface, replacing the old command-line prompts.
   - Added Oemer deep-learning OMR engine (better for phone photos or
     uneven-lighting images).
@@ -26,6 +30,8 @@ What's New
     all others use eng, reducing interference on Western lyric recognition.
   - Automatic Audiveris retry for PDFs: on first-attempt failure, retries
     without the OCR language constraint to reduce text-recognition noise.
+  - Installer upgrade: the old installation folder is now automatically removed
+    after user data has been migrated to the new version directory.
 
 0.1.3
   - After installation the correct README is now opened automatically

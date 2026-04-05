@@ -162,7 +162,7 @@ end;
 // ──────────────────────────────────────────────────────────────────────────────
 function GetOldUnregisteredDir: String;
 var
-  Candidates: array[0..7] of String;
+  Candidates: array[0..9] of String;
   i: Integer;
 begin
   Result := '';
@@ -171,10 +171,12 @@ begin
   Candidates[2] := ExpandConstant('{autopf}\ConvertTool-0.1.0');
   Candidates[3] := ExpandConstant('{autopf}\ConvertTool-0.1.1');
   Candidates[4] := ExpandConstant('{autopf}\ConvertTool-0.1.2');
-  Candidates[5] := ExpandConstant('{pf64}\ConvertTool');
-  Candidates[6] := ExpandConstant('{pf32}\ConvertTool');
-  Candidates[7] := ExpandConstant('{pf}\ConvertTool');
-  for i := 0 to 7 do
+  Candidates[5] := ExpandConstant('{autopf}\ConvertTool-0.1.3');
+  Candidates[6] := ExpandConstant('{autopf}\ConvertTool-0.1.4');
+  Candidates[7] := ExpandConstant('{pf64}\ConvertTool');
+  Candidates[8] := ExpandConstant('{pf32}\ConvertTool');
+  Candidates[9] := ExpandConstant('{pf}\ConvertTool');
+  for i := 0 to 9 do
   begin
     if FileExists(Candidates[i] + '\ConvertTool.exe') then
     begin
@@ -256,9 +258,14 @@ var
 begin
   WizardForm.FormStyle := fsStayOnTop;
 
-  // 升级时强制指向新版本目录（防止 InnoSetup 沿用注册表中旧路径）
+  // 升级时指向新版本目录：复用旧版安装的父目录（保持用户自定义位置）
   if InstallMode = MODE_UPGRADE then
-    WizardForm.DirEdit.Text := ExpandConstant('{autopf}\ConvertTool-{#MyAppVersion}');
+  begin
+    if OldInstallDir <> '' then
+      WizardForm.DirEdit.Text := ExtractFileDir(OldInstallDir) + '\ConvertTool-{#MyAppVersion}'
+    else
+      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\ConvertTool-{#MyAppVersion}');
+  end;
 
   if InstallMode = MODE_FRESH then Exit;
 
@@ -289,7 +296,7 @@ begin
       LabelDesc.Caption :=
         '点击"下一步"将自动卸载旧版本并安装 {#MyAppVersion}。' + #13#10 +
         '您的 Input / Output 文件夹及转换历史将自动迁移到新目录。' + #13#10 +
-        '旧目录中的用户文件不会被删除。';
+        '迁移完成后旧版目录将自动删除。';
     end;
     MODE_REPAIR:
     begin
@@ -396,13 +403,22 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
 begin
   if CurStep = ssDone then
   begin
     InstallCompleted := True;
     // 安装完成后迁移旧版用户数据（Input / Output / conversion_history.json）
     if (InstallMode = MODE_UPGRADE) and (OldInstallDir <> '') then
+    begin
       MigrateUserData(OldInstallDir, ExpandConstant('{app}'));
+      // 迁移完成后删除旧版目录（只删与新目录不同的目录）
+      if (OldInstallDir <> ExpandConstant('{app}')) and DirExists(OldInstallDir) then
+        Exec(ExpandConstant('{sys}\cmd.exe'),
+             '/c rmdir /s /q "' + OldInstallDir + '"',
+             '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
   end;
 end;
 
