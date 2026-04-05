@@ -34,10 +34,13 @@ def _get_first_note_tonic(score) -> tuple[int, str]:
         part = score.parts[0] if score.parts else score.flatten()
         for element in part.flatten().notesAndRests:
             if isinstance(element, m21note.Note) and element.pitch is not None:
-                return element.pitch.pitchClass, element.pitch.name
+                # music21 uses '-' for flats (e.g. 'B-'), jianpu-ly expects 'b' (e.g. 'Bb')
+                name = element.pitch.name.replace('-', 'b')
+                return element.pitch.pitchClass, name
             if isinstance(element, m21chord.Chord) and element.pitches:
                 top = max(element.pitches, key=lambda p: p.midi)
-                return top.pitchClass, top.name
+                name = top.name.replace('-', 'b')
+                return top.pitchClass, name
     except Exception:
         pass
     return 0, 'C'
