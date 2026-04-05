@@ -19,6 +19,17 @@ from .utils import get_app_base_dir, log_message, setup_logging
 EDITOR_WORKSPACE_DIR_NAME = 'editor-workspace'
 PAGE_SIZE = 10
 
+
+def _is_base_dir_writable(base_dir: Path) -> bool:
+    """Return True if the application base directory is writable by the current user."""
+    test_path = base_dir / '.write_test'
+    try:
+        test_path.write_bytes(b'')
+        test_path.unlink(missing_ok=True)
+        return True
+    except (PermissionError, OSError):
+        return False
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 低层输入辅助
 # ──────────────────────────────────────────────────────────────────────────────
@@ -130,11 +141,39 @@ class TUI:
     def _status_bar(self, text: str) -> None:
         self.console.print(Rule(f'[dim]{text}[/dim]', style='dim'))
 
+    # ── Permission error screen ───────────────────────────────────────────────
+
+    def _screen_permission_error(self, base_dir: Path) -> None:
+        """Show a persistent permission error screen until the user presses a key."""
+        while True:
+            self.console.clear()
+            self.console.print(Panel(
+                f'[yellow]程序安装路径：[/yellow]{base_dir}\n\n'
+                '[bold white]解决方法：[/bold white]\n'
+                '  右键点击 [cyan]ConvertTool.exe[/cyan]\n'
+                '  选择 [bold cyan]"以管理员身份运行"[/bold cyan]\n\n'
+                '[dim]按任意键关闭...[/dim]',
+                title='[bold red]  权限不足，无法写入程序目录  [/bold red]',
+                border_style='red',
+                padding=(1, 3),
+            ))
+            _read_single_key()
+            return
+
     # ── Main loop ─────────────────────────────────────────────────────────────
 
     def run(self) -> None:
         base_dir = get_app_base_dir()
         setup_logging(base_dir)
+
+        # Detect permission problems before entering the main loop.
+        # Programs installed under C:\Program Files cannot write to the install
+        # directory without Administrator privileges; detect this early so the
+        # user sees a clear, persistent message instead of a brief crash.
+        if not _is_base_dir_writable(base_dir):
+            self._screen_permission_error(base_dir)
+            return
+
         while self.running:
             try:
                 if self.current_screen == 'main':
@@ -152,6 +191,9 @@ class TUI:
                 self.console.print('\n[yellow]已取消，程序退出。[/yellow]\n')
                 break
             except SystemExit:
+                break
+            except PermissionError:
+                self._screen_permission_error(get_app_base_dir())
                 break
             except Exception as exc:  # noqa: BLE001
                 # Catch unexpected exceptions so the program exits gracefully

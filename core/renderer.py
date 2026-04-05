@@ -51,6 +51,51 @@ def render_midi_from_score(score, midi_path: Path) -> bool:
         return False
 
 
+def build_score_from_jianpu_measures(
+    measures: list[list[JianpuNote]],
+    time_signature: str = '4/4',
+    source_score=None,
+):
+    """Reconstruct a music21 Score from extracted jianpu note measures for MIDI export.
+
+    Uses the MIDI pitch stored in each JianpuNote so the exported MIDI exactly
+    matches the notes rendered in the jianpu PDF (monophonic melody from part 0,
+    polyphony collapsed to top note).  Tempo is copied from *source_score* when
+    supplied so the playback speed matches the original score.
+    """
+    from music21 import meter as m21meter, note as m21note, stream as m21stream, tempo as m21tempo
+
+    s = m21stream.Score()
+    p = m21stream.Part()
+    p.append(m21meter.TimeSignature(time_signature))
+
+    # Copy the first MetronomeMark from the source score so MIDI tempo matches.
+    if source_score is not None:
+        try:
+            tempos = list(source_score.flatten().getElementsByClass(m21tempo.MetronomeMark))
+            if tempos:
+                p.append(tempos[0])
+        except Exception:
+            pass
+
+    for measure_notes in measures:
+        m = m21stream.Measure()
+        for jn in measure_notes:
+            if jn.is_rest or jn.midi is None:
+                r = m21note.Rest()
+                r.duration.quarterLength = jn.duration
+                m.append(r)
+            else:
+                n = m21note.Note()
+                n.pitch.midi = jn.midi
+                n.duration.quarterLength = jn.duration
+                m.append(n)
+        p.append(m)
+
+    s.append(p)
+    return s
+
+
 def load_score_from_midi(midi_path: Path):
     """Rebuild a music21 score from a MIDI file."""
     try:
@@ -566,10 +611,14 @@ def generate_jianpu_pdf_from_mxl(
         apply_score_title(source_score, title)
         lyrics_lines = collect_preserved_lyrics_lines(source_score, source_path)
 
-        # Generate MIDI output only when explicitly requested — not needed for jianpu rendering
+        # Extract the same jianpu notes that will be used for PDF rendering so that
+        # the MIDI output is guaranteed to match the displayed jianpu notation exactly
+        # (monophonic melody from part 0, polyphony collapsed to top note).
         if midi_output_path is not None:
-            if not render_midi_from_score(source_score, midi_output_path):
-                log_message('MXL -> MIDI 生成失败，跳过 MIDI 输出，继续生成简谱 PDF。', logging.WARNING)
+            jianpu_measures, _, jianpu_time_sig = parse_score_to_jianpu(source_score)
+            jianpu_score = build_score_from_jianpu_measures(jianpu_measures, jianpu_time_sig, source_score)
+            if not render_midi_from_score(jianpu_score, midi_output_path):
+                log_message('简谱 MIDI 生成失败，跳过 MIDI 输出，继续生成简谱 PDF。', logging.WARNING)
 
         # Use the MXL-parsed score directly — preserves exact note durations and pitches
         log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
