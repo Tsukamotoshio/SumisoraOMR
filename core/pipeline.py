@@ -67,15 +67,18 @@ def process_single_input_to_jianpu(
                           are preserved there for manual proofreading.
     """
     _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
+    _is_auto = engine is OMREngine.AUTO
 
-    # Resolve effective engine: AUTO uses Audiveris for all formats.
-    # Audiveris already falls back to Oemer when it fails, so this gives the best
-    # results for clean printed scores while still handling complex/low-quality images.
-    if engine is OMREngine.AUTO:
-        effective_engine = OMREngine.AUDIVERIS
-        log_message(
-            f'  [自动路由] {"图片" if _IS_IMAGE else "PDF"} → Audiveris（失败时自动回退 Oemer）'
-        )
+    # AUTO 路由策略：图片 → Oemer（深度学习，对拍摄/扫描图像更健壮）；
+    #                PDF  → Audiveris（规则引擎，PDF 矢量精度高）；
+    #                任一失败时自动回退另一引擎。
+    if _is_auto:
+        if _IS_IMAGE:
+            effective_engine = OMREngine.OEMER
+            log_message('  [自动路由] 图片 → Oemer（失败时回退 Audiveris）')
+        else:
+            effective_engine = OMREngine.AUDIVERIS
+            log_message('  [自动路由] PDF → Audiveris（失败时回退 Oemer）')
     else:
         effective_engine = engine
 
@@ -98,33 +101,25 @@ def process_single_input_to_jianpu(
         omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
         engine_label = 'Audiveris'
 
-    # ── Error reporting ────────────────────────────────────────────────────────
+    # ── Error / fallback ────────────────────────────────────────────────────────
     if omr_out is None:
-        if effective_engine is OMREngine.OEMER:
-            log_message(
-                f'  ✗ Oemer 处理失败，跳过 {source_file.name}。\n'
-                '    → 可能原因：oemer 未正确安装，或图像内容无法被识别\n'
-                '    → 解决方案：确认已执行 pip install oemer，或尝试切换到 Audiveris 引擎',
-                logging.WARNING,
-            )
+        if _is_auto and effective_engine is OMREngine.OEMER:
+            # AUTO 图片：Oemer 失败 → 回退 Audiveris
+            log_message('  [自动回退] Oemer 识别失败，尝试 Audiveris…', logging.WARNING)
+            omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
+            engine_label = 'Audiveris (Oemer 回退)'
+        elif effective_engine is OMREngine.OEMER:
+            # 显式 Oemer 失败，不回退
+            log_message(f'  ✗ Oemer 处理失败，跳过 {source_file.name}。', logging.WARNING)
             return False
         else:
-            # Audiveris 失败 → 自动回退到 Oemer
-            # run_oemer_batch 支持 PDF 输入（内部使用 PyMuPDF 将首页转为图片）
-            log_message(
-                f'  [自动回退] Audiveris 处理失败，正在尝试使用 Oemer 重试…',
-                logging.WARNING,
-            )
+            # Audiveris 失败（AUTO PDF 或显式 Audiveris）→ 回退 Oemer
+            log_message('  [自动回退] Audiveris 识别失败，尝试 Oemer…', logging.WARNING)
             omr_out = run_oemer_batch(source_file, output_dir=file_temp_dir)
             engine_label = 'Oemer (Audiveris 回退)'
-            if omr_out is None:
-                log_message(
-                    f'  ✗ Audiveris 与 Oemer 均处理失败，跳过 {source_file.name}。\n'
-                    '    → 可能原因：乐谱格式不受支持，或图像/PDF 质量过低\n'
-                    '    → 解决方案：确认 audiveris-runtime 与 oemer 均已正确安装',
-                    logging.WARNING,
-                )
-                return False
+        if omr_out is None:
+            log_message(f'  ✗ 两个引擎均处理失败，跳过 {source_file.name}。', logging.WARNING)
+            return False
 
     # ── Resolve MusicXML path ──────────────────────────────────────────────────
     mxl_file = find_first_musicxml_file(omr_out, source_file.stem)
