@@ -84,6 +84,7 @@ if exist "%BASE_DIR%package-assets\oemer-runtime\checkpoints\unet_big\model.onnx
         echo [ERROR] oemer 模型权重下载失败，请检查网络连接后重试。
         exit /b 1
     )
+
 )
 
 echo [2/3] 正在构建可执行文件...

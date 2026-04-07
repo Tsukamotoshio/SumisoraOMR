@@ -551,15 +551,49 @@ def _build_editor_header(title: str) -> str:
     return _EDITOR_HEADER_TEMPLATE.format(title=title)
 
 
+def _build_validation_annotation(errors: list) -> str:
+    """将 omr_validator 的错误列表序列化为 % 注释块，追加到编辑器文件末尾。
+
+    使用 ``%`` 前缀确保：
+    - jianpu-ly.py 将这些行视为注释并忽略（官方文档：``% a comment`` 被忽略）。
+    - 若这些行意外出现在 .ly 中，LilyPond 也会将 ``%`` 视为单行注释，不会报错。
+    """
+    sep = '% ' + '─' * 58
+    lines: list[str] = [
+        '',
+        sep,
+        '% ⚠  OMR 节拍校验结果（自动生成，供人工核查参考）',
+        sep,
+    ]
+    for e in errors:
+        status = '↑ TOO_LONG' if e['delta'] > 0 else '↓ TOO_SHORT'
+        lines.append(
+            f"% 小节 {e['measure_index']:>4}: {status}"
+            f"（实际 {e['total_beats']} 拍，期望 {e['expected_beats']} 拍，"
+            f"差 {e['delta']:+.3g}）"
+        )
+        if e.get('hint'):
+            lines.append(f"%{'':>12}提示：{e['hint']}")
+    lines.append(sep)
+    return '\n'.join(lines) + '\n'
+
+
 def _save_editor_files(
     title: str,
     txt_path: Path,
     source_path: Optional[Path],
     editor_workspace_dir: Path,
+    validation_errors: Optional[list] = None,
 ) -> None:
     """Copy the jianpu.txt (prepending a human-readable header) and the original
     source file into *editor_workspace_dir* so the user can later manually edit
-    and re-render the score."""
+    and re-render the score.
+
+    If *validation_errors* is provided (from omr_validator.validate_measures),
+    a ``%``-prefixed comment block is appended at the end of the .jianpu.txt
+    to flag rhythm-inconsistent measures for manual review.  The ``%`` prefix
+    ensures these lines are treated as comments by both jianpu-ly.py and LilyPond.
+    """
     try:
         editor_workspace_dir.mkdir(parents=True, exist_ok=True)
 
@@ -574,7 +608,10 @@ def _save_editor_files(
         dest_txt = editor_workspace_dir / f'{safe_title}.jianpu.txt'
         if txt_path.exists():
             original = txt_path.read_text(encoding='utf-8', errors='ignore')
-            dest_txt.write_text(_build_editor_header(title) + original, encoding='utf-8')
+            content = _build_editor_header(title) + original
+            if validation_errors:
+                content += _build_validation_annotation(validation_errors)
+            dest_txt.write_text(content, encoding='utf-8')
 
         # Copy the original source file as a reference image
         if source_path is not None and source_path.exists():
@@ -620,6 +657,7 @@ def generate_jianpu_pdf_from_mxl(
             if not render_midi_from_score(jianpu_score, midi_output_path):
                 log_message('简谱 MIDI 生成失败，跳过 MIDI 输出，继续生成简谱 PDF。', logging.WARNING)
 
+
         # Use the MXL-parsed score directly — preserves exact note durations and pitches
         log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
         result = render_score_to_jianpu_pdf(
@@ -628,7 +666,7 @@ def generate_jianpu_pdf_from_mxl(
 
         # Preserve editor workspace files when the conversion succeeded
         if result and editor_workspace_dir is not None:
-            _save_editor_files(title, txt_path, source_path, editor_workspace_dir)
+            _save_editor_files(title, txt_path, source_path, editor_workspace_dir, validation_errors)
 
         return result
     except Exception as exc:
