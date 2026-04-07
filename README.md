@@ -15,9 +15,6 @@ A tool to batch-convert Western staff notation PDFs into Jianpu (numbered musica
 - Optional MIDI file generation / 可选同时生成 MIDI 文件
 - Already-converted files are skipped automatically / 已转换过的文件自动跳过，避免重复转换
 - Compatible with Chinese, Japanese, and other non-ASCII filenames / 支持中文、日文等文件名场景的兼容处理
-- **Rich TUI interface** — menu-driven, no command-line flags needed / **Rich TUI 交互界面**：菜单驱动，无需命令行参数
-- **Jianpu text editor** — manually correct OMR errors in `.jianpu.txt`, then re-generate PDF / **简谱文本编辑器**：对 OMR 识别中间文件进行手动校对，完成后一键重新生成 PDF
-- Image pre-processing (denoise, sharpen, waifu2x super-resolution) for low-quality scans / 图像预处理（去噪、锐化、waifu2x 超分辨率）提升低质量扫描件识别率
 
 ### Supported Input Formats / 支持的输入格式
 
@@ -73,7 +70,6 @@ python convert.py
 
 - `Input/` — Place source sheet music files here / 放入原始五线谱文件（PDF / PNG / JPG）
 - `Output/` — Converted Jianpu PDFs and MIDIs are saved here / 保存生成的简谱 PDF / MIDI
-- `editor-workspace/` — Intermediate `.jianpu.txt` files for manual correction / 存放供手动校对的简谱中间文件
 - `logs/` — Runtime logs / 自动记录运行日志
 - `THIRD_PARTY_NOTICES.md` — Third-party component licenses / 第三方组件许可证说明
 
@@ -119,32 +115,4 @@ Their respective copyrights and licenses are listed in `THIRD_PARTY_NOTICES.md`.
 
 This project was developed using **Vibe Coding**, assisted by **GitHub Copilot**.
 
-本项目采用 **Vibe Coding** 方式开发，由 **GitHub Copilot** 辅助完成代码编写与调试。
-
----
-
-
-## Version / 版本
-
-Current version / 当前版本：`0.1.3`
-
----
-
-## Changelog / 更新历史
-
-### 0.1.3
-- Rich TUI state-machine interface with numbered menu / 改版为 Rich TUI 状态机交互界面，菜单驱动
-- Jianpu text editor: manual OMR correction via `.jianpu.txt` + Notepad, then re-render PDF / 简谱文本编辑器：通过 `.jianpu.txt` + 记事本手动校对，一键重新生成 PDF
-- Help screen with usage guide and troubleshooting tips / 新增帮助页面与操作指引
-- Fixed waifu2x super-resolution not running correctly / 修复 waifu2x 超分辨率未正常运行的问题
-- Installer opens the correct language README automatically (Chinese / English) / 安装结束后自动按系统语言打开对应说明文档
-- Installation folder renamed to `ConvertTool-0.1.3`; user data migrated automatically on upgrade / 安装目录改为 `ConvertTool-0.1.3`，升级时自动迁移用户数据
-- Major code refactor: split into modular `core/` package / 代码重构：拆分为 `core/` 模块包，降低耦合
-
-### 0.1.2
-- Image pre-processing: denoise, sharpen, waifu2x super-resolution for low-resolution scans / 图像预处理增强：去噪、锐化、waifu2x 超分辨率放大
-
-### 0.1.1
-- Auto-open `Output` folder after conversion / 转换完成后自动打开 Output 文件夹
-- Added PNG / JPG / JPEG input support / 新增 PNG / JPG / JPEG 格式输入支持
-- Fixed LilyPond watermark appearing at end of output PDF / 修复输出 PDF 末尾出现 LilyPond 水印的问题
+本项目采用 **Vibe Coding** 方式辅助开发，由 **GitHub Copilot** 辅助完成代码编写与调试。

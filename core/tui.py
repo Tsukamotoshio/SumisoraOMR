@@ -18,35 +18,21 @@ from .utils import get_app_base_dir, log_message, setup_logging
 # ──────────────────────────────────────────────────────────────────────────────
 EDITOR_WORKSPACE_DIR_NAME = 'editor-workspace'
 PAGE_SIZE = 10
-# Fixed UI dimensions — the terminal window is resized to these on launch.
-_UI_COLS = 43
-_UI_ROWS = 30
+
+
+def _is_base_dir_writable(base_dir: Path) -> bool:
+    """Return True if the application base directory is writable by the current user."""
+    test_path = base_dir / '.write_test'
+    try:
+        test_path.write_bytes(b'')
+        test_path.unlink(missing_ok=True)
+        return True
+    except (PermissionError, OSError):
+        return False
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 低层输入辅助
 # ──────────────────────────────────────────────────────────────────────────────
-
-def _resize_terminal_window() -> None:
-    """Best-effort: resize the host terminal window to _UI_COLS × _UI_ROWS.
-
-    Uses the xterm ``\033[8;rows;colst`` resize escape (supported by
-    Windows Terminal, modern conhost VT mode, and most Unix terminals)
-    and additionally calls ``mode con`` on Windows for legacy conhost.
-    All errors are silently ignored — the program still works if resize fails.
-    """
-    try:
-        sys.stdout.write(f'\033[8;{_UI_ROWS};{_UI_COLS}t')
-        sys.stdout.flush()
-    except OSError:
-        pass
-    if sys.platform == 'win32':
-        try:
-            subprocess.run(
-                ['cmd', '/c', f'mode con cols={_UI_COLS} lines={_UI_ROWS}'],
-                capture_output=True, check=False, timeout=2,
-            )
-        except OSError:
-            pass
 
 def _read_single_key() -> str:
     """Read exactly one keypress (no Enter required) on Windows.
@@ -125,7 +111,7 @@ class TUI:
     """
 
     def __init__(self, config: Optional[AppConfig] = None) -> None:
-        self.console = Console(width=_UI_COLS)
+        self.console = Console()
         self.config = config or AppConfig()
         self.running = True
         self.current_screen = 'main'
@@ -155,12 +141,39 @@ class TUI:
     def _status_bar(self, text: str) -> None:
         self.console.print(Rule(f'[dim]{text}[/dim]', style='dim'))
 
+    # ── Permission error screen ───────────────────────────────────────────────
+
+    def _screen_permission_error(self, base_dir: Path) -> None:
+        """Show a persistent permission error screen until the user presses a key."""
+        while True:
+            self.console.clear()
+            self.console.print(Panel(
+                f'[yellow]程序安装路径：[/yellow]{base_dir}\n\n'
+                '[bold white]解决方法：[/bold white]\n'
+                '  右键点击 [cyan]ConvertTool.exe[/cyan]\n'
+                '  选择 [bold cyan]"以管理员身份运行"[/bold cyan]\n\n'
+                '[dim]按任意键关闭...[/dim]',
+                title='[bold red]  权限不足，无法写入程序目录  [/bold red]',
+                border_style='red',
+                padding=(1, 3),
+            ))
+            _read_single_key()
+            return
+
     # ── Main loop ─────────────────────────────────────────────────────────────
 
     def run(self) -> None:
-        _resize_terminal_window()
         base_dir = get_app_base_dir()
         setup_logging(base_dir)
+
+        # Detect permission problems before entering the main loop.
+        # Programs installed under C:\Program Files cannot write to the install
+        # directory without Administrator privileges; detect this early so the
+        # user sees a clear, persistent message instead of a brief crash.
+        if not _is_base_dir_writable(base_dir):
+            self._screen_permission_error(base_dir)
+            return
+
         while self.running:
             try:
                 if self.current_screen == 'main':
@@ -178,6 +191,9 @@ class TUI:
                 self.console.print('\n[yellow]已取消，程序退出。[/yellow]\n')
                 break
             except SystemExit:
+                break
+            except PermissionError:
+                self._screen_permission_error(get_app_base_dir())
                 break
             except Exception as exc:  # noqa: BLE001
                 # Catch unexpected exceptions so the program exits gracefully
@@ -207,8 +223,7 @@ class TUI:
         self.console.print('  [bold]6[/bold]  帮助')
         self.console.print('  [bold]7[/bold]  退出')
         self.console.print()
-        self.console.print('[dim]© 2026 Tsukamotoshio.[/dim]', justify='center')
-        self.console.print('[dim]All rights reserved.[/dim]', justify='center')
+        self.console.print('  [dim](c) 2026 Tsukamotoshio. All rights reserved.[/dim]')
         self._status_bar('按数字键选择功能  │  ESC 或 7 退出')
 
         key = _read_single_key()
@@ -230,12 +245,79 @@ class TUI:
     # ── Screen: Conversion ────────────────────────────────────────────────────
 
     def _screen_convert(self) -> None:
+        import dataclasses
+        from .config import AppConfig, OMREngine
+        from .oemer_runner import _detect_gpu_provider
         from .pipeline import process_bulk_input_to_jianpu
 
         base_dir = get_app_base_dir()
         editor_workspace_dir = base_dir / EDITOR_WORKSPACE_DIR_NAME
 
-        self._header('开始五线谱转换')
+        # ── Engine selection ──────────────────────────────────────────────────
+        self._header('选择识别引擎')
+        self.console.print()
+        self.console.print('  请选择 OMR（光学乐谱识别）引擎：')
+        self.console.print()
+        self.console.print(
+            '  [bold]1[/bold]  [green]自动（按格式选择）[/green]  [bold green]← 推荐[/bold green]'
+        )
+        self.console.print(
+            '         [dim]PDF 输入 → Audiveris；图片（PNG/JPG）输入 → Oemer[/dim]'
+        )
+        self.console.print()
+        self.console.print(
+            '  [bold]2[/bold]  [cyan]Audiveris[/cyan]  [dim]（手动指定，强制用于所有格式）[/dim]'
+        )
+        self.console.print(
+            '         [dim]对印刷扫描件（高分辨率、高对比度 PDF）效果最好[/dim]'
+        )
+        self.console.print(
+            '         [dim]基于传统启发式算法，不依赖 GPU，任何机器均可运行[/dim]'
+        )
+        self.console.print()
+        gpu_info = _detect_gpu_provider()
+        self.console.print(
+            '  [bold]3[/bold]  [cyan]Oemer[/cyan]  [dim]（手动指定，强制用于所有格式）[/dim]'
+        )
+        self.console.print(
+            '         [dim]对拍照乐谱（手机拍摄、光线不均匀、低对比度图像）效果更好[/dim]'
+        )
+        self.console.print(
+            f'         [dim]识别速度取决于 GPU 性能（当前计算设备：{gpu_info}[/dim]'
+        )
+        if 'CPU' in gpu_info and 'cuDNN' in gpu_info:
+            self.console.print(
+                '         [yellow]⚠ 未检测到 cuDNN 9.x — 当前将在 CPU 上运行（速度较慢）[/yellow]'
+            )
+            self.console.print(
+                '           [dim]如需 GPU 加速：安装 CUDA+cuDNN 或 pip install onnxruntime-directml[/dim]'
+            )
+        self.console.print(
+            '         [dim]GPU 优先级：DirectML (任意 GPU) > CUDA+cuDNN > CPU 回退[/dim]'
+        )
+        self.console.print()
+        self._status_bar('按数字键选择引擎  │  ESC / b = 返回')
+
+        engine_key = _read_single_key()
+        if engine_key in ('\x1b', 'b', 'B'):
+            self._pop_screen()
+            return
+
+        if engine_key == '2':
+            selected_engine = OMREngine.AUDIVERIS
+            engine_display = 'Audiveris（强制）'
+        elif engine_key == '3':
+            selected_engine = OMREngine.OEMER
+            engine_display = 'Oemer（强制）'
+        else:
+            # '1' 或任意其他键 → 自动按格式选择（默认）
+            selected_engine = OMREngine.AUTO
+            engine_display = '自动（PDF→Audiveris / 图片→Oemer）'
+
+        config_with_engine = dataclasses.replace(self.config, omr_engine=selected_engine)
+
+        # ── Conversion ────────────────────────────────────────────────────────
+        self._header(f'开始五线谱转换  [dim]（{engine_display}）[/dim]')
         self.console.print()
         self.console.print(
             '[dim]  提示：转换完成后会保留简谱编辑中间文件，'
@@ -245,7 +327,7 @@ class TUI:
 
         try:
             process_bulk_input_to_jianpu(
-                self.config,
+                config_with_engine,
                 editor_workspace_dir=editor_workspace_dir,
             )
         except SystemExit:
@@ -301,7 +383,7 @@ class TUI:
             for idx, f in enumerate(page_files, start=1):
                 stem = f.stem  # e.g. "Scarborough Fair.jianpu"
                 title = stem[:-len('.jianpu')] if stem.endswith('.jianpu') else stem
-                self.console.print(f'  [bold]{idx}[/bold]  {title}', no_wrap=True, overflow='ellipsis')
+                self.console.print(f'  [bold]{idx}[/bold]  {title}')
 
             self.console.print()
 
@@ -353,9 +435,9 @@ class TUI:
         while True:
             self._header(f'简谱编辑器 — {title}')
             self.console.print()
-            self.console.print(f'  待校对乐谱：[cyan]{title}[/cyan]', no_wrap=True, overflow='ellipsis')
+            self.console.print(f'  待校对乐谱：[cyan]{title}[/cyan]')
             if source_file is not None:
-                self.console.print(f'  参考图像：  [dim]{source_file.name}[/dim]', no_wrap=True, overflow='ellipsis')
+                self.console.print(f'  参考图像：  [dim]{source_file.name}[/dim]')
             else:
                 self.console.print('  [dim]  （未找到参考图像）[/dim]')
             self.console.print()
@@ -425,7 +507,7 @@ class TUI:
 
         self._header('简谱编辑器 — 生成中 ...')
         self.console.print()
-        self.console.print(f'  正在从校对文件生成简谱 PDF：[cyan]{title}[/cyan]', no_wrap=True, overflow='ellipsis')
+        self.console.print(f'  正在从校对文件生成简谱 PDF：[cyan]{title}[/cyan]')
         self.console.print()
 
         ly_path = txt_path.with_suffix('.ly')
@@ -467,7 +549,7 @@ class TUI:
         self.console.print()
         if success and out_pdf is not None:
             self.console.print(f'  [bold green]✓ 简谱 PDF 已生成：[/bold green]')
-            self.console.print(f'    [dim]{out_pdf}[/dim]', no_wrap=True, overflow='ellipsis')
+            self.console.print(f'    [dim]{out_pdf}[/dim]')
             try:
                 _open_file_default(out_pdf)
             except OSError:
@@ -491,13 +573,20 @@ class TUI:
         self.console.print(Panel(
             '[bold]使用步骤[/bold]\n'
             '  1. 将 PDF / PNG / JPG 五线谱文件放入 [cyan]Input[/cyan] 文件夹\n'
-            '  2. 选择「2. 开始五线谱转换」，按提示回答 Y/N\n'
+            '  2. 选择「2. 开始五线谱转换」，选择识别引擎后按提示回答 Y/N\n'
             '  3. 转换结果（简谱 PDF / MIDI）保存在 [cyan]Output[/cyan] 文件夹\n'
             '  4. 如需手动校对，选择「4. 打开简谱编辑器」\n\n'
+            '[bold]引擎选择说明[/bold]\n'
+            '  • [green]自动（推荐）[/green] — PDF → Audiveris；图片（PNG/JPG）→ Oemer\n'
+            '  • [cyan]Audiveris[/cyan] — 手动指定，强制用于所有格式\n'
+            '    基于规则的传统 OMR 引擎，对高对比度印刷乐谱和 PDF 效果最佳\n'
+            '  • [cyan]Oemer[/cyan]     — 手动指定，强制用于所有格式\n'
+            '    基于深度学习的端到端引擎，对手机拍摄或光线不均匀图像更友好\n'
+            '    使用前请确认已安装：pip install oemer\n\n'
             '[bold]简谱编辑器说明[/bold]\n'
             '  • 每次转换后，工具自动保留 OMR 识别的中间文件到 [cyan]editor-workspace[/cyan] 目录\n'
             '  • 在编辑器中选择乐谱，记事本将自动打开供您修改简谱文本\n'
-            '  • 同时会打开原始乐谱图像作为参考（PDF 格式会调用默认查看器）\n'
+            '  • 同时会打开预处理后的乐谱图像作为参考\n'
             '  • 保存并关闭记事本后，选择「开始生成简谱 PDF」即可输出校正后的版本\n\n'
             '[bold]支持格式[/bold]\n'
             '  PDF  ·  PNG  ·  JPG / JPEG\n\n'
@@ -505,7 +594,8 @@ class TUI:
             '  • 转换失败     →  查看「5. 打开日志目录」中的 .log 文件\n'
             '  • 没有输出     →  确认 Input 文件夹中有支持的文件\n'
             '  • 程序缓慢     →  多页 PDF 识别需要数分钟，请耐心等待\n'
-            '  • oemer 引擎   →  将在后续版本中开放（v0.1.3 暂未实装）',
+            '  • Audiveris 失败  →  检查 audiveris-runtime 目录是否存在\n'
+            '  • Oemer 失败      →  执行 pip install oemer 安装引擎',
             title='[bold cyan]简谱转换工具  帮助[/bold cyan]',
             padding=(1, 2),
         ))

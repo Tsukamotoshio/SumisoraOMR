@@ -69,6 +69,20 @@ def get_runtime_search_roots() -> list[Path]:
     return roots
 
 
+def _get_logs_dir(base_dir: Path) -> Path:
+    """Return the logs directory.
+
+    When frozen (installed under a protected path such as C:\\Program Files),
+    redirect logs to %LOCALAPPDATA%\\ConvertTool\\logs so that normal users can
+    write log files without requiring administrator privileges.
+    """
+    if getattr(sys, 'frozen', False):
+        local_app_data = os.environ.get('LOCALAPPDATA', '')
+        if local_app_data:
+            return Path(local_app_data) / 'ConvertTool' / AppConfig().logs_dir_name
+    return base_dir / AppConfig().logs_dir_name
+
+
 def setup_logging(base_dir: Path) -> Optional[Path]:
     """Initialise logging to a timestamped file under logs/; return the log file path."""
     global LOG_FILE_PATH
@@ -76,7 +90,7 @@ def setup_logging(base_dir: Path) -> Optional[Path]:
     if LOGGER.handlers:
         return LOG_FILE_PATH
 
-    logs_dir = base_dir / AppConfig().logs_dir_name
+    logs_dir = _get_logs_dir(base_dir)
     logs_dir.mkdir(parents=True, exist_ok=True)
     LOG_FILE_PATH = logs_dir / f'convert-{time.strftime("%Y%m%d-%H%M%S")}.log'
 
@@ -157,7 +171,18 @@ def save_conversion_history(base_dir: Path, history: dict[str, dict]) -> None:
 
 
 def has_existing_output_match(pdf_file: Path, output_pdf: Path, output_midi: Optional[Path], history: dict[str, dict]) -> bool:
-    """Return True if the input already has a matching output with the same SHA-256 and pipeline version."""
+    """Return True if the output files already exist and the source file is unchanged.
+
+    Duplicate detection is based purely on:
+      1. The final output PDF (and MIDI if requested) must exist in Output/.
+      2. The source file SHA-256 must match the recorded value.
+
+    Pipeline version is intentionally NOT checked here — algorithm updates do NOT
+    force re-conversion.  If a user wants to regenerate output after an algorithm
+    update they should delete the relevant Output/ files manually.
+    Intermediate files (editor-workspace .jianpu.txt) are always overwritten by
+    _save_editor_files whenever a conversion actually runs.
+    """
     if not output_pdf.exists():
         return False
     if output_midi is not None and not output_midi.exists():
@@ -170,7 +195,7 @@ def has_existing_output_match(pdf_file: Path, output_pdf: Path, output_midi: Opt
     except OSError as exc:
         log_message(f'计算文件摘要失败，将继续转换 {pdf_file.name}：{exc}', logging.WARNING)
         return False
-    return record.get('sha256') == current_sha256 and record.get('pipeline_version') == CONVERSION_PIPELINE_VERSION
+    return record.get('sha256') == current_sha256
 
 
 def confirm_skip_all_existing(duplicate_names: list[str]) -> bool:

@@ -1,3 +1,5 @@
 {
-  "git.enableSmartCommit": true
+  "git.enableSmartCommit": true,
+  "git.path": "D:\\Program Files\\Git\\cmd\\git.exe",
+  "git.useEditorAsCommitInput": false
 }

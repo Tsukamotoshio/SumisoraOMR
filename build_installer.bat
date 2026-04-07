@@ -66,15 +66,28 @@ if exist "%BASE_DIR%package-assets\waifu2x-runtime\waifu2x-ncnn-vulkan.exe" (
     echo [WARN] 未找到 waifu2x-ncnn-vulkan 目录，跳过超分辨率模块打包。
 )
 
-set "PYTHON_CMD="
-if exist "%BASE_DIR%.venv\Scripts\python.exe" set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
-if not defined PYTHON_CMD (
+set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
+if not exist "%PYTHON_CMD%" (
+    set "PYTHON_CMD=py -3"
     where py >nul 2>nul
-    if not errorlevel 1 (set "PYTHON_CMD=py -3") else (set "PYTHON_CMD=python")
+    if errorlevel 1 set "PYTHON_CMD=python"
+)
+
+:: 将 package-assets\oemer-runtime 中的模型同步到 venv（供 PyInstaller collect_all 打包）
+if exist "%BASE_DIR%package-assets\oemer-runtime\checkpoints\unet_big\model.onnx" (
+    echo [INFO] 使用本地 oemer 模型，无需联网下载。
+    %PYTHON_CMD% "%BASE_DIR%_sync_oemer_to_venv.py" "%BASE_DIR%package-assets\oemer-runtime"
+) else (
+    echo [2/3] 正在预下载 oemer 模型权重（已下载则跳过）...
+    call %PYTHON_CMD% download_oemer_models.py
+    if errorlevel 1 (
+        echo [ERROR] oemer 模型权重下载失败，请检查网络连接后重试。
+        exit /b 1
+    )
 )
 
 echo [2/3] 正在构建可执行文件...
-call %PYTHON_CMD% -m PyInstaller --noconfirm --clean --onedir --console --name ConvertTool --collect-all music21 --collect-all rich --collect-submodules reportlab --collect-submodules core convert.py
+call %PYTHON_CMD% -m PyInstaller --noconfirm --clean ConvertTool.spec
 if errorlevel 1 (
     echo [ERROR] PyInstaller 打包失败。
     exit /b 1

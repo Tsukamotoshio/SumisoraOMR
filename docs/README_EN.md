@@ -2,12 +2,32 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: 0.1.3
+Version: 0.2.0-experimental
 
-Batch-convert Western staff notation PDFs into Jianpu (numbered musical
+Batch-convert Western staff notation PDFs/images into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
-Features a Rich TUI interface and a built-in Jianpu text editor for
-correcting OMR recognition errors before final rendering.
+
+
+What's New in 0.2.0-experimental
+---------------------------------
+
+- **Movable-Do (首调唱名法):** note numbers are now mapped relative to the
+  key signature — `1` always represents the tonic, and accidentals use the
+  key's natural tendency (sharps for sharp keys, flats for flat keys).
+- Brand-new Rich TUI menu interface, replacing the old command-line prompts.
+- Added Oemer deep-learning OMR engine (better for phone photos or
+  uneven-lighting images; requires: pip install oemer).
+- Automatic engine routing: PDF input → Audiveris; image input → Oemer.
+- Built-in Jianpu editor workspace: intermediate files are preserved after
+  conversion so you can proofread in Notepad and regenerate the PDF with
+  one click.
+- Improved editor reference image: white-border crop + rotation correction,
+  full RGB color — easy to read at a glance.
+- Smart Audiveris OCR language selection (CJK vs. eng) to reduce
+  interference on scores with Western lyrics.
+- Automatic Audiveris retry for PDFs on recognition failure.
+- Installer upgrade: old installation folder is automatically removed after
+  user data has been migrated to the new version directory.
 
 
 Usage
@@ -16,21 +36,13 @@ Usage
 1. Place sheet music files (PDF / PNG / JPG) into the Input folder.
 2. Double-click the "Jianpu Conversion Tool" desktop shortcut, or run
    ConvertTool.exe in the installation directory.
-3. Use the numbered menu to start conversion (option 2) or open the
-   Jianpu editor (option 4).
+3. Select an OMR engine (Auto recommended), then confirm conversion and
+   optional MIDI output.
 4. Results are saved to the Output folder.
 
-Jianpu Text Editor
-------------------
-
-After conversion, intermediate .jianpu.txt files are saved to the
-editor-workspace folder.  To manually correct OMR errors:
-
-1. Select option 4 "Open Jianpu Editor" from the main menu.
-2. Choose a score from the list.  Notepad opens the .jianpu.txt file
-   and the source image opens alongside for reference.
-3. Edit and save the text file, then close Notepad.
-4. Select option 1 "Generate Jianpu PDF" to re-render the corrected score.
+To proofread a converted score:
+  Select option 4 "Jianpu Editor" from the main menu, choose a score,
+  edit the .jianpu.txt in Notepad, then select "Generate Jianpu PDF".
 
 
 Directory Layout
@@ -38,7 +50,7 @@ Directory Layout
 
   Input\                    Place source sheet music files here
   Output\                   Converted Jianpu PDFs and MIDIs are saved here
-  editor-workspace\         Intermediate .jianpu.txt files for manual correction
+  editor-workspace\         Intermediate .jianpu.txt files for proofreading
   logs\                     Runtime logs (auto-generated)
   THIRD_PARTY_NOTICES.md    Third-party component licenses
 
@@ -65,32 +77,10 @@ Known Limitations
   key changes may yield inaccurate results.
 
 
-Changelog
----------
-
-0.1.3 (current)
-  - Rich TUI state-machine interface with numbered menu
-  - Jianpu text editor: correct OMR output via .jianpu.txt, re-render PDF
-  - Help screen with usage guide and troubleshooting tips
-  - Fixed waifu2x super-resolution not running correctly
-  - Installer opens the locale-appropriate README automatically
-  - Installation folder renamed to ConvertTool-0.1.3; user data migrated
-    automatically on upgrade
-  - Major code refactor into modular core/ package
-
-0.1.2
-  - Image pre-processing: denoise, sharpen, waifu2x super-resolution
-  - Optimized for low-resolution scanned scores
-
-0.1.1
-  - Auto-open Output folder after conversion
-  - Added PNG / JPG / JPEG input support
-  - Fixed LilyPond watermark appearing at end of output PDF
-
-
 License
 -------
 
 Licensed under the MIT License. See the LICENSE file for details.
 This tool bundles third-party components (Audiveris, LilyPond, music21,
-etc.). Their copyrights and licenses are listed in THIRD_PARTY_NOTICES.md.
+waifu2x-ncnn-vulkan, etc.). Their copyrights and licenses are listed in
+THIRD_PARTY_NOTICES.md.

@@ -51,8 +51,8 @@ WAIFU2X_RUNTIME_DIR_NAME = 'waifu2x-runtime'
 AUDIVERIS_INSTALL_DIR_NAME = 'Audiveris'
 AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris-5.10.2', 'audiveris')
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
-CONVERSION_PIPELINE_VERSION = 5
-APP_VERSION = '0.1.3'
+CONVERSION_PIPELINE_VERSION = 7
+APP_VERSION = '0.2.0'
 AUDIVERIS_MSI_NAMES = [
     'Audiveris-5.10.2-windows-x86_64.msi',
     'Audiveris.msi',
@@ -65,13 +65,16 @@ AUDIVERIS_MSI_NAMES = [
 # ──────────────────────────────────────────────
 class OMREngine(Enum):
     """可选的光学乐谱识别 (OMR) 引擎。
-    
+
+    AUTO:      自动按格式选择引擎（推荐）。
+               PDF 输入 → Audiveris；图片（PNG/JPG）输入 → Oemer。
     AUDIVERIS: 基于 Java 的传统 OMR 引擎，支持 PDF/图片输入，
                输出 MusicXML (.mxl)。需要本地 JDK + Audiveris 安装。
     OEMER:     基于深度学习的端到端 OMR 引擎（pip install oemer），
                仅支持图片输入，输出 .musicxml。
                不依赖 Java，但需要 Python 环境中安装 oemer。
     """
+    AUTO = 'auto'
     AUDIVERIS = 'audiveris'
     OEMER = 'oemer'
 

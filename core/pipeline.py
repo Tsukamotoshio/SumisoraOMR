@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -44,48 +45,116 @@ def process_single_input_to_jianpu(
 ) -> bool:
     """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
 
+    Routing strategy
+    ----------------
+    AUTO (default)  :  PDF → Audiveris;  image (PNG/JPG) → Oemer.
+    AUDIVERIS       :  Always use Audiveris (PDF and images).
+    OEMER           :  Always use Oemer (images only; PDF is not supported by Oemer).
+
+    For all image inputs a display-friendly reference image (white-border crop +
+    rotation correction + light contrast, RGB color) is saved to the editor
+    workspace so the user can proofread with a clear, readable image.
+
+
     Parameters
     ----------
     source_file:          Input score file (PDF / PNG / JPG).
     file_temp_dir:        Per-job temporary directory.
     output_pdf:           Destination jianpu PDF path.
     output_midi:          Destination MIDI path, or None to skip MIDI generation.
-    engine:               OMR engine to use (AUDIVERIS only in v0.1.3).
+    engine:               OMR engine to use.
     editor_workspace_dir: When provided, intermediate .jianpu.txt and source file
                           are preserved there for manual proofreading.
     """
+    _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
 
-    if engine is OMREngine.OEMER:
+    # Resolve effective engine: AUTO picks Oemer for images, Audiveris for PDFs.
+    if engine is OMREngine.AUTO:
+        effective_engine = OMREngine.OEMER if _IS_IMAGE else OMREngine.AUDIVERIS
+        log_message(
+            f'  [自动路由] {"图片" if _IS_IMAGE else "PDF"} → '
+            f'{"Oemer" if _IS_IMAGE else "Audiveris"}'
+        )
+    else:
+        effective_engine = engine
+
+    # ── Oemer (images) ────────────────────────────────────────────────────────
+    if effective_engine is OMREngine.OEMER:
+        if not _IS_IMAGE:
+            log_message(
+                f'  ✗ Oemer 不支持 PDF 格式，跳过 {source_file.name}。\n'
+                '    → 请使用 Audiveris 引擎处理 PDF 文件，或改用图片格式输入。',
+                logging.WARNING,
+            )
+            return False
         omr_out = run_oemer_batch(source_file, output_dir=file_temp_dir)
-        engine_label = 'oemer'
+        engine_label = 'Oemer'
+
+    # ── Audiveris (PDF and images) ────────────────────────────────────────────
+
     else:
         omr_out = run_audiveris_batch(source_file, output_dir=file_temp_dir)
         engine_label = 'Audiveris'
 
+    # ── Error reporting ────────────────────────────────────────────────────────
     if omr_out is None:
-        log_message(
-            f'  ✗ {engine_label} 处理失败，跳过 {source_file.name}。\n'
-            '    → 可能原因：Java/Audiveris 未正确安装，或乐谱格式不受支持\n'
-            '    → 解决方案：确认 audiveris-runtime 目录存在，或尝试切换到 oemer 引擎',
-            logging.WARNING,
-        )
-        return False
+        if effective_engine is OMREngine.OEMER:
+            log_message(
+                f'  ✗ Oemer 处理失败，跳过 {source_file.name}。\n'
+                '    → 可能原因：oemer 未正确安装，或图像内容无法被识别\n'
+                '    → 解决方案：确认已执行 pip install oemer，或尝试切换到 Audiveris 引擎',
+                logging.WARNING,
+            )
+            return False
+        else:
+            # Audiveris 失败 → 自动回退到 Oemer
+            # run_oemer_batch 支持 PDF 输入（内部使用 PyMuPDF 将首页转为图片）
+            log_message(
+                f'  [自动回退] Audiveris 处理失败，正在尝试使用 Oemer 重试…',
+                logging.WARNING,
+            )
+            omr_out = run_oemer_batch(source_file, output_dir=file_temp_dir)
+            engine_label = 'Oemer (Audiveris 回退)'
+            if omr_out is None:
+                log_message(
+                    f'  ✗ Audiveris 与 Oemer 均处理失败，跳过 {source_file.name}。\n'
+                    '    → 可能原因：乐谱格式不受支持，或图像/PDF 质量过低\n'
+                    '    → 解决方案：确认 audiveris-runtime 与 oemer 均已正确安装',
+                    logging.WARNING,
+                )
+                return False
 
+    # ── Resolve MusicXML path ──────────────────────────────────────────────────
     mxl_file = find_first_musicxml_file(omr_out, source_file.stem)
+
     if mxl_file is None:
         log_message(
             f'  ✗ 未找到 {engine_label} 输出的 MXL 文件，跳过 {source_file.name}。\n'
             '    → 可能原因：乐谱无法被识别（图像质量过低或版式过于复杂）\n'
             '    → 解决方案：尝试使用更高分辨率的扫描件，或手动检查 omr-temp 目录',
+
             logging.WARNING,
         )
         return False
 
-    # Prefer the preprocessed (enhanced/deskewed) image saved by audiveris_runner as the
-    # editor workspace reference.  Falls back to the original source file for PDFs or when
-    # preprocessing was skipped.
-    _ref_candidate = omr_out / '_preprocessed_ref.png'
-    effective_source = _ref_candidate if _ref_candidate.exists() else source_file
+    # ── Resolve editor workspace reference image ───────────────────────────────
+    # For image inputs: create a display-friendly reference (RGB, crop+rotate+contrast)
+    # so the editor shows a clear, readable image instead of any processed version.
+    # For PDF inputs: save the original PDF directly (already human-readable).
+    if _IS_IMAGE:
+        from .image_preprocess import create_display_reference
+        effective_source = create_display_reference(source_file, file_temp_dir) or source_file
+    else:
+        effective_source = source_file
+
+
+    # Audit trail: prefer the _omr_reference.png from audiveris_runner (full preprocessing)
+    # over the create_display_reference result (lighter preprocessing).
+    omr_ref = file_temp_dir / '_omr_reference.png'
+    if not omr_ref.exists():
+        omr_ref = omr_out / '_preprocessed_ref.png'
+    if omr_ref.exists():
+        effective_source = omr_ref
 
     return generate_jianpu_pdf_from_mxl(
         mxl_file,
@@ -216,15 +285,12 @@ def process_bulk_input_to_jianpu(
     except SystemExit:
         return summary
 
-    # v0.1.3: Audiveris only — oemer engine entry point is closed pending full implementation.
     engine = config.omr_engine
-    if engine is OMREngine.OEMER:
-        log_message(
-            '[引擎选择] oemer 引擎在 v0.1.3 中尚未实装，已自动回退到 Audiveris。',
-            logging.WARNING,
-        )
-        engine = OMREngine.AUDIVERIS
-    log_message(f'[引擎选择] 使用 {engine.value.capitalize()} 引擎。')
+    if engine is OMREngine.AUTO:
+        log_message('[引擎选择] 自动模式（PDF → Audiveris，图片 → Oemer）。')
+    else:
+        log_message(f'[引擎选择] 使用 {engine.value.capitalize()} 引擎。')
+
 
     output_dir.mkdir(parents=True, exist_ok=True)
     duplicate_names = collect_duplicate_names(source_files, output_dir, generate_midi, history)

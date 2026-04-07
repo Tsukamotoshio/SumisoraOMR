@@ -56,6 +56,28 @@ def prepare_audiveris_paths(input_path: Path, output_dir: Path) -> tuple[Path, P
     return safe_input_path, safe_output_dir, safe_input_path
 
 
+
+def _has_cjk_chars(text: str) -> bool:
+    """Return True if *text* contains any CJK Unified Ideographs (U+4E00–U+9FFF)."""
+    return any('\u4e00' <= ch <= '\u9fff' for ch in text)
+
+
+def _choose_ocr_lang(input_path: Path) -> str:
+    """选择 Audiveris 的 Tesseract OCR 语言规格。
+
+    逻辑
+    ----
+    包含中文字符的文件名  →  ``eng+chi_sim``（英文 + 简体中文）
+    其他文件              →  ``eng``（拉丁/英文，避免中文 OCR 干扰西洋歌词识别）
+
+    对于英语/法语/西班牙语等拉丁字母歌词丰富的乐谱，仅使用 ``eng`` 可显著减少
+    Audiveris 文字识别子系统的干扰，有助于提高五线谱符号的识别准确率。
+    """
+    if _has_cjk_chars(input_path.stem):
+        return 'eng+chi_sim'
+    return 'eng'
+
+
 def _copy_preprocessed_ref(src: Optional[Path], dest_dir: Path) -> None:
     """Copy the preprocessed reference image into *dest_dir* as ``_preprocessed_ref.png``.
 
@@ -71,10 +93,22 @@ def _copy_preprocessed_ref(src: Optional[Path], dest_dir: Path) -> None:
         pass
 
 
-def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> Optional[Path]:
+def run_audiveris_batch(
+    input_path: Path,
+    output_dir: Optional[Path] = None,
+    skip_preprocessing: bool = False,
+) -> Optional[Path]:
     """
     Run Audiveris OMR on the input file; falls back to per-page processing for multi-page PDFs.
     Returns the output directory containing MusicXML, or None on failure.
+
+    Parameters
+    ----------
+    input_path          : Input score file (PDF / PNG / JPG).
+    output_dir          : Directory for Audiveris job outputs.
+    skip_preprocessing  : When True, bypass the internal image preprocessing step
+                          (waifu2x SR + Pillow enhancement + downscale).  Set this flag
+                          when the caller has already run enhance_image() upstream.
     """
     required_java_version = get_audiveris_required_java_version()
     java_exe = find_java_executable(required_java_version)
@@ -87,11 +121,16 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
     # Keep a reference to the original (unprocessed) path so fallback retry can use it.
     original_safe_input_path = safe_input_path
 
+    # Determine OCR language based on filename — avoids chi_sim interference for Western scores.
+    ocr_lang = _choose_ocr_lang(input_path)
+    log_message(f'  [Audiveris] OCR 语言规格: {ocr_lang}')
+
     # Pre-process raster images (PNG/JPG) to improve OMR accuracy before passing to Audiveris.
     # For PDF inputs Audiveris renders pages internally, so preprocessing is skipped.
+    # When skip_preprocessing=True the caller has already run enhance_image(), so we skip.
     omr_preprocessed_path: Optional[Path] = None
     omr_rescaled_path: Optional[Path] = None
-    if safe_input_path.suffix.lower() in {'.png', '.jpg', '.jpeg'}:
+    if not skip_preprocessing and safe_input_path.suffix.lower() in {'.png', '.jpg', '.jpeg'}:
         preprocessed = preprocess_image_for_omr(safe_input_path, safe_output_dir.parent)
         if preprocessed is not None:
             omr_preprocessed_path = preprocessed
@@ -109,16 +148,23 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
         target_dir: Path,
         sheet_number: Optional[int] = None,
         input_path_override: Optional[Path] = None,
+        use_lang_constant: bool = True,
     ) -> tuple[int, str, str, Optional[Path]]:
-        """Run Audiveris once for a given output dir and optional sheet number; return (exit_code, stdout, stderr, mxl_path)."""
+        """Run Audiveris once for a given output dir and optional sheet number; return (exit_code, stdout, stderr, mxl_path).
+
+        Parameters
+        ----------
+        use_lang_constant : When True (default), passes the OCR language constant determined
+                            by _choose_ocr_lang().  Set to False to skip the language constant
+                            entirely, letting Audiveris use its own defaults — useful as a
+                            fallback for PDFs where lyric text causes recognition failures.
+        """
         effective_input = input_path_override if input_path_override is not None else safe_input_path
         target_dir.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            str(exe),
-            '-batch',
-            '-constant', 'org.audiveris.omr.text.Language.defaultSpecification=eng+chi_sim',
-            '-export',
-        ]
+        cmd = [str(exe), '-batch']
+        if use_lang_constant:
+            cmd.extend(['-constant', f'org.audiveris.omr.text.Language.defaultSpecification={ocr_lang}'])
+        cmd.extend(['-export'])
         if sheet_number is not None:
             cmd.extend(['-sheets', str(sheet_number)])
         cmd.extend(['-output', str(target_dir), str(effective_input)])
@@ -221,6 +267,32 @@ def run_audiveris_batch(input_path: Path, output_dir: Optional[Path] = None) -> 
                 logging.WARNING,
             )
             return None
+
+        # ── Retry 2: PDF general failure → re-run without OCR language constraint ────────
+        # When lyric-heavy PDFs (e.g. vocal parts with dense text) cause OMR errors,
+        # removing the OCR language constant lets Audiveris fall back to its built-in
+        # defaults, reducing text-recognition interference on note detection.
+        # By the time we reach here, CURVES/export errors have already returned None above,
+        # so this block only triggers for genuine unclassified OMR failures on PDFs.
+        if safe_input_path.suffix.lower() == '.pdf':
+            log_message(
+                'Audiveris PDF 识别失败，尝试禁用 OCR 语言约束重试（可能是歌词文本干扰）...',
+                logging.WARNING,
+            )
+            safe_remove_tree(safe_output_dir)
+            r3_code, r3_out, r3_err, r3_exported = invoke_audiveris(
+                safe_output_dir, use_lang_constant=False
+            )
+            if r3_code == 0 or r3_exported is not None:
+                if r3_code != 0:
+                    log_message(
+                        '禁用 OCR 语言重试时 Audiveris 返回非零退出码，但已成功导出 MusicXML，继续后续处理。',
+                        logging.WARNING,
+                    )
+                log_message('禁用 OCR 语言约束重试成功。')
+                _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
+                return safe_output_dir
+            combined = (r3_out or '') + '\n' + (r3_err or '')
 
         # Check for "no staves found" - typically happens with blurry / low-contrast images
         no_staves_keywords = [
