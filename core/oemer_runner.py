@@ -28,7 +28,7 @@ from .config import (
 from .image_preprocess import (
     OEMER_MAX_PIXELS,
     fit_image_within_pixel_limit,
-    preprocess_image_for_oemer,
+    preprocess_geometry_for_omr,
 )
 from .utils import (
     find_first_musicxml_file,
@@ -747,15 +747,14 @@ def run_oemer_batch(input_path: Path, output_dir: Optional[Path] = None) -> Opti
     else:
         img_path = input_path
 
-    # ── 图像预处理（oemer 专用：自动剪裁 + 梯度修正）────────────────────────────────────
-    # 根据 oemer 官方 README 建议，对图片仅做最小化增强，避免引入干扰深度学习模型的伪影：
-    #   - 自动剪裁：去除扫描件四周多余白边
-    #   - 梯度修正：autocontrast 校正不均匀光照
-    #   - 不做 waifu2x 超分辨率、高斯去噪、锐化等操作
+    # ── 图像预处理（与 Audiveris 统一：梯度修正 + 旋转校正 + 白边裁剪）──────────────────────
+    # 使用与 Audiveris 切片管道相同的几何预处理流程（preprocess_geometry_for_omr），
+    # 保留 RGB 彩色（oemer 深度学习模型利用颜色信息），不做去噪/锐化，
+    # 以避免影响 oemer 深度学习模型的感知结果。
     omr_input_path = img_path
     omr_preprocessed_path: Optional[Path] = None
     if img_path.suffix.lower() in {'.png', '.jpg', '.jpeg'}:
-        preprocessed = preprocess_image_for_oemer(
+        preprocessed = preprocess_geometry_for_omr(
             img_path, output_dir, max_pixels=OEMER_MAX_PIXELS
         )
         if preprocessed is not None:
