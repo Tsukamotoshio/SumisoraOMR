@@ -143,6 +143,7 @@ class TUI:
 
     # ── Permission error screen ───────────────────────────────────────────────
 
+
     def _screen_permission_error(self, base_dir: Path) -> None:
         """Show a persistent permission error screen until the user presses a key."""
         while True:
@@ -162,6 +163,7 @@ class TUI:
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
+
     def run(self) -> None:
         base_dir = get_app_base_dir()
         setup_logging(base_dir)
@@ -170,6 +172,7 @@ class TUI:
         # Programs installed under C:\Program Files cannot write to the install
         # directory without Administrator privileges; detect this early so the
         # user sees a clear, persistent message instead of a brief crash.
+
         if not _is_base_dir_writable(base_dir):
             self._screen_permission_error(base_dir)
             return
@@ -248,12 +251,14 @@ class TUI:
         import dataclasses
         from .config import AppConfig, OMREngine
         from .oemer_runner import _detect_gpu_provider
+
         from .pipeline import process_bulk_input_to_jianpu
 
         base_dir = get_app_base_dir()
         editor_workspace_dir = base_dir / EDITOR_WORKSPACE_DIR_NAME
 
         # ── Engine selection ──────────────────────────────────────────────────
+
         self._header('选择识别引擎')
         self.console.print()
         self.console.print('  请选择 OMR（光学乐谱识别）引擎：')
@@ -294,6 +299,7 @@ class TUI:
             )
         self.console.print(
             '         [dim]GPU 优先级：DirectML (任意 GPU) > CUDA+cuDNN > CPU 回退[/dim]'
+
         )
         self.console.print()
         self._status_bar('按数字键选择引擎  │  ESC / b = 返回')
@@ -317,6 +323,7 @@ class TUI:
         config_with_engine = dataclasses.replace(self.config, omr_engine=selected_engine)
 
         # ── Conversion ────────────────────────────────────────────────────────
+
         self._header(f'开始五线谱转换  [dim]（{engine_display}）[/dim]')
         self.console.print()
         self.console.print(
@@ -582,6 +589,7 @@ class TUI:
             '    基于规则的传统 OMR 引擎，对高对比度印刷乐谱和 PDF 效果最佳\n'
             '  • [cyan]Oemer[/cyan]     — 手动指定，强制用于所有格式\n'
             '    基于深度学习的端到端引擎，对手机拍摄或光线不均匀图像更友好\n'
+
             '    使用前请确认已安装：pip install oemer\n\n'
             '[bold]简谱编辑器说明[/bold]\n'
             '  • 每次转换后，工具自动保留 OMR 识别的中间文件到 [cyan]editor-workspace[/cyan] 目录\n'

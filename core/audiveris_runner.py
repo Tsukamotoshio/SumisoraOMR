@@ -56,7 +56,6 @@ def prepare_audiveris_paths(input_path: Path, output_dir: Path) -> tuple[Path, P
     return safe_input_path, safe_output_dir, safe_input_path
 
 
-
 def _has_cjk_chars(text: str) -> bool:
     """Return True if *text* contains any CJK Unified Ideographs (U+4E00–U+9FFF)."""
     return any('\u4e00' <= ch <= '\u9fff' for ch in text)
@@ -344,3 +343,169 @@ def run_audiveris_batch(
             safe_remove_file(omr_preprocessed_path)
         if omr_rescaled_path is not None:
             safe_remove_file(omr_rescaled_path)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 切片 OMR 管道（Staff-row slicing + per-row Audiveris + MXL merge）
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _merge_mxl_files(
+    mxl_paths: 'list[Path]',
+    output_dir: Path,
+    stem: str,
+) -> 'Optional[Path]':
+    """用 music21 将多个 MusicXML 文件的小节顺序合并为单一乐谱文件。
+
+    每个 MXL 文件取第一个声部（Part 0），按顺序将其所有小节追加至输出乐谱。
+    小节编号连续重新排列，避免 music21 误判重复。
+
+    Parameters
+    ----------
+    mxl_paths  : 按谱行顺序排列的 MXL 路径列表。
+    output_dir : 合并结果输出目录。
+    stem       : 输出文件名前缀（不含扩展名）。
+
+    Returns
+    -------
+    Path  合并后的 musicxml 路径；失败时返回 None。
+    """
+    try:
+        from music21 import converter as m21conv, stream as m21stream
+
+        merged_part = m21stream.Part()
+        measure_number = 1
+        for mxl_path in mxl_paths:
+            try:
+                score = m21conv.parse(str(mxl_path))
+                part = score.parts[0] if score.parts else score.flatten()
+                for m in list(part.getElementsByClass('Measure')):
+                    m.number = measure_number
+                    measure_number += 1
+                    merged_part.append(m)
+            except Exception as exc:
+                log_message(f'  [切片合并] 跳过 {mxl_path.name}: {exc}', logging.WARNING)
+
+        if not list(merged_part.getElementsByClass('Measure')):
+            return None
+
+        merged_score = m21stream.Score()
+        merged_score.append(merged_part)
+        out_path = output_dir / f'{stem}_sliced_merged.musicxml'
+        merged_score.write('musicxml', fp=str(out_path))
+        log_message(
+            f'  [切片合并] 已合并 {len(mxl_paths)} 个谱行 → {out_path.name}'
+            f'（共 {measure_number - 1} 小节）'
+        )
+        return out_path
+    except Exception as exc:
+        log_message(f'  [切片合并] MXL 合并失败: {exc}', logging.WARNING)
+        return None
+
+
+def run_audiveris_sliced_batch(
+    input_path: Path,
+    output_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """切片增强版 Audiveris 批处理：双路预处理 → 切片 → 逐行旋转校正 → 逐行识别 → 合并。
+
+    双路设计
+    --------
+    • **编辑器参考图路径**（重视可读性）：
+      完整预处理（梯度修正 → 旋转校正 → 白边裁剪 → 去噪锐化 → SR → 降采样），
+      结果保存为 ``_omr_reference.png``，供 editor-workspace 展示。
+
+    • **Audiveris 输入路径**（重视识别率）：
+      几何轻量预处理（梯度修正 → 旋转校正 → 白边裁剪，保留 RGB，不做去噪/锐化），
+      让 Audiveris 自带的内部二值化器处理高质量原始信号。
+      在此图像上做切片，每片再做旋转校正后送入 Audiveris。
+
+    7 步流程
+    --------
+    1. 完整预处理 → ``_omr_reference.png``（编辑器参考）。
+    2. 几何轻量预处理 → ``_geo_input.png``（Audiveris 用，RGB）。
+    3. 在 **几何轻量图** 上切片（保持 cv2 线检测准确）。
+    4. 若切片不足 2 行，对几何轻量图整张识别。
+    5. 逐切片旋转校正。
+    6. 对每片调用 ``run_audiveris_batch(..., skip_preprocessing=True)``。
+    7. 收集 MXL → 合并；全部失败 → 回退整图识别。
+
+    对 PDF 输入及非 PNG/JPG 输入，直接回退 ``run_audiveris_batch()``。
+    """
+    if input_path.suffix.lower() not in {'.png', '.jpg', '.jpeg'}:
+        return run_audiveris_batch(input_path, output_dir)
+
+    if output_dir is None:
+        output_dir = get_app_base_dir() / 'audiveris-output'
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    from .image_preprocess import (
+        preprocess_image_for_omr,
+        preprocess_geometry_for_omr,
+        slice_staff_rows,
+        correct_slice_rotation,
+    )
+
+    # ── Step A: 完整预处理 → 编辑器参考图 ────────────────────────────────
+    full_preprocessed = preprocess_image_for_omr(input_path, output_dir)
+    ref_dest = output_dir / '_omr_reference.png'
+    if full_preprocessed is not None:
+        try:
+            shutil.copy2(str(full_preprocessed), str(ref_dest))
+        except OSError:
+            pass
+    log_message('  [切片OMR] 编辑器参考图已生成（完整预处理）。')
+
+    # ── Step B: 几何预处理 → Audiveris 输入 ──────────────────────────────
+    geo_path = preprocess_geometry_for_omr(input_path, output_dir)
+    if geo_path is None:
+        log_message('  [切片OMR] 几何预处理失败，使用原图作为 Audiveris 输入。', logging.WARNING)
+        geo_path = input_path
+
+    # ── Step C: 在几何图上切片 ────────────────────────────────────────────
+    slice_dir = output_dir / '_slices'
+    slices = slice_staff_rows(geo_path, slice_dir)
+
+    if len(slices) <= 1:
+        log_message('  [切片OMR] 未检测到可信的多谱行系统，对原始图像整张识别（内部完整预处理）。')
+        return run_audiveris_batch(input_path, output_dir, skip_preprocessing=False)
+
+    log_message(f'  [切片OMR] 检测到 {len(slices)} 个谱行，逐行旋转校正后送入 Audiveris...')
+
+    # ── Step D: 逐切片旋转校正 + Audiveris ───────────────────────────────
+    collected_mxl: list[Path] = []
+    for i, slice_path in enumerate(slices):
+        corrected = correct_slice_rotation(slice_path, slice_dir)
+        effective_slice = corrected if corrected is not None else slice_path
+
+        log_message(f'  [切片OMR] 处理第 {i + 1}/{len(slices)} 行: {effective_slice.name}')
+        row_out_dir = output_dir / f'_row_{i:03d}'
+        result_dir = run_audiveris_batch(
+            effective_slice, row_out_dir, skip_preprocessing=True
+        )
+        if result_dir is not None:
+            mxl = find_first_musicxml_file(result_dir, effective_slice.stem)
+            if mxl is not None:
+                collected_mxl.append(mxl)
+                log_message(f'  [切片OMR] 第 {i + 1} 行识别成功: {mxl.name}')
+            else:
+                log_message(
+                    f'  [切片OMR] 第 {i + 1} 行：Audiveris 完成但未找到 MXL，跳过。',
+                    logging.WARNING,
+                )
+        else:
+            log_message(f'  [切片OMR] 第 {i + 1} 行识别失败，跳过。', logging.WARNING)
+
+    if not collected_mxl:
+        log_message('  [切片OMR] 所有谱行识别均失败，回退原始图像整张识别。', logging.WARNING)
+        return run_audiveris_batch(input_path, output_dir, skip_preprocessing=False)
+
+    if len(collected_mxl) == 1:
+        return collected_mxl[0].parent
+
+    # ── Step E: 合并所有 MXL ──────────────────────────────────────────────
+    merged = _merge_mxl_files(collected_mxl, output_dir, input_path.stem)
+    if merged is None:
+        log_message('  [切片OMR] MXL 合并失败，回退原始图像整张识别。', logging.WARNING)
+        return run_audiveris_batch(input_path, output_dir, skip_preprocessing=False)
+
+    return output_dir

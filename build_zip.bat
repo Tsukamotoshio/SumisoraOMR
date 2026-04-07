@@ -6,6 +6,7 @@ set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%"
 
 set "APP_VERSION=0.2.1-experimental"
+
 set "APP_NAME=ConvertTool"
 set "ZIP_NAME=%APP_NAME%-Portable-%APP_VERSION%"
 set "STAGE_DIR=%BASE_DIR%zip-stage\%ZIP_NAME%"
@@ -58,6 +59,7 @@ if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
     echo [跳过] dist\%APP_NAME% 已存在，无需重新打包。
 ) else (
     echo [2/3] 正在准备 oemer 模型权重...
+
     set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
     if not exist "%PYTHON_CMD%" (
         set "PYTHON_CMD=py -3"
@@ -73,6 +75,7 @@ if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
     )
 
     echo [2/3] 正在构建可执行文件...
+
     call %PYTHON_CMD% -m PyInstaller --noconfirm --clean ConvertTool.spec
     if errorlevel 1 ( echo [ERROR] PyInstaller 打包失败。& exit /b 1 )
 )

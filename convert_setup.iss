@@ -1,5 +1,6 @@
 #define MyAppName "简谱转换工具"
 #define MyAppVersion "0.2.0-experimental"
+
 #define MyAppVersionNumeric "0.2.0.0"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "ConvertTool.exe"

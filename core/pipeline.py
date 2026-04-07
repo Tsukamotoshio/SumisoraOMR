@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from .audiveris_runner import run_audiveris_batch
+from .audiveris_runner import run_audiveris_batch, run_audiveris_sliced_batch
 from .config import (
     APP_VERSION,
     LOGGER,
@@ -93,7 +93,8 @@ def process_single_input_to_jianpu(
     # ── Audiveris (PDF and images) ────────────────────────────────────────────
 
     else:
-        omr_out = run_audiveris_batch(source_file, output_dir=file_temp_dir)
+        # 对栅格图像启用谱行切片识别以降低引擎全局布局压力；PDF/其他格式自动回退整图处理
+        omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
         engine_label = 'Audiveris'
 
     # ── Error reporting ────────────────────────────────────────────────────────
@@ -137,24 +138,23 @@ def process_single_input_to_jianpu(
         )
         return False
 
-    # ── Resolve editor workspace reference image ───────────────────────────────
-    # For image inputs: create a display-friendly reference (RGB, crop+rotate+contrast)
-    # so the editor shows a clear, readable image instead of any processed version.
-    # For PDF inputs: save the original PDF directly (already human-readable).
+    # For image inputs, use the OMR-preprocessed image saved by run_audiveris_sliced_batch
+    # as the editor-workspace reference (shows exactly what Audiveris saw: gradient-corrected,
+    # deskewed, cropped, denoised).  Falls back to create_display_reference() then raw file.
+    # NOTE: reference image is always saved in file_temp_dir (the output_dir passed to
+    # run_audiveris_sliced_batch), regardless of where the MXL result ends up.
     if _IS_IMAGE:
-        from .image_preprocess import create_display_reference
-        effective_source = create_display_reference(source_file, file_temp_dir) or source_file
+        omr_ref = file_temp_dir / '_omr_reference.png'
+        if not omr_ref.exists():
+            omr_ref = omr_out / '_omr_reference.png'  # fallback: try the returned dir
+        if omr_ref.exists():
+            effective_source = omr_ref
+        else:
+            from .image_preprocess import create_display_reference
+            effective_source = create_display_reference(source_file, file_temp_dir) or source_file
     else:
         effective_source = source_file
 
-
-    # Audit trail: prefer the _omr_reference.png from audiveris_runner (full preprocessing)
-    # over the create_display_reference result (lighter preprocessing).
-    omr_ref = file_temp_dir / '_omr_reference.png'
-    if not omr_ref.exists():
-        omr_ref = omr_out / '_preprocessed_ref.png'
-    if omr_ref.exists():
-        effective_source = omr_ref
 
     return generate_jianpu_pdf_from_mxl(
         mxl_file,
@@ -292,6 +292,7 @@ def process_bulk_input_to_jianpu(
         log_message(f'[引擎选择] 使用 {engine.value.capitalize()} 引擎。')
 
 
+
     output_dir.mkdir(parents=True, exist_ok=True)
     duplicate_names = collect_duplicate_names(source_files, output_dir, generate_midi, history)
     skip_all_existing = confirm_skip_all_existing(duplicate_names)
@@ -309,6 +310,19 @@ def process_bulk_input_to_jianpu(
             summary.skipped += 1
             summary.skipped_files.append(source_file.name)
             continue
+
+        # File will be (re-)processed — remove any stale editor-workspace entries for
+        # this title so the workspace always reflects the latest recognition result.
+        # Files that were *skipped* above are intentionally left untouched.
+        if editor_workspace_dir is not None and editor_workspace_dir.exists():
+            safe_title = source_file.stem
+            for _ch in r'\/:*?"<>|':
+                safe_title = safe_title.replace(_ch, '_')
+            for _stale in editor_workspace_dir.glob(f'{safe_title}.*'):
+                try:
+                    _stale.unlink()
+                except OSError:
+                    pass
 
         job_token = hashlib.sha1(str(source_file).encode('utf-8', errors='ignore')).hexdigest()[:8]
         file_temp_dir = temp_dir / f'job_{index:03d}_{job_token}'
