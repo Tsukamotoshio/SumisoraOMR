@@ -1011,7 +1011,29 @@ def slice_staff_rows(
     if not _HAS_CV2 or not _HAS_NUMPY:
         return [image_path]
 
-    img = _cv2.imread(str(image_path))
+    # cv2.imread 在 Windows 上无法读取含非 ASCII 字符的路径（含父目录）
+    # 若路径含中文等非 ASCII 字符，先复制到系统 TEMP 目录读取
+    _cv2_path = image_path
+    _cv2_tmp: 'Optional[Path]' = None
+    try:
+        str(image_path.resolve()).encode('ascii')
+    except UnicodeEncodeError:
+        import tempfile, hashlib as _hs
+        _h = _hs.sha1(str(image_path.resolve()).encode('utf-8')).hexdigest()[:8]
+        _cv2_tmp = Path(tempfile.gettempdir()) / f'slice_in_{_h}{image_path.suffix.lower()}'
+        try:
+            import shutil as _sh
+            _sh.copy2(str(image_path), str(_cv2_tmp))
+            _cv2_path = _cv2_tmp
+        except Exception:
+            _cv2_tmp = None
+
+    img = _cv2.imread(str(_cv2_path))
+    if _cv2_tmp is not None:
+        try:
+            _cv2_tmp.unlink()
+        except Exception:
+            pass
     if img is None:
         log_message(f'[切片] cv2 无法读取图像: {image_path}', logging.WARNING)
         return [image_path]

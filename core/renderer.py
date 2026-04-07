@@ -666,7 +666,7 @@ def generate_jianpu_pdf_from_mxl(
 
         # Preserve editor workspace files when the conversion succeeded
         if result and editor_workspace_dir is not None:
-            _save_editor_files(title, txt_path, source_path, editor_workspace_dir, validation_errors)
+            _save_editor_files(title, txt_path, source_path, editor_workspace_dir)
 
         return result
     except Exception as exc:

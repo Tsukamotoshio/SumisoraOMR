@@ -92,6 +92,24 @@ def _copy_preprocessed_ref(src: Optional[Path], dest_dir: Path) -> None:
         pass
 
 
+def _maybe_merge_mvt_files(job_dir: Path) -> None:
+    """若 *job_dir* 中存在多个 Audiveris mvt*.mxl 文件，将其合并为一个完整 MusicXML。
+
+    Audiveris 对单张多谱系统图像的处理有时会将每个谱系统导出为独立 movement 文件
+    （xxxx.mvt1.mxl, xxxx.mvt2.mxl…）。pipeline 通过 find_first_musicxml_file 只取
+    第一个文件，会丢失后续系统的音符。此函数将所有 mvt 文件顺序合并为一个
+    ``{stem}_merged.musicxml`` 文件，以便 pipeline 得到完整乐谱内容。
+
+    若只有 1 个 mxl 文件或合并失败，保持不变（不影响后续流程）。
+    """
+    mvt_files = sorted(job_dir.glob('*.mvt*.mxl'))
+    if len(mvt_files) < 2:
+        return
+    merged = _merge_mxl_files(mvt_files, job_dir, mvt_files[0].stem.split('.')[0])
+    if merged is not None:
+        log_message(f'  [mvt 合并] 已将 {len(mvt_files)} 个 mvt 文件合并 → {merged.name}')
+
+
 def run_audiveris_batch(
     input_path: Path,
     output_dir: Optional[Path] = None,
@@ -183,6 +201,7 @@ def run_audiveris_batch(
             if return_code != 0:
                 log_message('Audiveris 返回了非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
             log_message('Audiveris 执行完成。')
+            _maybe_merge_mvt_files(safe_output_dir)
             _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
             return safe_output_dir
 
@@ -207,6 +226,7 @@ def run_audiveris_batch(
                     log_message(f'第 {page_number} 页无法识别为有效五线谱，已跳过。{page_reason}{detail[:240]}', logging.WARNING)
             if success_pages:
                 log_message(f'Audiveris 已按页完成导出，成功页: {success_pages}')
+                _maybe_merge_mvt_files(safe_output_dir)
                 _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
                 return safe_output_dir
 
@@ -235,6 +255,7 @@ def run_audiveris_batch(
                 if r2_code != 0:
                     log_message('重试时 Audiveris 返回非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
                 log_message('使用原始图像重试成功。')
+                _maybe_merge_mvt_files(safe_output_dir)
                 _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
                 return safe_output_dir
             # Update combined for the next error-classification check
@@ -289,6 +310,7 @@ def run_audiveris_batch(
                         logging.WARNING,
                     )
                 log_message('禁用 OCR 语言约束重试成功。')
+                _maybe_merge_mvt_files(safe_output_dir)
                 _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
                 return safe_output_dir
             combined = (r3_out or '') + '\n' + (r3_err or '')

@@ -171,6 +171,8 @@ def _run_oemer_inprocess(image_path: Path, output_dir: Path) -> Optional[Path]:
     _patch_ort_session_caching()
     # ── 打 build_system 容错补丁（防止 track 越界 IndexError）────────────────
     _patch_oemer_build_system_resilience()
+    # ── 打 bbox.merge_nearby_bbox 容错补丁（防止空列表导致 IndexError）────────
+    _patch_oemer_bbox_merge()
 
     # ── 将非 ASCII 路径重命名为 ASCII 安全路径（避免 OpenCV 崩溃）──────────────
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -488,31 +490,85 @@ def _patch_oemer_build_system_resilience() -> None:
         )
 
 
-def _ensure_ascii_path(img_path: Path, temp_dir: Path) -> Path:
-    """若文件名含非 ASCII 字符（如中文），复制到临时 ASCII 名称的路径后返回。
+# ── oemer bbox.merge_nearby_bbox 容错补丁（防止空/单元素列表 IndexError）──────────────────
 
-    oemer 内部使用 OpenCV cv2.imread()，在 Windows 上无法读取含非 ASCII 字符的路径，
-    会返回 None 并导致 AttributeError 崩溃。此函数在调用 oemer 前做一次安全复制。
+_Oemer_Bbox_Patched: bool = False
+
+
+def _patch_oemer_bbox_merge() -> None:
+    """Monkey-patch oemer.bbox.merge_nearby_bbox 以防止空列表导致的 IndexError。
+
+    根因：
+        merge_nearby_bbox 中 ``centers = np.array([...]) / 2`` 当 bboxes 为空列表时
+        会产生形状 (0,) 的一维数组，后续 ``centers[:, 0]`` 二维索引操作触发
+        IndexError: too many indices for array。
+        常见于 parse_clefs_keys 调用时谱面无调号符号（如 C 大调）。
+
+    补丁策略：
+        当 bboxes 长度 < 2 时直接返回原列表（0 或 1 个元素无需合并）。
+    """
+    global _Oemer_Bbox_Patched
+    if _Oemer_Bbox_Patched:
+        return
+    try:
+        import oemer.bbox as _bbox
+        _orig_merge = _bbox.merge_nearby_bbox
+
+        def _safe_merge_nearby_bbox(bboxes, distance, x_factor=1, y_factor=1):
+            if len(bboxes) < 2:
+                return list(bboxes)  # 0 或 1 个元素无需聚类合并
+            return _orig_merge(bboxes, distance, x_factor=x_factor, y_factor=y_factor)
+
+        _bbox.merge_nearby_bbox = _safe_merge_nearby_bbox
+        # 同步更新已导入此函数的 symbol_extraction 模块引用
+        try:
+            import oemer.symbol_extraction as _se
+            if hasattr(_se, 'merge_nearby_bbox'):
+                _se.merge_nearby_bbox = _safe_merge_nearby_bbox
+        except Exception:
+            pass
+        _Oemer_Bbox_Patched = True
+        log_message('[oemer] bbox.merge_nearby_bbox 容错补丁已应用（防止空列表 IndexError）', logging.DEBUG)
+    except Exception as exc:
+        log_message(
+            f'[oemer] bbox 补丁应用失败（不影响正常运行）: {exc}',
+            logging.DEBUG,
+        )
+
+
+def _ensure_ascii_path(img_path: Path, temp_dir: Path) -> Path:
+    """若完整路径（含父目录）含非 ASCII 字符，则复制到 ASCII 安全路径后返回。
+
+    oemer 内部使用 OpenCV cv2.imread()，在 Windows 上无法读取完整路径中含非 ASCII
+    字符（如中文目录名）的文件，会返回 None 并导致 AttributeError 崩溃。
+    本函数检查完整绝对路径（不只是文件名），必要时将文件复制到系统 TEMP 目录
+    （Windows 上 %TEMP% 路径永远是 ASCII）。
     """
     try:
-        img_path.name.encode('ascii')
-        return img_path  # 全 ASCII，无需复制
+        str(img_path.resolve()).encode('ascii')
+        return img_path  # 完整路径全 ASCII，无需复制
     except UnicodeEncodeError:
         pass
     import hashlib
-    name_hash = hashlib.sha1(img_path.name.encode('utf-8')).hexdigest()[:8]
+    name_hash = hashlib.sha1(str(img_path.resolve()).encode('utf-8')).hexdigest()[:8]
     safe_name = f'oemer_in_{name_hash}{img_path.suffix.lower()}'
-    safe_path = temp_dir / safe_name
+    # 若 temp_dir 本身含非 ASCII 路径（如父目录有中文），回退到系统 TEMP 目录
     try:
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        str(temp_dir.resolve()).encode('ascii')
+        safe_dir = temp_dir
+    except UnicodeEncodeError:
+        safe_dir = Path(tempfile.gettempdir())
+    safe_path = safe_dir / safe_name
+    try:
+        safe_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(img_path), str(safe_path))
         log_message(
-            f'[oemer] 文件名含非 ASCII 字符，临时重命名以支持 OpenCV 读取：'
-            f'{img_path.name} → {safe_name}'
+            f'[oemer] 路径含非 ASCII 字符，临时复制到 ASCII 安全位置以支持 OpenCV 读取：'
+            f'... → {safe_path}'
         )
         return safe_path
     except Exception as exc:
-        log_message(f'[oemer] 临时重命名失败，继续尝试原始路径: {exc}', logging.WARNING)
+        log_message(f'[oemer] 临时复制失败，继续尝试原始路径: {exc}', logging.WARNING)
         return img_path
 
 

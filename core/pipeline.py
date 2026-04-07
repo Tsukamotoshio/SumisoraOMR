@@ -68,12 +68,13 @@ def process_single_input_to_jianpu(
     """
     _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
 
-    # Resolve effective engine: AUTO picks Oemer for images, Audiveris for PDFs.
+    # Resolve effective engine: AUTO uses Audiveris for all formats.
+    # Audiveris already falls back to Oemer when it fails, so this gives the best
+    # results for clean printed scores while still handling complex/low-quality images.
     if engine is OMREngine.AUTO:
-        effective_engine = OMREngine.OEMER if _IS_IMAGE else OMREngine.AUDIVERIS
+        effective_engine = OMREngine.AUDIVERIS
         log_message(
-            f'  [自动路由] {"图片" if _IS_IMAGE else "PDF"} → '
-            f'{"Oemer" if _IS_IMAGE else "Audiveris"}'
+            f'  [自动路由] {"图片" if _IS_IMAGE else "PDF"} → Audiveris（失败时自动回退 Oemer）'
         )
     else:
         effective_engine = engine
