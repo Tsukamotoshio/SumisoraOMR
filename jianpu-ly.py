@@ -969,7 +969,7 @@ class NoteheadMarkup:
             if not (tremolo and placeholder_chord.startswith("<")): aftrlast = " ~"
         elif not tremolo:
             # For attaching lyrics to long notes:
-            b4last,aftrlast = r"\once \override Tie #'transparent = ##t \once \override Tie #'staff-position = #0 "," ~"
+            b4last,aftrlast = r"\once \override Tie.transparent = ##t \once \override Tie.staff-position = #0 "," ~"
     if figures=="x" and western: ret = r"\once \override NoteHead.style = #'cross \once \override NoteHead.no-ledgers = ##t " + ret
     if inRestHack: ret += " } " # end temporary voice for the "-" (non)-note
     elif tieEnd: ret += ' '+tieEnd # end of JianpuTie curve

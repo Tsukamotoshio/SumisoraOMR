@@ -417,19 +417,19 @@ This pathway does not require LilyPond and is used as a fallback if LilyPond is 
 ```
              ┌──────────────┐
              │  MAIN_MENU   │◀──────────────────────┐
-             └──────┬───────┘                       │
-         ┌──────────┼──────────┬────────────┐       │
-         ▼          ▼          ▼            ▼       │
-   [1] CONVERT  [2] EDITOR  [3] CLEAR  [4] EXIT     │
-         │          │          │                    │
-         │          │          └──── clear history ─┤
-         │          │                               │
-         │     ┌────▼──────┐                        │
-         │     │ FILE_LIST │                        │
-         │     └────┬──────┘                        │
-         │          │ (select file)                 │
-         │     ┌────▼──────┐                        │
-         │     │EDIT_PROMPT│──── re-render PDF ─────┘
+             └──────┬───────┘                        │
+         ┌──────────┼──────────┬────────────┐        │
+         ▼          ▼          ▼            ▼        │
+   [1] CONVERT  [2] EDITOR  [3] CLEAR  [4] EXIT      │
+         │          │          │                     │
+         │          │          └──── clear history ──┤
+         │          │                                │
+         │     ┌────▼──────┐                         │
+         │     │ FILE_LIST │                         │
+         │     └────┬──────┘                         │
+         │          │ (select file)                  │
+         │     ┌────▼──────┐                         │
+         │     │EDIT_PROMPT│──── re-render PDF ──────┤
          │     └───────────┘
          │
     ┌────▼─────────────────────┐
@@ -563,11 +563,12 @@ class AppConfig:
 After installation, the application directory has the following structure:
 
 ```
-ConvertTool-0.1.3/
-├── ConvertTool.exe              ← PyInstaller-bundled executable
+ConvertTool-0.2.0/
+├── ConvertTool.exe              ← PyInstaller-bundled executable (or app.py for source)
 ├── Input/                       ← User places input files here
 ├── Output/                      ← Converted outputs are saved here
-├── editor-workspace/            ← Intermediate .jianpu.txt files
+├── xml-scores/                  ← MusicXML files from recognition (auto-created; used by Transposer)
+├── editor-workspace/            ← Intermediate .jianpu.txt / .ly / .pdf files
 ├── logs/                        ← Runtime log files
 ├── conversion_history.json      ← Persistent conversion cache
 ├── package-assets/
@@ -576,7 +577,7 @@ ConvertTool-0.1.3/
 │   ├── waifu2x-runtime/         ← waifu2x-ncnn-vulkan executable + models
 │   └── tessdata/                ← Tesseract language data (used by Audiveris)
 ├── jdk/                         ← Bundled OpenJDK 21
-└── 读我.txt / README_EN.txt     ← User documentation
+└── 读我.md / README_EN.txt      ← User documentation
 ```
 
 ### 8.2 Runtime Search Strategy
@@ -705,10 +706,10 @@ The TUI is implemented as an explicit state machine rather than a linear input-p
 ┌─────────────┐     Files      ┌────────────────────────────────────────────────┐
 │  Input/     │───────────────▶│                 pipeline.main()               │
 │  (PDF/PNG/  │                │                                                │
-│   JPG)      │                │  ┌──────────┐   ┌─────────────┐                │
+│   JPG)      │                │  ┌──────────┐    ┌─────────────┐               │
 └─────────────┘                │  │  Hash    │──▶│  History    │               │
-                               │  │  check   │   │  lookup     │                │
-                               │  └──────────┘   └──────┬──────┘                │
+                               │  │  check   │    │  lookup     │               │
+                               │  └──────────┘    └──────┬──────┘               │
                                │                        │ [miss]                │
                                │               ┌────────▼──────────────────┐    │
                                │               │  image_preprocess.py      │    │

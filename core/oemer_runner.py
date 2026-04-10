@@ -14,6 +14,9 @@ import logging
 import re
 import shutil
 import subprocess
+
+# 防止子进程在 Windows 上弹出控制台窗口（GUI 分发版）
+_WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 import sys
 import tempfile
 import time
@@ -28,7 +31,7 @@ from .config import (
 from .image_preprocess import (
     OEMER_MAX_PIXELS,
     fit_image_within_pixel_limit,
-    preprocess_geometry_for_omr,
+    preprocess_image_for_oemer,
 )
 from .utils import (
     find_first_musicxml_file,
@@ -167,7 +170,7 @@ def _run_oemer_inprocess(image_path: Path, output_dir: Path) -> Optional[Path]:
         log_message(f'[oemer] 无法导入 oemer 包: {exc}', logging.ERROR)
         return None
 
-    # ── 首次调用时完成 ONNX 会话 monkey-patch（后续调用为 no-op）──────────────
+    # ── 首次调用时完成 ONNX Runtime 提供程序初始化（后续调用为 no-op）──────────
     _patch_ort_session_caching()
     # ── 打 build_system 容错补丁（防止 track 越界 IndexError）────────────────
     _patch_oemer_build_system_resilience()
@@ -225,7 +228,7 @@ def _run_oemer_inprocess(image_path: Path, output_dir: Path) -> Optional[Path]:
             stripped = line.strip()
             if stripped and not any(n in stripped for n in _ONNX_CUDA_NOISE):
                 log_message(f'[oemer] {stripped}', logging.DEBUG)
-        # 清理本次图片的层数据（ONNX 会话保留在 _ORT_SESSION_CACHE）
+        # 清理本次图片的层数据（ONNX 会话已随识别完成释放，不保留跨文件缓存）
         try:
             _oemer_ete.clear_data()
         except Exception:
@@ -341,21 +344,20 @@ def _detect_gpu_provider() -> str:
         return '未知（onnxruntime 未安装）'
 
 
-# ── ONNX Runtime 会话缓存（跨文件复用模型，避免每文件重新初始化）──────────────────────────
-# 关键：oemer 的 inference.py 每次调用都会重新创建 InferenceSession（无缓存），
-# 导致每个文件需要 3-5 分钟的 ONNX/TRT 初始化开销。
-# 通过 monkey-patch onnxruntime.InferenceSession 为带缓存的工厂函数，
-# 同一进程内后续文件直接复用已创建的 Session，加载时间降至毫秒级。
+# ── ONNX Runtime 执行提供程序初始化（仅执行一次，每次识别均完整重新加载模型）──────────────
+# 注意：不复用 InferenceSession；每次识别都创建全新会话以避免跨文件状态污染。
+# Monkey-patch 的目的仅限于：
+#   1. 将 oemer 硬编码的 CUDA provider 替换为实际可用的 provider；
+#   2. 注入稳定性优先的 SessionOptions（禁止内存预分配、顺序执行）。
 
-_ORT_SESSION_CACHE: dict = {}   # onnx_model_absolute_path → InferenceSession
-_ORT_PATCHED: bool = False      # 是否已完成 monkey-patch
+_ORT_PATCHED: bool = False      # 是否已完成 provider 初始化 patch
 
 
 def _patch_ort_session_caching() -> None:
-    """Monkey-patch onnxruntime.InferenceSession 为带缓存的工厂函数（进程生命期内一次性操作）。
+    """初始化 ONNX Runtime 执行提供程序并注入稳定性选项（进程生命期内一次性操作）。
 
-    同时将 oemer 硬编码的 CUDA provider 替换为实际可用的 provider，
-    避免因 cuDNN 缺失而导致的长时间初始化探测。
+    保留函数名以避免修改外部调用点。每次进程内识别均创建全新会话（无缓存），
+    确保文件间模型状态完全隔离。
     """
     global _ORT_PATCHED
     if _ORT_PATCHED:
@@ -378,13 +380,9 @@ def _patch_ort_session_caching() -> None:
                 logging.WARNING,
             )
 
-        def _cached_session(model_path_or_bytes, sess_options=None, providers=None, **kwargs):
-            """Session factory with per-process caching — avoids re-init across files."""
-            key = str(model_path_or_bytes)
-            if key in _ORT_SESSION_CACHE:
-                log_message(f'[oemer] 复用缓存 ONNX 会话: {Path(key).name}', logging.DEBUG)
-                return _ORT_SESSION_CACHE[key]
-            log_message(f'[oemer] 首次加载 ONNX 模型: {Path(key).name}')
+        def _fresh_session(model_path_or_bytes, sess_options=None, providers=None, **kwargs):
+            """Session factory — creates a fresh InferenceSession each call (no caching)."""
+            log_message(f'[oemer] 加载 ONNX 模型: {Path(str(model_path_or_bytes)).name}')
             # 构建稳定性优先的会话选项，防止 GPU 过载导致系统冻结或蓝屏：
             #   enable_mem_pattern=False  — 禁止 DML/CUDA 按历史模式预分配 GPU 内存，
             #                              避免初始化时一次性耗尽显存。
@@ -392,16 +390,14 @@ def _patch_ort_session_caching() -> None:
             stable_opts = rt.SessionOptions()
             stable_opts.enable_mem_pattern = False
             stable_opts.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL
-            sess = _real_cls(model_path_or_bytes, sess_options=stable_opts,
+            return _real_cls(model_path_or_bytes, sess_options=stable_opts,
                              providers=_preferred)
-            _ORT_SESSION_CACHE[key] = sess
-            return sess
 
-        rt.InferenceSession = _cached_session
+        rt.InferenceSession = _fresh_session
         _ORT_PATCHED = True
-        log_message('[oemer] ONNX 会话缓存已启用（批次内跨文件复用模型）')
+        log_message('[oemer] ONNX Runtime 提供程序已初始化（每次识别均完整重新加载模型）')
     except Exception as exc:
-        log_message(f'[oemer] ONNX 会话缓存初始化失败，将使用默认设置: {exc}', logging.WARNING)
+        log_message(f'[oemer] ONNX Runtime 初始化失败，将使用默认设置: {exc}', logging.WARNING)
 
 
 # ── oemer build_system 容错补丁（防止 track 越界 IndexError）─────────────────────────────
@@ -594,6 +590,7 @@ def _run_oemer_subprocess(cmd: List[str], timeout_seconds: int):
             text=True,
             encoding='utf-8',
             errors='replace',
+            creationflags=_WIN_NO_WINDOW,
         )
     except Exception as exc:
         stdout_f.close()
@@ -747,14 +744,15 @@ def run_oemer_batch(input_path: Path, output_dir: Optional[Path] = None) -> Opti
     else:
         img_path = input_path
 
-    # ── 图像预处理（与 Audiveris 统一：梯度修正 + 旋转校正 + 白边裁剪）──────────────────────
-    # 使用与 Audiveris 切片管道相同的几何预处理流程（preprocess_geometry_for_omr），
-    # 保留 RGB 彩色（oemer 深度学习模型利用颜色信息），不做去噪/锐化，
-    # 以避免影响 oemer 深度学习模型的感知结果。
+    # ── 图像预处理（oemer 专用预设：内容裁剪 + 梯度修正 + 低分辨率 SR 放大）─────────────────
+    # 使用 preprocess_image_for_oemer：
+    #   · 保留 RGB 彩色（oemer 深度学习模型利用颜色信息，不做灰度转换）
+    #   · 短边 < 1200px 时自动调用 waifu2x 2× 超分辨率，防止模型只检出首行谱线
+    #   · 不做去噪/锐化，减少引入影响深度学习模型感知的伪影
     omr_input_path = img_path
     omr_preprocessed_path: Optional[Path] = None
     if img_path.suffix.lower() in {'.png', '.jpg', '.jpeg'}:
-        preprocessed = preprocess_geometry_for_omr(
+        preprocessed = preprocess_image_for_oemer(
             img_path, output_dir, max_pixels=OEMER_MAX_PIXELS
         )
         if preprocessed is not None:

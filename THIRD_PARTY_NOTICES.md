@@ -70,6 +70,19 @@ This package includes or invokes the following third-party components:
 - Documentation: <https://rich.readthedocs.io/>
 - Note: Used for the terminal UI (TUI) state machine — panels, colour markup,
   and styled console output.
+
+## Flet
+- Version: `0.84`
+- License: Apache-2.0
+- Upstream: <https://github.com/flet-dev/flet>
+- Documentation: <https://flet.dev/>
+- Note: Used as the GUI framework for the desktop application.
+
+## PyMuPDF (fitz)
+- License: AGPL-3.0 (free tier) / commercial
+- Upstream: <https://github.com/pymupdf/PyMuPDF>
+- Note: Used for in-memory PDF page rendering in the preview and magnifier
+  components. Invoked only at runtime; not bundled.
 ---
 
 ## Important note

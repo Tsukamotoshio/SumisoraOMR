@@ -19,6 +19,7 @@ from .config import (
 )
 from .jianpu_core import (
     build_jianpu_ly_text,
+    build_jianpu_ly_text_from_measures,
     choose_measures_per_line,
     extract_jianpu_measures,
     format_jianpu_note_text,
@@ -398,6 +399,25 @@ def _ensure_tagline_suppressed(text: str) -> str:
     return text
 
 
+def _fix_deprecated_override_syntax(text: str) -> str:
+    r"""Convert deprecated LilyPond 2.24 property-path syntax to dot notation.
+
+    Old (deprecated since LilyPond 2.24):  \override Foo #'bar = ...
+    New (required in LilyPond 2.25+):       \override Foo.bar = ...
+
+    Handles both \override and \tweak, with or without \once / \temporary prefix.
+    This is a pure text substitution — safe to apply to any generated .ly content.
+    """
+    # Pattern: ClassName followed by whitespace then #'property-name
+    # Replace with dot notation: ClassName.property-name
+    # Covers: Slur, Tie, Beam, NoteHead, Rest, ... and any kebab-case property
+    return re.sub(
+        r'(\b[A-Z][A-Za-z]+)\s+#\'([a-z][a-z0-9-]*)',
+        r'\1.\2',
+        text,
+    )
+
+
 def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics_lines: Optional[list[str]] = None) -> None:
     """
     Post-process a jianpu-ly .ly file: set title, strip 5-line staves,
@@ -410,6 +430,9 @@ def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics
     title_markup = build_lilypond_title_markup(preferred_title)
     lyrics_markup = build_lilypond_lyrics_markup(lyrics_lines)
     text = ly_path.read_text(encoding='utf-8', errors='ignore')
+
+    # Convert deprecated #'property syntax to dot notation (LilyPond 2.24+)
+    text = _fix_deprecated_override_syntax(text)
 
     if '% === BEGIN JIANPU STAFF ===' in text and '% === END JIANPU STAFF ===' in text:
         preamble = text.split('\\score {', 1)[0]
@@ -512,6 +535,104 @@ def render_score_to_jianpu_pdf(
         return True
 
     return False
+
+
+def generate_jianpu_pdf_from_dual_mxl(
+    mxl_oemer: Path,
+    mxl_audiveris: Path,
+    output_pdf_path: Path,
+    temp_dir: Path,
+    midi_output_path: Optional[Path] = None,
+    preferred_title: Optional[str] = None,
+    source_path: Optional[Path] = None,
+    editor_workspace_dir: Optional[Path] = None,
+) -> bool:
+    """融合两个 OMR 引擎的 MusicXML 输出，生成简谱 PDF。
+
+    调用 ``core.omr_fusion.merge_dual_omr_results`` 将 Oemer 与 Audiveris 的
+    识别结果在音符级别进行置信度融合，然后走与单引擎完全相同的渲染管道。
+    若融合失败则回退至使用 Oemer 单引擎结果。
+    """
+    from .omr_fusion import merge_dual_omr_results
+
+    title = (preferred_title or output_pdf_path.stem or 'Score').strip()
+    txt_path = temp_dir / f'{title}.jianpu.txt'
+    ly_path  = temp_dir / f'{title}.jianpu.ly'
+
+    result = merge_dual_omr_results(mxl_oemer, mxl_audiveris)
+    if result is None:
+        log_message('[双引擎] 融合失败，回退到 Oemer 单引擎结果。', logging.WARNING)
+        return generate_jianpu_pdf_from_mxl(
+            mxl_oemer, output_pdf_path, temp_dir, midi_output_path,
+            preferred_title, source_path, editor_workspace_dir,
+        )
+
+    merged_measures, time_sig, tonic_name, stats = result
+    log_message(f'  [双引擎] {stats}')
+
+    try:
+        # 从融合后的小节直接构建 jianpu-ly 文本
+        txt_content = build_jianpu_ly_text_from_measures(
+            merged_measures, time_sig, tonic_name, title
+        )
+        txt_path.write_text(txt_content, encoding='utf-8')
+
+        # 为 reportlab 备用路径构建 header_lines
+        key_header = f'1={tonic_name}'
+        header_lines: list[str] = [f'{key_header} {time_sig}', '']
+        mpl = choose_measures_per_line(merged_measures)
+        for i in range(0, len(merged_measures), mpl):
+            line_meas = merged_measures[i:i + mpl]
+            measure_texts = [
+                ' '.join(format_jianpu_note_text(n) for n in m)
+                for m in line_meas
+            ]
+            header_lines.append(' | '.join(measure_texts) + ' |')
+
+        lyrics_lines = collect_preserved_lyrics_lines(None, source_path)
+
+        # ── 尝试 LilyPond 路径 ────────────────────────────────────────────
+        rendered = False
+        if render_jianpu_ly(txt_path, ly_path):
+            sanitize_generated_lilypond_file(ly_path, title, lyrics_lines)
+            pdf_path = render_lilypond_pdf(ly_path)
+            if pdf_path is not None:
+                copy_generated_pdf(pdf_path, output_pdf_path)
+                log_message(f'[双引擎] 已通过 LilyPond 生成融合简谱 PDF: {output_pdf_path.name}')
+                rendered = True
+
+        # ── reportlab 备用路径 ────────────────────────────────────────────
+        if not rendered:
+            font_name = register_pdf_font()
+            try:
+                create_pdf(output_pdf_path, title, merged_measures, header_lines, font_name, lyrics_lines)
+                log_message(f'[双引擎] 已生成融合简谱 PDF (reportlab): {output_pdf_path.name}')
+                rendered = True
+            except Exception as exc:
+                log_message(f'[双引擎] reportlab 渲染失败: {exc}', logging.WARNING)
+
+        if not rendered:
+            log_message('[双引擎] 所有渲染路径均失败。', logging.ERROR)
+            return False
+
+        # ── MIDI 输出（从融合小节重建 music21 Score）────────────────────
+        if midi_output_path is not None:
+            jianpu_score = build_score_from_jianpu_measures(merged_measures, time_sig)
+            if not render_midi_from_score(jianpu_score, midi_output_path):
+                log_message('[双引擎] MIDI 生成失败，跳过。', logging.WARNING)
+
+        # ── 编辑器工作区 ──────────────────────────────────────────────────
+        if editor_workspace_dir is not None:
+            _save_editor_files(title, txt_path, source_path, editor_workspace_dir)
+
+        return True
+
+    except Exception as exc:
+        log_message(f'[双引擎] 融合渲染异常: {exc}', logging.WARNING)
+        return False
+    finally:
+        safe_remove_file(txt_path)
+        safe_remove_file(ly_path)
 
 
 # ── Editor workspace helpers ─────────────────────────────────────────────────

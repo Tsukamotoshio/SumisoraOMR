@@ -34,6 +34,25 @@ def _is_base_dir_writable(base_dir: Path) -> bool:
 # 低层输入辅助
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _flush_console_input_buffer() -> None:
+    """Discard any pending characters in the Windows console input buffer.
+
+    This prevents keystroke "ghosts" from a previous TUI session (or from the
+    Enter key that launched the program) from being read by the first
+    _read_single_key() call.  No-op on non-Windows or if the handle is invalid.
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        STD_INPUT_HANDLE = -10
+        handle = ctypes.windll.kernel32.GetStdHandle(STD_INPUT_HANDLE)
+        if handle and handle != ctypes.c_void_p(-1).value:
+            ctypes.windll.kernel32.FlushConsoleInputBuffer(handle)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _read_single_key() -> str:
     """Read exactly one keypress (no Enter required) on Windows.
 
@@ -176,6 +195,12 @@ class TUI:
         if not _is_base_dir_writable(base_dir):
             self._screen_permission_error(base_dir)
             return
+
+        # Clear any keystrokes that collected in the console input buffer
+        # before the TUI appeared (e.g. the Enter press that launched the
+        # program, or residual input from a previous session in the same
+        # terminal window).
+        _flush_console_input_buffer()
 
         while self.running:
             try:
