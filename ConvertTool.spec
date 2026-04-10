@@ -1,10 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
+import certifi
+import os
 
 datas = []
 binaries = []
 hiddenimports = []
+
+# ── SSL 证书：解决部分精简版系统或受限网络下 [SSL: CERTIFICATE_VERIFY_FAILED] 错误
+datas += [(certifi.where(), 'certifi')]
 
 # ── 核心依赖 ──────────────────────────────────────────────────────────────────
 hiddenimports += collect_submodules('reportlab')
@@ -37,10 +42,22 @@ hiddenimports += collect_submodules('sklearn')
 # ── scipy（oemer 数值计算依赖）───────────────────────────────────────────────
 hiddenimports += collect_submodules('scipy')
 
+# ── Flet GUI 框架（桌面运行时 + 所有子模块）─────────────────────────────────────
+tmp_ret = collect_all('flet')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('flet_desktop')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+hiddenimports += collect_submodules('flet')
+hiddenimports += collect_submodules('flet_desktop')
+
+# ── GUI 层（gui/ 包 —— 页面、组件、主题、状态）────────────────────────────────
+hiddenimports += collect_submodules('gui')
+datas += [('gui', 'gui')]
+
 
 a = Analysis(
-    ['convert.py'],
-    pathex=[],
+    ['app.py'],
+    pathex=['.'],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

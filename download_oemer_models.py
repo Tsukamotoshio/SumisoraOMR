@@ -12,7 +12,11 @@
 import os
 import sys
 import urllib.request
+import certifi
 from pathlib import Path
+
+# 使用 certifi 证书解决 SSL 验证失败
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 try:
     from oemer import MODULE_PATH
