@@ -12,6 +12,19 @@
 import sys
 import os
 
+# ─── SSL 证书：解决打包后部分环境证书验证失败问题 ─────────────────────────────
+# 在所有网络请求（flet / urllib / requests / httpx）之前设置，
+# 强制使用随包附带的 certifi 证书，避免旧版 Windows 根证书缺失或 SSL 中间人干扰。
+#   SSL_CERT_FILE    — Python ssl 模块 / urllib / httpx
+#   REQUESTS_CA_BUNDLE — requests 库
+#   CURL_CA_BUNDLE   — libcurl 系库
+if getattr(sys, 'frozen', False):
+    _internal_cert = os.path.join(sys._MEIPASS, 'certifi', 'cacert.pem')
+    if os.path.exists(_internal_cert):
+        os.environ['SSL_CERT_FILE'] = _internal_cert
+        os.environ['REQUESTS_CA_BUNDLE'] = _internal_cert
+        os.environ['CURL_CA_BUNDLE'] = _internal_cert
+
 # ─── Bootstrap：确保在正确的虚拟环境中运行 ──────────────────────────────────
 def _bootstrap_venv() -> None:
     try:
