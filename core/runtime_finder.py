@@ -13,6 +13,9 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
+# 在 Windows 上，作为 GUI 程序运行时防止子进程弹出新控制台窗口
+_WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
 from .config import (
     AUDIVERIS_INSTALL_DIR_NAME,
     AUDIVERIS_MSI_NAMES,
@@ -115,6 +118,7 @@ def find_java_executable(min_major_version: int = DEFAULT_AUDIVERIS_MIN_JAVA_VER
                 errors='ignore',
                 timeout=10,
                 check=False,
+                creationflags=_WIN_NO_WINDOW,
             )
         except (OSError, subprocess.SubprocessError):
             continue
@@ -307,6 +311,7 @@ def run_subprocess_with_spinner(
             encoding='utf-8',
             errors='ignore',
             env=env,
+            creationflags=_WIN_NO_WINDOW,
         ) as proc:
             while proc.poll() is None:
                 elapsed = time.time() - start_time
@@ -388,7 +393,7 @@ def ensure_audiveris_executable() -> Optional[Path]:
     ]
 
     try:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=MAX_AUDIVERIS_SECONDS, check=False)
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=MAX_AUDIVERIS_SECONDS, check=False, creationflags=_WIN_NO_WINDOW)
     except OSError as exc:
         log_message(f'调用 MSI 解包 Audiveris 失败: {exc}', logging.WARNING)
         return None
@@ -478,15 +483,79 @@ def render_lilypond_pdf(ly_path: Path) -> Optional[Path]:
         pass
     log_message(f'使用 LilyPond 执行: {lilypond_exe}')
     try:
-        subprocess.run([lilypond_exe, str(ly_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, cwd=str(ly_path.parent.resolve()))
+        subprocess.run([lilypond_exe, str(ly_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, cwd=str(ly_path.parent.resolve()), creationflags=_WIN_NO_WINDOW)
         pdf_path = ly_path.with_suffix('.pdf')
         return pdf_path if pdf_path.exists() else None
     except subprocess.CalledProcessError as exc:
-        log_message('LilyPond 生成失败: ' + exc.stderr.decode('utf-8', errors='ignore'), logging.WARNING)
+        raw_stderr = exc.stderr.decode('utf-8', errors='ignore')
+        # 过滤纯弃用警告行，仅保留实际错误行，防止数万行警告涌入日志
+        error_lines = [
+            ln for ln in raw_stderr.splitlines()
+            if ln.strip() and not (
+                '警告' in ln or 'warning' in ln.lower() or '已弃用' in ln
+            )
+        ]
+        summary = '\n'.join(error_lines[:60]) if error_lines else raw_stderr[:2000]
+        log_message('LilyPond 生成失败:\n' + summary, logging.WARNING)
         return None
     except OSError as exc:
         log_message(f'LilyPond 生成时出现异常: {exc}', logging.WARNING)
         return None
+
+
+def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
+    """将 MusicXML 渲染为标准五线谱 PDF（不经简谱转换）。
+
+    流程：musicxml2ly.py（LilyPond 附带）→ .ly → LilyPond → PDF。
+    返回生成的 PDF 路径，失败返回 None。
+    """
+    lilypond_exe = find_lilypond_executable()
+    if lilypond_exe is None:
+        log_message('未找到 LilyPond，无法渲染五线谱预览。', logging.WARNING)
+        return None
+
+    # 找 musicxml2ly.py：优先取 lilypond.exe 同目录
+    lilypond_bin = Path(lilypond_exe).parent
+    musicxml2ly = lilypond_bin / 'musicxml2ly.py'
+    if not musicxml2ly.exists():
+        log_message('未找到 musicxml2ly.py，无法将 MusicXML 转换为 LilyPond 格式。', logging.WARNING)
+        return None
+
+    # 找可运行 musicxml2ly.py 的 Python（优先 LilyPond 捆绑版）
+    python_exe: Optional[Path] = None
+    for candidate in [
+        lilypond_bin / 'python.exe',
+        lilypond_bin / 'python',
+    ]:
+        if candidate.exists():
+            python_exe = candidate
+            break
+    if python_exe is None:
+        import sys as _sys
+        python_exe = Path(_sys.executable)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    mxl_path = mxl_path.resolve()
+    ly_path = out_dir / (mxl_path.stem + '_staff.ly')
+
+    # Step 1: musicxml2ly → .ly
+    try:
+        result = subprocess.run(
+            [str(python_exe), str(musicxml2ly), '-o', str(ly_path), str(mxl_path)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cwd=str(out_dir), timeout=60,
+            creationflags=_WIN_NO_WINDOW,
+        )
+        if result.returncode != 0 or not ly_path.exists():
+            err = (result.stderr or b'').decode('utf-8', errors='ignore').strip()
+            log_message(f'musicxml2ly 转换失败: {err[:500]}', logging.WARNING)
+            return None
+    except Exception as exc:
+        log_message(f'musicxml2ly 执行出错: {exc}', logging.WARNING)
+        return None
+
+    # Step 2: LilyPond → PDF（使用已有的 render_lilypond_pdf）
+    return render_lilypond_pdf(ly_path)
 
 
 # ──────────────────────────────────────────────
@@ -596,7 +665,7 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
     if cmd is not None:
         try:
             with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([cmd, str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env)
+                subprocess.run([cmd, str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
             return True
         except subprocess.CalledProcessError as exc:
             log_message(f'jianpu-ly 命令执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
@@ -604,7 +673,7 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
     if find_jianpu_ly_module():
         try:
             with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env)
+                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
             return True
         except subprocess.CalledProcessError as exc:
             log_message(f'jianpu_ly 模块执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
@@ -620,7 +689,7 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
 
     try:
         with ly_path.open('w', encoding='utf-8') as out:
-            subprocess.run([*python_cmd, str(script_path), str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env)
+            subprocess.run([*python_cmd, str(script_path), str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
         return True
     except subprocess.CalledProcessError as exc:
         log_message(f'jianpu-ly 脚本执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
@@ -638,7 +707,7 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
     if cmd is not None:
         try:
             with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([cmd, str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env)
+                subprocess.run([cmd, str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
             return True
         except subprocess.CalledProcessError as exc:
             print('jianpu-ly 命令处理 MXL 失败:', exc.stderr.decode('utf-8', errors='ignore'))
@@ -646,7 +715,7 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
     if find_jianpu_ly_module():
         try:
             with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env)
+                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
             return True
         except subprocess.CalledProcessError as exc:
             print('jianpu_ly 模块处理 MXL 失败:', exc.stderr.decode('utf-8', errors='ignore'))
@@ -662,7 +731,7 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
 
     try:
         with ly_path.open('w', encoding='utf-8') as out:
-            subprocess.run([*python_cmd, str(script_path), str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env)
+            subprocess.run([*python_cmd, str(script_path), str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
         return True
     except subprocess.CalledProcessError as exc:
         print('jianpu-ly 脚本处理 MXL 失败:', exc.stderr.decode('utf-8', errors='ignore'))

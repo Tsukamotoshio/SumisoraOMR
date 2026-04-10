@@ -416,11 +416,18 @@ def clone_monophonic_element(element, duration: float):
     return new_element
 
 
+# 安全上限：超过此数量的小节被认为是 MusicXML 解析异常（如 Oemer 输出内部偏移错误）
+# 将在日志中发出警告并截断。600 小节 ≈ 150 拍 4/4 = 已足够容纳给小篇音乐。
+MAX_SANE_BARS = 600
+
+
 def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[list[JianpuNote]], str]:
     """
     Extract jianpu measure list and time signature from a music21 score.
     Merges polyphony by offset; fills gaps and overflows with rests at bar boundaries.
     """
+    from .utils import log_message
+    import logging as _logging
     part = score.parts[0] if score.parts else score.flatten()
     time_signature = '4/4'
     nominal_measure_length = 4.0
@@ -434,6 +441,14 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
     if not measure_streams:
         fallback_notes = [note_to_jianpu(element, key_tonic_semitone) for element in part.flatten().notesAndRests]
         return ([fallback_notes] if fallback_notes else []), time_signature
+
+    if len(measure_streams) > MAX_SANE_BARS:
+        log_message(
+            f'[jianpu] 注意：MusicXML 包含 {len(measure_streams)} 个小节（超过安全限制 {MAX_SANE_BARS}），'
+            f'可能是 OMR 解析异常。将截尾处理前 {MAX_SANE_BARS} 个小节。',
+            _logging.WARNING,
+        )
+        measure_streams = measure_streams[:MAX_SANE_BARS]
 
     tol = 0.01
     for measure in measure_streams:
@@ -494,6 +509,8 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
     Extract jianpu measures by re-slicing all notes strictly by bar length,
     ignoring the score's own Measure objects.
     """
+    from .utils import log_message
+    import logging as _logging
     part = score.parts[0] if score.parts else score.flatten()
     time_signature = '4/4'
     bar_length = 4.0
@@ -502,10 +519,12 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
         time_signature = time_sig[0].ratioString
         bar_length = float(getattr(time_sig[0].barDuration, 'quarterLength', 4.0) or 4.0)
 
+    max_score_offset = MAX_SANE_BARS * bar_length  # hard ceiling on note offsets
+
     by_offset: dict[float, object] = {}
     for element in part.flatten().notesAndRests:
         offset = float(element.offset)
-        if offset < 0:
+        if offset < 0 or offset >= max_score_offset:
             continue
         candidate = clone_monophonic_element(element, float(element.duration.quarterLength or 0.25))
         existing = by_offset.get(offset)
@@ -520,6 +539,16 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
     if not offsets:
         return [], time_signature
 
+    # 警告：如果最大 offset 超过合理上限
+    if offsets[-1] >= max_score_offset * 0.5 and offsets[-1] > bar_length * 30:
+        from .utils import log_message
+        import logging as _logging
+        log_message(
+            f'[jianpu] 注意：MusicXML 中最大音符偏移量为 {offsets[-1]:.1f} 拍'
+            f'（约 {offsets[-1] / bar_length:.0f} 小节），可能是 OMR 解析异常。',
+            _logging.WARNING,
+        )
+
     measures: list[list[JianpuNote]] = []
     current_measure: list[JianpuNote] = []
     current_pos = 0.0
@@ -530,6 +559,9 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
         nonlocal current_measure, current_pos, measures
         remaining = total_duration
         while remaining > tol:
+            # 安全检查：超过小节上限时提前退出
+            if len(measures) >= MAX_SANE_BARS:
+                return
             pos_in_bar = current_pos % bar_length
             capacity = bar_length - pos_in_bar if pos_in_bar > tol else bar_length
             piece_total = min(remaining, capacity)
@@ -543,12 +575,20 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
                 current_measure = []
 
     for idx, offset in enumerate(offsets):
+        if len(measures) >= MAX_SANE_BARS:
+            break
         if offset > current_pos + tol:
-            rest = m21note.Rest()
-            append_element_chunks(rest, offset - current_pos)
+            gap = offset - current_pos
+            # 跳过异常大的间隙（可能是 OMR 输出中的宫位异常）而不是用休止符充填
+            if gap > bar_length * MAX_SANE_BARS:
+                current_pos = offset
+            else:
+                rest = m21note.Rest()
+                append_element_chunks(rest, gap)
 
         next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else offset + float(by_offset[offset].duration.quarterLength or 0.25)
-        duration = max(next_offset - offset, 0.125)
+        # 单个音符时寄不得超过 MAX_SANE_BARS 个小节（防止 Oemer 输出中的超长音符）
+        duration = max(min(next_offset - offset, bar_length * MAX_SANE_BARS), 0.125)
         append_element_chunks(by_offset[offset], duration)
 
     if current_measure:
@@ -589,6 +629,29 @@ def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str
         header_lines.append(' | '.join(measure_texts) + ' |')
 
     return measures, header_lines, time_signature
+
+
+def build_jianpu_ly_text_from_measures(
+    measures: 'list[list[JianpuNote]]',
+    time_sig: str,
+    tonic_name: str,
+    title: str,
+) -> str:
+    """Build jianpu-ly plain-text from pre-computed JianpuNote measures (bypassing score parsing).
+
+    Equivalent to ``build_jianpu_ly_text`` but accepts already-parsed note data
+    instead of a music21 Score object.  Used by the dual-engine fusion path.
+    """
+    header = ['% jianpu-ly.py', f'title={title}', f'1={tonic_name}', time_sig, '']
+    bar_units = _parse_bar_units(time_sig)
+    for i in range(0, len(measures), 4):
+        line_measures = measures[i:i + 4]
+        measure_texts = [
+            ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(m, bar_units))
+            for m in line_measures
+        ]
+        header.append(' | '.join(measure_texts) + ' |')
+    return '\n'.join(header)
 
 
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> str:

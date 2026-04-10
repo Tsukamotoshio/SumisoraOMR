@@ -16,7 +16,7 @@ from .config import (
     OMREngine,
 )
 from .oemer_runner import check_oemer_available, run_oemer_batch
-from .renderer import generate_jianpu_pdf_from_mxl
+from .renderer import generate_jianpu_pdf_from_mxl, generate_jianpu_pdf_from_dual_mxl
 from .utils import (
     build_runtime_paths,
     cleanup_output_directory,
@@ -35,6 +35,29 @@ from .utils import (
 )
 
 
+def _archive_mxl_to_xml_scores(
+    mxl_path: Path,
+    source_stem: str,
+    xml_scores_dir: Path,
+    engine_label: str = '',
+) -> None:
+    """将五线谱 MusicXML 文件复制到 xml_scores_dir（归档供移调器使用）。
+
+    命名规则：
+      - 单引擎或融合后选出的唯一文件：``{source_stem}{ext}``
+      - 双引擎均成功，需区分来源：``{source_stem}.{engine_label}{ext}``
+    """
+    try:
+        xml_scores_dir.mkdir(parents=True, exist_ok=True)
+        ext = mxl_path.suffix.lower() or '.musicxml'
+        dest_name = f'{source_stem}.{engine_label}{ext}' if engine_label else f'{source_stem}{ext}'
+        dest = xml_scores_dir / dest_name
+        shutil.copy2(str(mxl_path), str(dest))
+        log_message(f'  ↳ MusicXML 已归档 → xml-scores/{dest_name}')
+    except OSError as exc:
+        log_message(f'  [警告] MusicXML 归档失败: {exc}', logging.WARNING)
+
+
 def process_single_input_to_jianpu(
     source_file: Path,
     file_temp_dir: Path,
@@ -42,6 +65,7 @@ def process_single_input_to_jianpu(
     output_midi: Optional[Path],
     engine: OMREngine = OMREngine.AUDIVERIS,
     editor_workspace_dir: Optional[Path] = None,
+    xml_scores_dir: Optional[Path] = None,
 ) -> bool:
     """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
 
@@ -69,16 +93,78 @@ def process_single_input_to_jianpu(
     _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO
 
-    # AUTO 路由策略：图片 → Oemer（深度学习，对拍摄/扫描图像更健壮）；
-    #                PDF  → Audiveris（规则引擎，PDF 矢量精度高）；
-    #                任一失败时自动回退另一引擎。
-    if _is_auto:
-        if _IS_IMAGE:
-            effective_engine = OMREngine.OEMER
-            log_message('  [自动路由] 图片 → Oemer（失败时回退 Audiveris）')
+    # ── AUTO + 图片：双引擎并行识别 + 融合 ───────────────────────────────────
+    # AUTO 模式下对图片同时运行 Oemer（深度学习）和 Audiveris（规则引擎），
+    # 两引擎均使用各自专属的预处理流程，识别结果在音符级别进行置信度融合。
+    if _is_auto and _IS_IMAGE:
+        oemer_dir     = file_temp_dir / 'oemer'
+        audiveris_dir = file_temp_dir / 'audiveris'
+
+        log_message('  [双引擎] 自动模式图片输入：同时运行 Oemer + Audiveris 进行融合识别…')
+
+        # ── Oemer ──────────────────────────────────────────────────────────
+        omr_oemer_out = run_oemer_batch(source_file, output_dir=oemer_dir)
+        mxl_oemer: Optional[Path] = None
+        if omr_oemer_out is not None:
+            mxl_oemer = find_first_musicxml_file(omr_oemer_out, source_file.stem)
+
+        # ── Audiveris ──────────────────────────────────────────────────────
+        omr_aud_out = run_audiveris_sliced_batch(source_file, output_dir=audiveris_dir)
+        mxl_audiveris: Optional[Path] = None
+        if omr_aud_out is not None:
+            mxl_audiveris = find_first_musicxml_file(omr_aud_out, source_file.stem)
+
+        # ── 编辑器参考图（优先用 Audiveris 完整预处理图，其次 Oemer 图）─────
+        effective_source: Path = source_file
+        for ref_candidate in [
+            audiveris_dir / '_omr_reference.png',
+            oemer_dir     / '_preprocessed_ref.png',
+        ]:
+            if ref_candidate.exists():
+                effective_source = ref_candidate
+                break
         else:
-            effective_engine = OMREngine.AUDIVERIS
-            log_message('  [自动路由] PDF → Audiveris（失败时回退 Oemer）')
+            try:
+                from .image_preprocess import create_display_reference
+                effective_source = create_display_reference(source_file, file_temp_dir) or source_file
+            except Exception:
+                pass
+
+        # ── 两者均失败 ─────────────────────────────────────────────────────
+        if mxl_oemer is None and mxl_audiveris is None:
+            log_message(f'  ✗ 两个引擎均处理失败，跳过 {source_file.name}。', logging.WARNING)
+            return False
+
+        # ── 仅一方成功：退化为单引擎 ──────────────────────────────────────
+        if mxl_oemer is None or mxl_audiveris is None:
+            fallback_mxl = mxl_oemer or mxl_audiveris
+            used = 'Oemer' if mxl_oemer else 'Audiveris'
+            log_message(f'  [双引擎] 一方引擎失败，使用 {used} 单引擎结果。', logging.WARNING)
+            if xml_scores_dir is not None:
+                _archive_mxl_to_xml_scores(fallback_mxl, source_file.stem, xml_scores_dir)
+            return generate_jianpu_pdf_from_mxl(
+                fallback_mxl, output_pdf, file_temp_dir, output_midi,
+                preferred_title=source_file.stem,
+                source_path=effective_source,
+                editor_workspace_dir=editor_workspace_dir,
+            )
+
+        # ── 两者均成功：分别归档后融合 ─────────────────────────────────────
+        log_message('  [双引擎] 两引擎均识别成功，正在融合结果…')
+        if xml_scores_dir is not None:
+            _archive_mxl_to_xml_scores(mxl_oemer,     source_file.stem, xml_scores_dir, 'oemer')
+            _archive_mxl_to_xml_scores(mxl_audiveris, source_file.stem, xml_scores_dir, 'audiveris')
+        return generate_jianpu_pdf_from_dual_mxl(
+            mxl_oemer, mxl_audiveris, output_pdf, file_temp_dir, output_midi,
+            preferred_title=source_file.stem,
+            source_path=effective_source,
+            editor_workspace_dir=editor_workspace_dir,
+        )
+
+    # ── 非双引擎路径（AUTO PDF / 显式单引擎）────────────────────────────────
+    if _is_auto:
+        effective_engine = OMREngine.AUDIVERIS
+        log_message('  [自动路由] PDF → Audiveris（失败时回退 Oemer）')
     else:
         effective_engine = engine
 
@@ -95,25 +181,17 @@ def process_single_input_to_jianpu(
         engine_label = 'Oemer'
 
     # ── Audiveris (PDF and images) ────────────────────────────────────────────
-
     else:
-        # 对栅格图像启用谱行切片识别以降低引擎全局布局压力；PDF/其他格式自动回退整图处理
         omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
         engine_label = 'Audiveris'
 
     # ── Error / fallback ────────────────────────────────────────────────────────
     if omr_out is None:
-        if _is_auto and effective_engine is OMREngine.OEMER:
-            # AUTO 图片：Oemer 失败 → 回退 Audiveris
-            log_message('  [自动回退] Oemer 识别失败，尝试 Audiveris…', logging.WARNING)
-            omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
-            engine_label = 'Audiveris (Oemer 回退)'
-        elif effective_engine is OMREngine.OEMER:
-            # 显式 Oemer 失败，不回退
+        if effective_engine is OMREngine.OEMER:
             log_message(f'  ✗ Oemer 处理失败，跳过 {source_file.name}。', logging.WARNING)
             return False
         else:
-            # Audiveris 失败（AUTO PDF 或显式 Audiveris）→ 回退 Oemer
+            # AUTO PDF 或显式 Audiveris 失败 → 回退 Oemer
             log_message('  [自动回退] Audiveris 识别失败，尝试 Oemer…', logging.WARNING)
             omr_out = run_oemer_batch(source_file, output_dir=file_temp_dir)
             engine_label = 'Oemer (Audiveris 回退)'
@@ -129,20 +207,15 @@ def process_single_input_to_jianpu(
             f'  ✗ 未找到 {engine_label} 输出的 MXL 文件，跳过 {source_file.name}。\n'
             '    → 可能原因：乐谱无法被识别（图像质量过低或版式过于复杂）\n'
             '    → 解决方案：尝试使用更高分辨率的扫描件，或手动检查 omr-temp 目录',
-
             logging.WARNING,
         )
         return False
 
-    # For image inputs, use the OMR-preprocessed image saved by run_audiveris_sliced_batch
-    # as the editor-workspace reference (shows exactly what Audiveris saw: gradient-corrected,
-    # deskewed, cropped, denoised).  Falls back to create_display_reference() then raw file.
-    # NOTE: reference image is always saved in file_temp_dir (the output_dir passed to
-    # run_audiveris_sliced_batch), regardless of where the MXL result ends up.
+    # 参考图（单引擎路径）
     if _IS_IMAGE:
         omr_ref = file_temp_dir / '_omr_reference.png'
         if not omr_ref.exists():
-            omr_ref = omr_out / '_omr_reference.png'  # fallback: try the returned dir
+            omr_ref = omr_out / '_omr_reference.png'
         if omr_ref.exists():
             effective_source = omr_ref
         else:
@@ -151,7 +224,8 @@ def process_single_input_to_jianpu(
     else:
         effective_source = source_file
 
-
+    if xml_scores_dir is not None:
+        _archive_mxl_to_xml_scores(mxl_file, source_file.stem, xml_scores_dir)
     return generate_jianpu_pdf_from_mxl(
         mxl_file,
         output_pdf,
@@ -170,10 +244,13 @@ def process_single_pdf_to_jianpu(
     output_midi: Optional[Path],
     engine: OMREngine = OMREngine.AUDIVERIS,
     editor_workspace_dir: Optional[Path] = None,
+    xml_scores_dir: Optional[Path] = None,
 ) -> bool:
     """Backward-compatible alias for process_single_input_to_jianpu."""
     return process_single_input_to_jianpu(
-        pdf_file, file_temp_dir, output_pdf, output_midi, engine, editor_workspace_dir
+        pdf_file, file_temp_dir, output_pdf, output_midi, engine,
+        editor_workspace_dir=editor_workspace_dir,
+        xml_scores_dir=xml_scores_dir,
     )
 
 
@@ -328,6 +405,7 @@ def process_bulk_input_to_jianpu(
         if process_single_input_to_jianpu(
             source_file, file_temp_dir, output_pdf, output_midi, engine,
             editor_workspace_dir=editor_workspace_dir,
+            xml_scores_dir=script_dir / 'xml-scores',
         ):
             log_message(f'  ✓ 已生成简谱 PDF：{output_pdf.name}')
             summary.success += 1

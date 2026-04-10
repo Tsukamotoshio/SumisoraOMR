@@ -8,6 +8,9 @@ from __future__ import annotations
 import logging
 import math
 import subprocess
+
+# 防止子进程在 Windows 上弹出控制台窗口（GUI 分发版）
+_WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 import tempfile
 
 from dataclasses import dataclass, field
@@ -136,6 +139,7 @@ def upscale_image_with_waifu2x(input_path: Path, output_path: Path, scale: int =
             text=True,
             timeout=600,
             check=False,
+            creationflags=_WIN_NO_WINDOW,
         )
         if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
             log_message(f'waifu2x 超分辨率完成: {output_path.name}')
@@ -343,13 +347,19 @@ def preprocess_image_for_oemer(
     work_dir: Path,
     max_pixels: int = OEMER_MAX_PIXELS,
 ) -> Optional[Path]:
-    """oemer 专用轻量预处理：自动剪裁白边 + 梯度（亮度）修正。
+    """oemer 专用预处理：自动剪裁白边 + 梯度修正 + 低分辨率超分放大。
 
-    基于 oemer 官方 README 建议（减少人工增强，避免引入影响深度学习模型的伪影）：
-      步骤 1 — 自动剪裁：去除四边空白/白色边距，保留乐谱内容区域。
-      步骤 2 — 梯度修正：使用 autocontrast（2% 截断）校正不均匀光照，
-                           等同于对扫描件的亮度梯度进行修正。
-      步骤 3 — 像素上限：超出 OEMER_MAX_PIXELS 时等比例缩小，节省 GPU 显存。
+    oemer 深度学习模型的谱线检测对图像分辨率敏感：当短边 < 1200px 时，
+    模型往往只能检测出首行谱线而忽略其余行。本函数在检测到低分辨率时
+    自动调用 waifu2x-ncnn-vulkan 执行 2× GPU 超分辨率放大，解决该问题。
+
+    步骤顺序（保留 RGB，不做灰度转换）：
+      步骤 1 — 内容裁剪：去除四边空白/白色边距，保留乐谱内容区域。
+      步骤 2 — 梯度修正：autocontrast（2% 截断）校正扫描光照不均。
+      步骤 3 — SR 放大 ：短边 < LOW_RES_PIXEL_THRESHOLD (1200px) 时，
+                           调用 waifu2x 2× 超分辨率（GPU 加速），提升后续
+                           深度学习模型对多行谱面的检测能力。
+      步骤 4 — 像素上限：超出 OEMER_MAX_PIXELS 时等比例缩小，节省 GPU 显存。
 
     保留 RGB 彩色通道（oemer 深度学习模型利用颜色信息）。
     成功时返回预处理后的图片路径；失败或不适用时返回 None。
@@ -384,6 +394,9 @@ def preprocess_image_for_oemer(
             # 步骤 2：梯度修正——autocontrast（2% 截断）校正光照不均
             working = ImageOps.autocontrast(working, cutoff=2)
 
+            # 记录增强后图像的短边，用于决策是否执行 SR
+            min_dim_after_enhance = min(working.size)
+
             enhanced_path = work_dir / f'enhanced_{image_path.stem}.png'
             working.save(enhanced_path)
     except Exception as exc:
@@ -392,14 +405,31 @@ def preprocess_image_for_oemer(
 
     current_path = enhanced_path
 
-    # 步骤 3：像素上限——超出则等比例缩小
+    # 步骤 3：超分辨率放大——低分辨率时用 waifu2x 2× 提升谱线检测能力
+    # 根因：oemer 谱线分割模型在短边 < 1200px 时易仅检出首行，漏掉其余行。
+    if min_dim_after_enhance < LOW_RES_PIXEL_THRESHOLD:
+        upscaled_path = work_dir / f'sr_{image_path.stem}.png'
+        ok = upscale_image_with_waifu2x(current_path, upscaled_path, scale=2)
+        if ok:
+            safe_remove_file(current_path)
+            current_path = upscaled_path
+            log_message(
+                f'  [oemer预处理] 短边 {min_dim_after_enhance}px < '
+                f'{LOW_RES_PIXEL_THRESHOLD}px，已执行 2× 超分辨率放大。'
+            )
+        else:
+            log_message(
+                '  [oemer预处理] waifu2x 超分辨率失败，继续使用原分辨率。',
+                logging.WARNING,
+            )
 
+    # 步骤 4：像素上限——超出则等比例缩小
     rescaled = fit_image_within_pixel_limit(current_path, work_dir, max_pixels=max_pixels)
     if rescaled is not None:
         safe_remove_file(current_path)
         current_path = rescaled
 
-    log_message('图像预处理完成（自动剪裁 + 梯度修正），将使用增强图像进行 OMR 识别。')
+    log_message('图像预处理完成（内容裁剪 + 梯度修正 + SR 放大），将使用增强图像进行 OMR 识别。')
     return current_path
 
 

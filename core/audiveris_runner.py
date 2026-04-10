@@ -166,6 +166,7 @@ def run_audiveris_batch(
         sheet_number: Optional[int] = None,
         input_path_override: Optional[Path] = None,
         use_lang_constant: bool = True,
+        no_curves: bool = False,
     ) -> tuple[int, str, str, Optional[Path]]:
         """Run Audiveris once for a given output dir and optional sheet number; return (exit_code, stdout, stderr, mxl_path).
 
@@ -175,12 +176,21 @@ def run_audiveris_batch(
                             by _choose_ocr_lang().  Set to False to skip the language constant
                             entirely, letting Audiveris use its own defaults — useful as a
                             fallback for PDFs where lyric text causes recognition failures.
+        no_curves         : When True, adds ``-step TEXTS`` to stop processing before the
+                            CURVES (slur/tie) step.  Used as a last-resort retry when
+                            Audiveris crashes specifically during CURVES detection.
+                            The resulting MXL will have no slur/tie markings but will
+                            retain all note data.
         """
         effective_input = input_path_override if input_path_override is not None else safe_input_path
         target_dir.mkdir(parents=True, exist_ok=True)
         cmd = [str(exe), '-batch']
         if use_lang_constant:
             cmd.extend(['-constant', f'org.audiveris.omr.text.Language.defaultSpecification={ocr_lang}'])
+        if no_curves:
+            # Stop at TEXTS step (one step before CURVES) to avoid the crash.
+            # -export is still passed so Audiveris outputs whatever it has.
+            cmd.extend(['-step', 'TEXTS'])
         cmd.extend(['-export'])
         if sheet_number is not None:
             cmd.extend(['-sheets', str(sheet_number)])
@@ -271,6 +281,54 @@ def run_audiveris_batch(
                 'Audiveris 识别了五线谱，但在连音线处理步骤（CURVES）中崩溃导出失败。',
                 logging.WARNING,
             )
+
+            # ── 新增重试：禁用 CURVES 步骤（-step TEXTS），跳过连音线检测后重新识别 ──
+            # 当 CURVES 步骤稳定崩溃时，退一步仅运行到 TEXTS 步骤，
+            # 让 Audiveris 导出一个不含连音线的 MXL——音符数据完整，可用于后续处理。
+            log_message(
+                '  [CURVES 重试] 正在以跳过 CURVES 步骤的方式重新运行 Audiveris（-step TEXTS）…',
+                logging.WARNING,
+            )
+            safe_remove_tree(safe_output_dir)
+            nc_code, nc_out, nc_err, nc_exported = invoke_audiveris(
+                safe_output_dir, no_curves=True
+            )
+            if nc_exported is not None:
+                log_message('  [CURVES 重试] 跳过 CURVES 步骤后成功导出，连音线标记已略去。')
+                _maybe_merge_mvt_files(safe_output_dir)
+                _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
+                return safe_output_dir
+            log_message('  [CURVES 重试] 跳过 CURVES 步骤后仍未导出，尝试 CURVES 救援…', logging.WARNING)
+
+            # ── CURVES 救援：尝试从输出目录中找到任何已生成的 MXL 并删除连音线 ──
+            # Audiveris 完成音符识别后，连音线导出步骤崩溃时仍可能在 safe_output_dir
+            # 中生成了部分 MXL 文件。删除其中格式错误的 <slur>/<tied> 元素可以
+            # 令后续 music21 解析正常完成。
+            _partial_mxl = find_first_musicxml_file(safe_output_dir, safe_input_path.stem)
+            if _partial_mxl is None:
+                # 也可能在嵌套子目录中
+                for _sub in safe_output_dir.rglob('*.mxl'):
+                    _partial_mxl = _sub
+                    break
+                if _partial_mxl is None:
+                    for _sub in safe_output_dir.rglob('*.musicxml'):
+                        _partial_mxl = _sub
+                        break
+            if _partial_mxl is not None:
+                log_message(
+                    f'  [CURVES 救援] 发现部分导出文件 {_partial_mxl.name}，'
+                    '正在删除连音线元素以恢复可用乐谱…',
+                    logging.WARNING,
+                )
+                try:
+                    from .transposer import strip_slurs_ties_from_mxl
+                    strip_slurs_ties_from_mxl(_partial_mxl, backup=True)
+                    log_message('  [CURVES 救援] 连音线已删除，继续后续处理。')
+                    _maybe_merge_mvt_files(safe_output_dir)
+                    _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
+                    return safe_output_dir
+                except Exception as _e:
+                    log_message(f'  [CURVES 救援] 删除连音线失败: {_e}', logging.WARNING)
             return None
 
         # ── Retry 2: PDF general failure → re-run without OCR language constraint ────────

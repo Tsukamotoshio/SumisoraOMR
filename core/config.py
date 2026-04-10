@@ -52,7 +52,7 @@ AUDIVERIS_INSTALL_DIR_NAME = 'Audiveris'
 AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris-5.10.2', 'audiveris')
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 7
-APP_VERSION = '0.2.0'
+APP_VERSION = '0.2.0-preview'
 AUDIVERIS_MSI_NAMES = [
     'Audiveris-5.10.2-windows-x86_64.msi',
     'Audiveris.msi',
