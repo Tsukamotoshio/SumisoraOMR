@@ -416,10 +416,14 @@ class EditorPage(ft.Row):
             pass
 
     async def _pick_open_async(self) -> None:
+        from core.utils import get_app_base_dir
+        init_dir = get_app_base_dir() / 'editor-workspace'
+        init_dir.mkdir(parents=True, exist_ok=True)
         files = await self._open_picker.pick_files(
             dialog_title='打开乐谱文件（图像 / PDF / 简谱文本）',
             allowed_extensions=['png', 'jpg', 'jpeg', 'pdf', 'txt'],
             allow_multiple=False,
+            initial_directory=str(init_dir),
         )
         if not files:
             return

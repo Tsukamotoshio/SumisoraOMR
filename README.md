@@ -1,5 +1,7 @@
 # OMR-to-Jianpu Conversion Tool / 简谱转换工具
 
+Version: 0.2.0-preview
+
 **Author / 作者：Tsukamotoshio**
 
 A tool to batch-convert Western staff notation PDFs into Jianpu (numbered musical notation) PDFs, with optional MIDI output.

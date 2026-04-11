@@ -24,6 +24,12 @@ if getattr(sys, 'frozen', False):
         os.environ['SSL_CERT_FILE'] = _internal_cert
         os.environ['REQUESTS_CA_BUNDLE'] = _internal_cert
         os.environ['CURL_CA_BUNDLE'] = _internal_cert
+    # console=False 时 sys.stdout/stderr 为 None，所有 print() 会崩溃
+    # 替换为 null 流，将输出静默丢弃（日志仍写入 logs/ 文件）
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
 
 # ─── Bootstrap：确保在正确的虚拟环境中运行 ──────────────────────────────────
 def _bootstrap_venv() -> None:

@@ -4,6 +4,7 @@ chcp 65001 >nul
 
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%"
+set "APP_VERSION=0.2.0-preview"
 
 set "AUDIVERIS_SOURCE=%BASE_DIR%audiveris-5.10.2"
 set "AUDIVERIS_RUNTIME_SRC=%AUDIVERIS_SOURCE%\app\build\install\app"
@@ -107,6 +108,7 @@ if not defined ISCC_EXE (
 )
 
 echo [3/3] 正在生成安装包...
+if not exist "%BASE_DIR%installer-dist" mkdir "%BASE_DIR%installer-dist"
 "%ISCC_EXE%" "%BASE_DIR%convert_setup.iss"
 if errorlevel 1 (
     echo [ERROR] 安装包生成失败。
@@ -114,5 +116,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo [OK] 安装包已生成：%BASE_DIR%installer-dist\ConvertTool-Setup-0.1.1.exe
+echo [OK] 安装包已生成：%BASE_DIR%installer-dist\ConvertTool-Setup-%APP_VERSION%.exe
 exit /b 0
