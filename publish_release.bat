@@ -13,7 +13,7 @@ set "ZIP_FILE=%BASE_DIR%installer-dist\%APP_NAME%-Portable-%APP_VERSION%.zip"
 :: ── 检查 gh CLI ────────────────────────────────────────────────────────────────
 where gh >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] 未找到 GitHub CLI (gh)。
+    echo [ERROR] 未找到 GitHub CLI ^(gh^)。
     echo 请先安装：winget install --id GitHub.cli -e
     echo 安装后运行：gh auth login
     exit /b 1
