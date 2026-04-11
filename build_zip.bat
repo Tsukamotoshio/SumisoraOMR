@@ -70,13 +70,13 @@ if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
         echo [INFO] 使用本地 oemer 模型，无需联网下载。
         %PYTHON_CMD% "%BASE_DIR%_sync_oemer_to_venv.py" "%BASE_DIR%package-assets\oemer-runtime"
     ) else (
-        call %PYTHON_CMD% download_oemer_models.py
-        if errorlevel 1 ( echo [ERROR] oemer 模型权重下载失败，请检查网络连接后重试。& exit /b 1 )
+        echo [INFO] 正在通过脚本检查/同步 oemer 模型权重...
+        %PYTHON_CMD% download_oemer_models.py
     )
 
     echo [2/3] 正在构建可执行文件...
 
-    call %PYTHON_CMD% -m PyInstaller --noconfirm --clean ConvertTool.spec
+    "%BASE_DIR%.venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean ConvertTool.spec
     if errorlevel 1 ( echo [ERROR] PyInstaller 打包失败。& exit /b 1 )
 )
 

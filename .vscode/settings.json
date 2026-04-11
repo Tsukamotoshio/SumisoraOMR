@@ -1,5 +1,6 @@
 {
   "git.enableSmartCommit": true,
   "git.path": "D:\\Program Files\\Git\\cmd\\git.exe",
-  "git.useEditorAsCommitInput": false
+  "git.useEditorAsCommitInput": false,
+  "git.ignoreLimitWarning": true
 }
