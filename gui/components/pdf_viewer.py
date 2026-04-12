@@ -8,8 +8,9 @@ import base64
 import io
 import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import flet as ft
 
@@ -33,6 +34,11 @@ class PdfViewer(ft.Column):
         super().__init__(spacing=0, expand=True)
         self._path: Optional[Path] = None
         self._raw_b64: Optional[str] = None  # 缓存原始图片数据，供放大镜用
+        self._current_render_bytes: Optional[bytes] = None
+        self._current_render_image = None
+        self._preview_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._max_preview_cache = 8
+        self._load_token: int = 0
         self._page_count: int = 0
         self._current_page: int = 0
         self._scale: float = 1.0
@@ -40,6 +46,7 @@ class PdfViewer(ft.Column):
         self._mag_visible = False
         self._mag_rendering = False   # 节流标志：防止 hover 事件堆积线程
         self._mag_pending: Optional[tuple] = None   # 最新待渲染位置
+        self._render_timer: Optional[threading.Timer] = None
         # 平移状态（scale > 1 时生效）
         self._pan_x: float = 0.0
         self._pan_y: float = 0.0
@@ -144,46 +151,188 @@ class PdfViewer(ft.Column):
 
     # ── 加载文件 ─────────────────────────────────────────────────────────────
 
+    def _cache_key(self, path: Path) -> str:
+        return str(path.resolve())
+
+    def _get_cached_preview(self, path: Path) -> Optional[dict[str, Any]]:
+        return self._preview_cache.get(self._cache_key(path))
+
+    def _cache_preview(self, path: Path, b64: str, raw_bytes: bytes, image: Optional[Any], page_count: int) -> None:
+        key = self._cache_key(path)
+        if key in self._preview_cache:
+            self._preview_cache.move_to_end(key)
+        self._preview_cache[key] = {
+            'b64': b64,
+            'bytes': raw_bytes,
+            'image': image,
+            'page_count': page_count,
+        }
+        while len(self._preview_cache) > self._max_preview_cache:
+            self._preview_cache.popitem(last=False)
+
+    def preload(self, path: Path) -> None:
+        key = self._cache_key(path)
+        if key in self._preview_cache:
+            return
+        threading.Thread(target=self._preload_path, args=(path, key), daemon=True).start()
+
+    def _preload_path(self, path: Path, key: str) -> None:
+        if key in self._preview_cache:
+            return
+        data = self._load_preview_data(path)
+        if data is None:
+            return
+        b64, raw_bytes, image, page_count = data
+        self._cache_preview(path, b64, raw_bytes, image, page_count)
+
+    def _load_preview_data(self, path: Path) -> Optional[tuple[str, bytes, Optional[Any], int]]:
+        try:
+            if path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
+                with open(path, 'rb') as f:
+                    raw_bytes = f.read()
+                b64 = base64.b64encode(raw_bytes).decode()
+                image = None
+                try:
+                    from PIL import Image as PILImage
+                    image = PILImage.open(io.BytesIO(raw_bytes)).convert('RGBA')
+                except Exception:
+                    image = None
+                return b64, raw_bytes, image, 1
+            import fitz
+            with fitz.open(str(path)) as doc:
+                page_count = len(doc)
+                page = doc[0]
+                mat = fitz.Matrix(self._scale * 2.0, self._scale * 2.0)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                raw_bytes = pix.tobytes('png')
+                b64 = base64.b64encode(raw_bytes).decode()
+                image = None
+                try:
+                    from PIL import Image as PILImage
+                    image = PILImage.open(io.BytesIO(raw_bytes)).convert('RGBA')
+                except Exception:
+                    image = None
+                return b64, raw_bytes, image, page_count
+        except Exception:
+            return None
+
     def load(self, path: Path) -> None:
         """在后台线程中加载文件，不阻塞 UI 线程。"""
         self._path = path
         self._current_page = 0
         self._scale = 1.0
+        self._mag_visible = False
+        self._mag_container.visible = False
+        self._mag_crop.visible = False
+        self._load_token += 1
+        current_token = self._load_token
+
+        if self._render_timer is not None:
+            self._render_timer.cancel()
+            self._render_timer = None
+
+        if hasattr(self, '_fitz_doc') and self._fitz_doc is not None:
+            try:
+                self._fitz_doc.close()
+            except Exception:
+                pass
+            self._fitz_doc = None
+
+        cache = self._get_cached_preview(path)
+        self._image.visible = False
+        self._placeholder.visible = True
+        self._image.src = None
+        self._current_render_bytes = None
+        self._current_render_image = None
+        self._request_page_refresh()
+
+        if cache is not None:
+            self._raw_b64 = cache['b64']
+            self._current_render_bytes = cache['bytes']
+            self._current_render_image = cache['image']
+            self._page_count = cache['page_count']
+            self._set_image_b64(self._raw_b64)
+            self._update_toolbar()
+            if path.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
+                threading.Thread(target=self._ensure_document_loaded, args=(path, current_token), daemon=True).start()
+            return
 
         if path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
             # 直接图片格式，用 BytesIO → base64
-            threading.Thread(target=self._load_image_async, daemon=True).start()
+            threading.Thread(target=self._load_image_async, args=(path, current_token), daemon=True).start()
         else:
             # PDF 用 PyMuPDF
-            threading.Thread(target=self._load_pdf_async, daemon=True).start()
+            threading.Thread(target=self._load_pdf_async, args=(path, current_token), daemon=True).start()
 
-    def _load_image_async(self) -> None:
+    def _ensure_document_loaded(self, path: Path, token: int) -> None:
+        if token != self._load_token:
+            return
         try:
-            with open(self._path, 'rb') as f:
+            import fitz
+            doc = fitz.open(str(path))
+            if token != self._load_token:
+                try:
+                    doc.close()
+                except Exception:
+                    pass
+                return
+            self._fitz_doc = doc
+        except Exception:
+            pass
+
+    def _load_image_async(self, path: Path, token: int) -> None:
+        try:
+            with open(path, 'rb') as f:
                 data = f.read()
+            if token != self._load_token:
+                return
             b64 = base64.b64encode(data).decode()
             self._raw_b64 = b64  # 缓存原始数据
+            self._current_render_bytes = data
+            try:
+                from PIL import Image as PILImage
+                self._current_render_image = PILImage.open(io.BytesIO(self._current_render_bytes)).convert('RGBA')
+            except Exception:
+                self._current_render_image = None
             self._page_count = 1
             self._set_image_b64(b64)
             self._update_toolbar()
         except Exception as exc:
+            if token != self._load_token:
+                return
             self._show_error(str(exc))
 
-    def _load_pdf_async(self) -> None:
+    def _load_pdf_async(self, path: Path, token: int) -> None:
         try:
             import fitz  # PyMuPDF
-            doc = fitz.open(str(self._path))
+            doc = fitz.open(str(path))
+            if token != self._load_token:
+                try:
+                    doc.close()
+                except Exception:
+                    pass
+                return
             self._page_count = len(doc)
             self._fitz_doc = doc
-            self._render_current_page()
+            self._render_current_page(token=token)
+            if token != self._load_token:
+                return
             self._update_toolbar()
         except ImportError:
+            if token != self._load_token:
+                return
             self._show_error('需要安装 PyMuPDF：pip install pymupdf')
         except Exception as exc:
+            if token != self._load_token:
+                return
             self._show_error(str(exc))
 
-    def _render_current_page(self) -> None:
+    def _render_current_page(self, token: Optional[int] = None) -> None:
         """渲染当前页到 base64，使用内存缓冲区，不写硬盘。"""
+        if token is None:
+            token = self._load_token
+        if token != self._load_token:
+            return
         if not hasattr(self, '_fitz_doc') or self._fitz_doc is None:
             return
         try:
@@ -192,9 +341,22 @@ class PdfViewer(ft.Column):
             mat = fitz.Matrix(self._scale * 2.0, self._scale * 2.0)  # ×2 for HiDPI
             pix = page.get_pixmap(matrix=mat, alpha=False)
             buf = io.BytesIO(pix.tobytes('png'))
-            b64 = base64.b64encode(buf.getvalue()).decode()
+            image_bytes = buf.getvalue()
+            if token != self._load_token:
+                return
+            self._current_render_bytes = image_bytes
+            try:
+                from PIL import Image as PILImage
+                self._current_render_image = PILImage.open(io.BytesIO(image_bytes)).convert('RGBA')
+            except Exception:
+                self._current_render_image = None
+            b64 = base64.b64encode(image_bytes).decode()
+            if token != self._load_token:
+                return
             self._set_image_b64(b64)
         except Exception as exc:
+            if token != self._load_token:
+                return
             self._show_error(str(exc))
 
     # ── 放大镜 ───────────────────────────────────────────────────────────────
@@ -205,44 +367,63 @@ class PdfViewer(ft.Column):
         """
         if not self._mag_visible:
             return
-        if hasattr(self, '_fitz_doc') and self._fitz_doc is not None:
-            try:
-                import fitz
-                page = self._fitz_doc[self._current_page]
-                pw, ph = page.rect.width, page.rect.height
-                # 用页面尺寸归一化（假设图像充满 gestureDetector 的大部分区域）
-                rel_x = lx / max(1.0, pw * self._scale)
-                rel_y = ly / max(1.0, ph * self._scale)
-                hw, hh = 40, 40
-                cx, cy = rel_x * pw, rel_y * ph
-                clip = fitz.Rect(cx - hw, cy - hh, cx + hw, cy + hh) & page.rect
-                zoom = 200 / max(1, 2 * min(hw, hh))
-                mat = fitz.Matrix(zoom, zoom)
-                pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
-                buf = io.BytesIO(pix.tobytes('png'))
-                b64 = base64.b64encode(buf.getvalue()).decode()
-                self._mag_crop.src = b64
-                self._mag_crop.visible = True
-            except Exception:
-                pass
-        elif self._raw_b64 is not None:
+        if self._current_render_image is not None:
             try:
                 from PIL import Image as PILImage
-                buf = io.BytesIO(base64.b64decode(self._raw_b64))
-                with PILImage.open(buf) as img:
-                    w, h = img.size
-                    radius = max(int(min(w, h) * 0.08), 40)
-                    cx = int(lx / 800.0 * w)
-                    cy = int(ly / 1000.0 * h)
-                    x0 = max(cx - radius, 0); y0 = max(cy - radius, 0)
-                    x1 = min(cx + radius, w); y1 = min(cy + radius, h)
-                    crop = img.crop((x0, y0, x1, y1)).resize((200, 200), PILImage.LANCZOS)
-                    out = io.BytesIO()
-                    crop.save(out, format='PNG')
-                    self._mag_crop.src = base64.b64encode(out.getvalue()).decode()
-                    self._mag_crop.visible = True
+                img = self._current_render_image
+                w, h = img.size
+                radius = max(int(min(w, h) * 0.08), 40)
+                cx = int(min(max(lx / self._VIEWER_W_EST, 0.0), 1.0) * w)
+                cy = int(min(max(ly / self._VIEWER_H_EST, 0.0), 1.0) * h)
+                x0 = max(cx - radius, 0)
+                y0 = max(cy - radius, 0)
+                x1 = min(cx + radius, w)
+                y1 = min(cy + radius, h)
+                crop = img.crop((x0, y0, x1, y1)).resize((200, 200), PILImage.LANCZOS)
+                out = io.BytesIO()
+                crop.save(out, format='PNG')
+                self._mag_crop.src = base64.b64encode(out.getvalue()).decode()
+                self._mag_crop.visible = True
             except Exception:
-                pass
+                self._mag_crop.visible = False
+        else:
+            if hasattr(self, '_fitz_doc') and self._fitz_doc is not None:
+                try:
+                    import fitz
+                    page = self._fitz_doc[self._current_page]
+                    pw, ph = page.rect.width, page.rect.height
+                    rel_x = lx / max(1.0, pw * self._scale)
+                    rel_y = ly / max(1.0, ph * self._scale)
+                    hw, hh = 40, 40
+                    cx, cy = rel_x * pw, rel_y * ph
+                    clip = fitz.Rect(cx - hw, cy - hh, cx + hw, cy + hh) & page.rect
+                    zoom = 200 / max(1, 2 * min(hw, hh))
+                    mat = fitz.Matrix(zoom, zoom)
+                    pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
+                    buf = io.BytesIO(pix.tobytes('png'))
+                    b64 = base64.b64encode(buf.getvalue()).decode()
+                    self._mag_crop.src = b64
+                    self._mag_crop.visible = True
+                except Exception:
+                    self._mag_crop.visible = False
+            elif self._raw_b64 is not None:
+                try:
+                    from PIL import Image as PILImage
+                    buf = io.BytesIO(base64.b64decode(self._raw_b64))
+                    with PILImage.open(buf) as img:
+                        w, h = img.size
+                        radius = max(int(min(w, h) * 0.08), 40)
+                        cx = int(lx / 800.0 * w)
+                        cy = int(ly / 1000.0 * h)
+                        x0 = max(cx - radius, 0); y0 = max(cy - radius, 0)
+                        x1 = min(cx + radius, w); y1 = min(cy + radius, h)
+                        crop = img.crop((x0, y0, x1, y1)).resize((200, 200), PILImage.LANCZOS)
+                        out = io.BytesIO()
+                        crop.save(out, format='PNG')
+                        self._mag_crop.src = base64.b64encode(out.getvalue()).decode()
+                        self._mag_crop.visible = True
+                except Exception:
+                    self._mag_crop.visible = False
 
     # ── UI 状态更新辅助 ───────────────────────────────────────────────────────
 
@@ -250,11 +431,7 @@ class PdfViewer(ft.Column):
         self._image.src = b64
         self._image.visible = True
         self._placeholder.visible = False
-        try:
-            self._image.update()
-            self._placeholder.update()
-        except Exception:
-            pass
+        self._request_page_refresh()
 
     def _show_error(self, msg: str) -> None:
         self._placeholder.controls = [
@@ -263,11 +440,7 @@ class PdfViewer(ft.Column):
         ]
         self._image.visible = False
         self._placeholder.visible = True
-        try:
-            self._image.update()
-            self._placeholder.update()
-        except Exception:
-            pass
+        self._request_page_refresh()
 
     def _update_toolbar(self) -> None:
         if self._page_count > 0:
@@ -275,9 +448,22 @@ class PdfViewer(ft.Column):
         else:
             self._page_label.value = '—'
         self._scale_label.value = f'{int(self._scale * 100)}%'
+        self._request_page_refresh()
+
+    def _request_page_refresh(self) -> None:
+        if not hasattr(self, 'page') or self.page is None:
+            return
         try:
-            self._page_label.update()
-            self._scale_label.update()
+            self.page.run_task(self._async_refresh)
+        except Exception:
+            try:
+                self.page.schedule_update()
+            except Exception:
+                pass
+
+    async def _async_refresh(self) -> None:
+        try:
+            self.update()
         except Exception:
             pass
 
@@ -324,7 +510,14 @@ class PdfViewer(ft.Column):
             pass
         self._update_toolbar()
         if hasattr(self, '_fitz_doc') and self._fitz_doc is not None:
-            threading.Thread(target=self._render_current_page, daemon=True).start()
+            self._schedule_render_current_page()
+
+    def _schedule_render_current_page(self) -> None:
+        if self._render_timer is not None:
+            self._render_timer.cancel()
+        self._render_timer = threading.Timer(0.2, self._render_current_page)
+        self._render_timer.daemon = True
+        self._render_timer.start()
 
     # ── 拖动平移 ─────────────────────────────────────────────────────────────
     # offset 单位 = 控件自身尺寸的分数（0.5 = 移动半个控件宽度）
@@ -353,6 +546,8 @@ class PdfViewer(ft.Column):
     def _toggle_mag(self, _e) -> None:
         self._mag_visible = not self._mag_visible
         self._mag_container.visible = self._mag_visible
+        if not self._mag_visible:
+            self._mag_pending = None
         try:
             self._mag_container.update()
         except Exception:
@@ -389,9 +584,15 @@ class PdfViewer(ft.Column):
                 break
             self._mag_pending = None
             lx, ly = pos
-            # 更新位置
-            self._mag_container.left = lx - 102
-            self._mag_container.top  = ly - 102
+            # 将放大镜窗口显示在光标右下方，避免遮挡当前光标位置
+            offset_x = lx + 24
+            offset_y = ly + 24
+            mag_w = self._mag_container.width or 204
+            mag_h = self._mag_container.height or 204
+            max_x = max(8.0, self._VIEWER_W_EST - mag_w - 8.0)
+            max_y = max(8.0, self._VIEWER_H_EST - mag_h - 8.0)
+            self._mag_container.left = min(max(offset_x, 8.0), max_x)
+            self._mag_container.top = min(max(offset_y, 8.0), max_y)
             # 渲染内容（只设值，不调用 update）
             self._render_magnifier(lx, ly)
             # 一次性刷新容器（位置 + 内容 同时生效）
@@ -399,6 +600,6 @@ class PdfViewer(ft.Column):
                 self._mag_container.update()
             except Exception:
                 pass
-            # 限速 ~20fps，等待期间如有新位置则继续循环
-            time.sleep(0.05)
+            # 限速 ~12fps，避免频繁更新导致 UI 卡顿
+            time.sleep(0.08)
         self._mag_rendering = False

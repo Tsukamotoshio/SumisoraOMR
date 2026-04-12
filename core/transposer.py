@@ -45,13 +45,7 @@ def _semitone_diff(from_pitch_class: int, to_pitch_class: int) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_transposition_semitones(from_key: str, to_key: str) -> int:
-    """计算从 from_key 到 to_key 的移调半音数（向上，0-11）。
-
-    示例：
-        get_transposition_semitones('C', 'F')  → 5
-        get_transposition_semitones('C', 'G')  → 7
-        get_transposition_semitones('F', 'C')  → 7  （F→C 最近上行是 7 个半音）
-    """
+    """计算从 from_key 到 to_key 的移调半音数（向上，0-11）。"""
     try:
         from music21 import pitch as m21pitch
         p_from = m21pitch.Pitch(_parse_key_name(from_key))
@@ -62,9 +56,72 @@ def get_transposition_semitones(from_key: str, to_key: str) -> int:
         return 0
 
 
+def _major_key_from_fifths(fifths: int) -> str:
+    mapping = {
+        -7: 'Cb',
+        -6: 'Gb',
+        -5: 'Db',
+        -4: 'Ab',
+        -3: 'Eb',
+        -2: 'Bb',
+        -1: 'F',
+         0: 'C',
+         1: 'G',
+         2: 'D',
+         3: 'A',
+         4: 'E',
+         5: 'B',
+         6: 'F#',
+         7: 'C#',
+    }
+    return mapping.get(fifths, 'C')
+
+
+def _parse_musicxml_key_signature(mxl_path: Path) -> Optional[str]:
+    try:
+        import zipfile
+        if mxl_path.suffix.lower() == '.mxl':
+            with zipfile.ZipFile(mxl_path, 'r') as z:
+                xml_names = [n for n in z.namelist() if n.lower().endswith('.xml')]
+                if not xml_names:
+                    return None
+                text = z.read(xml_names[0]).decode('utf-8', errors='ignore')
+        else:
+            text = mxl_path.read_text(encoding='utf-8', errors='ignore')
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(text)
+        ns = ''
+        if root.tag.startswith('{'):
+            ns = root.tag.split('}')[0] + '}'
+        attributes = root.find(f'.//{ns}attributes')
+        if attributes is None:
+            return None
+        key_elem = attributes.find(f'{ns}key')
+        if key_elem is None:
+            return None
+        fifths_elem = key_elem.find(f'{ns}fifths')
+        mode_elem = key_elem.find(f'{ns}mode')
+        if fifths_elem is None or fifths_elem.text is None:
+            return None
+        fifths = int(fifths_elem.text.strip())
+        if mode_elem is None or not mode_elem.text:
+            return _major_key_from_fifths(fifths)
+        mode = mode_elem.text.strip().lower()
+        if mode == 'major':
+            return _major_key_from_fifths(fifths)
+        if mode == 'minor':
+            return _major_key_from_fifths(fifths)
+        return _major_key_from_fifths(fifths)
+    except Exception:
+        return None
+
+
 def detect_key_from_musicxml(mxl_path: Path) -> str:
     """从 MusicXML 文件中检测第一个调号；若无法检测则返回 'C'。"""
     try:
+        explicit = _parse_musicxml_key_signature(mxl_path)
+        if explicit is not None:
+            return explicit
         from music21 import converter
         score = converter.parse(str(mxl_path))
         keys = score.flatten().getElementsByClass('Key')

@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import threading
 import flet as ft
 from pathlib import Path
 from typing import Optional
 
 from ..app_state import AppState, Event
+from ..backend import app_base_dir
 from ..theme import Palette, section_title
 
 
@@ -145,8 +147,7 @@ class FileSidebar(ft.Column):
         self.page.run_task(self._pick_folder_async)
 
     async def _pick_files_async(self) -> None:
-        from core.utils import get_app_base_dir
-        input_dir = get_app_base_dir() / 'Input'
+        input_dir = app_base_dir() / 'Input'
         init_dir = str(input_dir) if input_dir.exists() else None
         files = await self._file_picker.pick_files(
             dialog_title='选择乐谱文件',
@@ -162,8 +163,7 @@ class FileSidebar(ft.Column):
         self._refresh_list()
 
     async def _pick_folder_async(self) -> None:
-        from core.utils import get_app_base_dir
-        input_dir = get_app_base_dir() / 'Input'
+        input_dir = app_base_dir() / 'Input'
         init_dir = str(input_dir) if input_dir.exists() else None
         folder_path = await self._folder_picker.get_directory_path(
             dialog_title='选择包含乐谱文件的文件夹',

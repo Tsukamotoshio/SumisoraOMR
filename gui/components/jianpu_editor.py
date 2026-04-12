@@ -30,6 +30,9 @@ class JianpuEditor(ft.Column):
         self._path: Optional[Path] = None
         self._lines: list[str] = []
         self._selected_line: int = -1
+        self._last_line_count: int = 0
+        self._last_selected_line: int = -1
+        self._load_token: int = 0
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_external_select)
 
@@ -110,22 +113,67 @@ class JianpuEditor(ft.Column):
 
     def load(self, path: Path) -> None:
         self._path = path
-        threading.Thread(target=self._load_async, args=(path,), daemon=True).start()
+        self._load_token += 1
+        token = self._load_token
+        threading.Thread(target=self._load_async, args=(path, token), daemon=True).start()
 
-    def _load_async(self, path: Path) -> None:
+    def _load_async(self, path: Path, token: int) -> None:
         try:
             text = path.read_text(encoding='utf-8-sig', errors='replace')
-            self._lines = text.splitlines()
-            self._editor.value = text
-            self._refresh_line_numbers()
-            try:
-                self._editor.update()
-            except Exception:
-                pass
+            if token != self._load_token:
+                return
+            self._schedule_load_complete(text, token)
         except Exception as exc:
-            self._editor.value = f'# 文件读取失败: {exc}'
+            if token != self._load_token:
+                return
+            self._schedule_load_error(f'# 文件读取失败: {exc}', token)
+
+    def _schedule_load_complete(self, text: str, token: int) -> None:
+        if not hasattr(self, 'page') or self.page is None:
+            self._apply_loaded_content(text, token)
+            return
+        try:
+            self.page.run_task(self._async_apply_loaded_content, text, token)
+        except Exception:
+            self._apply_loaded_content(text, token)
+
+    def _schedule_load_error(self, message: str, token: int) -> None:
+        if not hasattr(self, 'page') or self.page is None:
+            self._apply_load_error(message, token)
+            return
+        try:
+            self.page.run_task(self._async_apply_load_error, message, token)
+        except Exception:
+            self._apply_load_error(message, token)
+
+    async def _async_apply_loaded_content(self, text: str, token: int) -> None:
+        self._apply_loaded_content(text, token)
+
+    async def _async_apply_load_error(self, message: str, token: int) -> None:
+        self._apply_load_error(message, token)
+
+    def _apply_loaded_content(self, text: str, token: int) -> None:
+        if token != self._load_token:
+            return
+        self._lines = text.splitlines()
+        self._editor.value = text
+        self._refresh_line_numbers()
+        self._refresh_component()
+
+    def _apply_load_error(self, message: str, token: int) -> None:
+        if token != self._load_token:
+            return
+        self._editor.value = message
+        self._refresh_component()
+
+    def _refresh_component(self) -> None:
+        try:
+            self.update()
+        except Exception:
+            pass
+        if hasattr(self, 'page') and self.page is not None:
             try:
-                self._editor.update()
+                self.page.schedule_update()
             except Exception:
                 pass
 
@@ -182,6 +230,10 @@ class JianpuEditor(ft.Column):
 
     def _refresh_line_numbers(self) -> None:
         n = max(len(self._lines), 1)
+        if n == self._last_line_count and self._selected_line == self._last_selected_line:
+            return
+        self._last_line_count = n
+        self._last_selected_line = self._selected_line
         self._line_numbers.controls = [
             ft.Container(
                 content=ft.Text(
@@ -213,6 +265,33 @@ class JianpuEditor(ft.Column):
         """由图像区触发：高亮对应行。"""
         self._selected_line = line_no
         self._refresh_line_numbers()
+
+    def _request_page_refresh(self) -> None:
+        if not hasattr(self, 'page') or self.page is None:
+            return
+        try:
+            self.page.run_task(self._async_refresh)
+        except Exception:
+            try:
+                self.page.schedule_update()
+            except Exception:
+                pass
+
+    async def _async_refresh(self) -> None:
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def reset(self) -> None:
+        self._path = None
+        self._lines = []
+        self._selected_line = -1
+        self._last_line_count = 0
+        self._last_selected_line = -1
+        self._editor.value = ''
+        self._refresh_line_numbers()
+        self._request_page_refresh()
 
     # ── 对外 API ─────────────────────────────────────────────────────────────
 

@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -486,6 +487,12 @@ def run_audiveris_sliced_batch(
 
     if output_dir is None:
         output_dir = get_app_base_dir() / 'audiveris-output'
+    if any(ord(ch) > 127 for ch in str(output_dir)):
+        safe_name = build_safe_ascii_name(output_dir.name, fallback='audiveris_sliced')
+        tmp_dir = Path(tempfile.gettempdir()) / f'{safe_name}_{hashlib.sha1(str(output_dir).encode("utf-8")).hexdigest()[:8]}'
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        log_message(f'  [切片OMR] 输出目录含非 ASCII 字符，改用临时目录 {tmp_dir}')
+        output_dir = tmp_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     from .image_preprocess import (

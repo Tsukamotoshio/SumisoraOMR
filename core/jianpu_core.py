@@ -453,7 +453,7 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
     tol = 0.01
     for measure in measure_streams:
         measure_length = nominal_measure_length or float(getattr(measure.barDuration, 'quarterLength', 4.0) or 4.0)
-        by_offset: dict[float, object] = {}
+        by_offset: dict[float, list[object]] = {}
 
         for element in measure.flatten().notesAndRests:
             offset = float(element.offset)
@@ -463,11 +463,9 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
             candidate = clone_monophonic_element(element, min(float(element.duration.quarterLength or 0.25), available))
             existing = by_offset.get(offset)
             if existing is None:
-                by_offset[offset] = candidate
-            elif isinstance(existing, m21note.Rest) and not isinstance(candidate, m21note.Rest):
-                by_offset[offset] = candidate
-            elif isinstance(existing, m21note.Note) and isinstance(candidate, m21note.Note) and candidate.pitch.midi > existing.pitch.midi:
-                by_offset[offset] = candidate
+                by_offset[offset] = [candidate]
+            else:
+                existing.append(candidate)
 
         if not by_offset:
             rest = m21note.Rest()
@@ -490,8 +488,8 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
             next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else measure_length
             next_offset = min(next_offset, measure_length)
             span = max(min(next_offset - offset, measure_length - offset), 0.125)
-            element = clone_monophonic_element(by_offset[offset], span)
-            measure_notes.append(note_to_jianpu(element, key_tonic_semitone))
+            for element in by_offset[offset]:
+                measure_notes.append(note_to_jianpu(element, key_tonic_semitone))
             current_offset = next_offset
 
         if current_offset < measure_length - tol:
