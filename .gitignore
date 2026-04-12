@@ -60,3 +60,22 @@ test_lilypond_run_ascii/
 
 editor-workspace/
 xml-scores/
+
+# Local environment / editor artifacts
+.venv/
+.vscode/
+
+# Additional temporary/test files and outputs
+*.log
+*.out
+*.tmp
+*.bak
+*~
+*.swp
+*.cache
+
+test_*.py
+*_test.py
+test_*.txt
+*_test*.txt
+tmp_*
