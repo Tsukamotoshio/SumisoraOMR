@@ -13,7 +13,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from ..backend import xml_scores_dir, output_dir, build_dir, open_directory
+from core.backend import xml_scores_dir, output_dir, build_dir, open_directory
 from ..components.pdf_viewer import PdfViewer
 from ..theme import Palette, section_title
 

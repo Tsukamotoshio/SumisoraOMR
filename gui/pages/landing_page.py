@@ -11,7 +11,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from ..backend import app_base_dir, output_dir, open_directory
+from core.backend import app_base_dir, output_dir, open_directory
 from ..components.file_sidebar import FileSidebar
 from ..components.pdf_viewer import PdfViewer
 from ..components.progress_overlay import ProgressOverlay
