@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
 import flet as ft
 
 from ..app_state import AppState, Event
+from ..backend import app_base_dir, output_dir, open_directory
 from ..components.file_sidebar import FileSidebar
 from ..components.pdf_viewer import PdfViewer
 from ..components.progress_overlay import ProgressOverlay
@@ -23,8 +25,11 @@ class LandingPage(ft.Row):
         super().__init__(spacing=0, expand=True)
         self._state = state
         self._overlay = overlay
+        self._scan_token: int = 0
+        self._preloaded_paths: set[str] = set()
         self._build_ui()
         state.on(Event.FILE_SELECTED, self._on_file_selected)
+        state.on(Event.FILES_CHANGED, self._on_files_changed)
 
     def _build_ui(self) -> None:
         self._sidebar = FileSidebar(self._state)
@@ -90,6 +95,7 @@ class LandingPage(ft.Row):
             ),
         )
 
+
         options_panel = ft.Container(
             content=ft.Column(
                 [
@@ -121,16 +127,19 @@ class LandingPage(ft.Row):
     def did_mount(self):
         self.page._services.register_service(self._output_dir_picker)
         # 延迟扫描：让 did_mount 先返回、Flet 内部锁释放后再推送 UI 更新
+        self._scan_token += 1
+        current_token = self._scan_token
         import threading
-        threading.Timer(0.1, self._scan_input_on_startup).start()
+        threading.Thread(target=self._scan_input_on_startup, args=(current_token,), daemon=True).start()
 
-    def _scan_input_on_startup(self) -> None:
+    def _scan_input_on_startup(self, token: int) -> None:
         """在后台线程中扫描 Input/ 并刷新侧边栏（page.update 在此线程中是线程安全的）。"""
+        if token != self._scan_token:
+            return
         try:
             if self.page is None:
                 return
-            from core.utils import get_app_base_dir
-            input_dir = get_app_base_dir() / 'Input'
+            input_dir = app_base_dir() / 'Input'
             if not input_dir.is_dir():
                 return
             # 批量收集，避免每次 add_file 触发中间 update 事件
@@ -143,24 +152,44 @@ class LandingPage(ft.Row):
                         newly_added.append(resolved)
             if not newly_added:
                 return
-            # 选中第一个文件
+            # 发出统一文件变化事件，刷新列表
+            self._state.emit(Event.FILES_CHANGED, files=list(self._state.pinned_files))
+            # 选中第一个文件并触发预览
             if not self._state.current_file and self._state.pinned_files:
-                self._state.current_file = self._state.pinned_files[0]
-            # 重建列表控件
-            self._sidebar._refresh_list()
-            # 加载预览
-            if self._state.current_file:
+                self._state.select_file(self._state.pinned_files[0])
+            elif self._state.current_file and token == self._scan_token:
                 self._viewer.load(self._state.current_file)
+            # 预加载所有文件，减少后续切换延迟
+            threading.Thread(target=self._preload_all_files, args=(list(self._state.pinned_files), token), daemon=True).start()
             # 一次性推送所有 UI 变更
             self.page.update()
         except Exception:
             pass
 
+    def _preload_all_files(self, files: list[Path], token: int) -> None:
+        if token != self._scan_token:
+            return
+        for path in files:
+            if token != self._scan_token:
+                return
+            try:
+                self._viewer.preload(path)
+            except Exception:
+                pass
+            # 让 UI 线程有机会响应，不要一次性启动过多线程
+            time.sleep(0.02)
 
     # ── 事件 ─────────────────────────────────────────────────────────────────
 
     def _on_file_selected(self, path: Path, **_kw) -> None:
         self._viewer.load(path)
+
+    def _on_files_changed(self, files: list[Path], **_kw) -> None:
+        for path in files:
+            try:
+                self._viewer.preload(path)
+            except Exception:
+                pass
 
     def _on_choose_output(self, _e) -> None:
         self.page.run_task(self._pick_output_dir_async)
@@ -176,17 +205,11 @@ class LandingPage(ft.Row):
 
     def _on_open_output_dir(self, _e) -> None:
         try:
-            from core.utils import get_app_base_dir
-            out_dir_text = self._output_dir_text.value
-            if out_dir_text and out_dir_text != '未指定（默认 Output/）':
-                output_dir = Path(out_dir_text)
-            else:
-                output_dir = get_app_base_dir() / 'Output'
-            output_dir.mkdir(parents=True, exist_ok=True)
-            import os
-            os.startfile(str(output_dir))
+            output_dir_path = output_dir(self._output_dir_text.value)
+            open_directory(output_dir_path)
         except Exception as exc:
             self._show_snack(f'无法打开目录: {exc}', Palette.ERROR)
+
 
     def _on_convert(self, _e) -> None:
         if not self._state.pinned_files:
@@ -197,19 +220,10 @@ class LandingPage(ft.Row):
 
         # 计算输出目录，检测已存在文件
         out_dir_text = self._output_dir_text.value
-        try:
-            from core.utils import get_app_base_dir
-            base_dir = get_app_base_dir()
-        except Exception:
-            base_dir = Path(__file__).resolve().parents[2]
-        output_dir = (
-            Path(out_dir_text)
-            if out_dir_text and out_dir_text != '未指定（默认 Output/）'
-            else base_dir / 'Output'
-        )
+        output_path = output_dir(out_dir_text)
         existing = [
             src.name for src in self._state.pinned_files
-            if (output_dir / (src.stem + '_jianpu.pdf')).exists()
+            if (output_path / (src.stem + '_jianpu.pdf')).exists()
         ]
 
         # ── 对话框内容 ───────────────────────────────────────────────────
@@ -304,17 +318,11 @@ class LandingPage(ft.Row):
         try:
             from core.config import OMREngine, AppConfig
             from core.pipeline import process_single_input_to_jianpu
-            from core.utils import get_app_base_dir, setup_logging
+            from core.utils import setup_logging
             import tempfile
 
-            base_dir = get_app_base_dir()
-            out_dir_text = self._output_dir_text.value
-            output_dir = (
-                Path(out_dir_text)
-                if out_dir_text and out_dir_text != '未指定（默认 Output/）'
-                else base_dir / 'Output'
-            )
-            output_dir.mkdir(parents=True, exist_ok=True)
+            base_dir = app_base_dir()
+            output_path = output_dir(self._output_dir_text.value)
 
             engine_val = self._engine_dd.value or 'auto'
             engine_map = {
@@ -338,9 +346,10 @@ class LandingPage(ft.Row):
                     self._state.append_log(f'  ⏭ 已跳过（输出已存在）: {src.name}')
                     continue
 
+                (base_dir / 'build').mkdir(parents=True, exist_ok=True)
                 temp_dir = Path(tempfile.mkdtemp(prefix='convert_', dir=base_dir / 'build'))
-                out_pdf  = output_dir / (src.stem + '_jianpu.pdf')
-                out_midi = (output_dir / (src.stem + '.mid')) if gen_midi else None
+                out_pdf  = output_path / (src.stem + '_jianpu.pdf')
+                out_midi = (output_path / (src.stem + '.mid')) if gen_midi else None
 
                 try:
                     ok = process_single_input_to_jianpu(
@@ -351,6 +360,9 @@ class LandingPage(ft.Row):
                         engine=engine,
                         editor_workspace_dir=base_dir / 'editor-workspace',
                         xml_scores_dir=base_dir / 'xml-scores',
+                        llm_api_key=None,
+                        llm_provider=None,
+                        llm_model=None,
                     )
                     if ok:
                         success_count += 1

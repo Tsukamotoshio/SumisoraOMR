@@ -16,6 +16,12 @@ from pathlib import Path
 from typing import Optional
 
 from .config import JianpuNote
+from .llm_correction import (
+    _build_jianpu_txt_from_measures_to_file,
+    _jianpu_txt_to_jianpu_measures,
+    apply_llm_correction_to_dual_results,
+    apply_llm_correction_to_jianpu_txt,
+)
 from .utils import log_message
 
 
@@ -297,6 +303,10 @@ def align_and_merge_measures(
 def merge_dual_omr_results(
     mxl_oemer: Path,
     mxl_audiveris: Path,
+    llm_api_key: Optional[str] = None,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    original_image_path: Optional[Path] = None,
 ) -> Optional[tuple[list[list[JianpuNote]], str, str, str]]:
     """解析两个 MusicXML 文件并将识别结果融合为一组简谱小节。
 
@@ -364,6 +374,34 @@ def merge_dual_omr_results(
         f'[融合] 开始双引擎融合：Oemer={len(measures_o)} 小节, '
         f'Audiveris={len(measures_a)} 小节, 拍号={time_sig}'
     )
+
+    if llm_api_key:
+        merged_for_text = align_and_merge_measures(measures_o, measures_a, bar_len)
+        txt_path = mxl_oemer.parent / f'{mxl_oemer.stem}_llm_input.jianpu.txt'
+        if _build_jianpu_txt_from_measures_to_file(
+            merged_for_text,
+            title=mxl_oemer.stem,
+            key=tonic_o,
+            time_signature=time_sig_o,
+            path=txt_path,
+        ):
+            result = apply_llm_correction_to_jianpu_txt(
+                txt_path,
+                llm_api_key,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                cache_dir=mxl_oemer.parent,
+            )
+            if result is not None:
+                corrected_score, corrected_text = result
+                corrected_measures = _jianpu_txt_to_jianpu_measures(corrected_score)
+                stats = (
+                    f'双引擎 LLM 简谱文本纠错（Oemer {len(measures_o)} × Audiveris {len(measures_a)} → '
+                    f'纠错后 {len(corrected_measures)} 小节）'
+                )
+                log_message(f'[融合] {stats}')
+                return corrected_measures, corrected_score.meta.time, corrected_score.meta.key, stats
+        log_message('[融合] 简谱文本纠错失败，继续使用规则融合。')
 
     merged = align_and_merge_measures(measures_o, measures_a, bar_len)
     total_notes = sum(len(m) for m in merged)

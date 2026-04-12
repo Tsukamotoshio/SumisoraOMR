@@ -1,9 +1,12 @@
 # core/utils.py — 基础工具函数
 # 拆分自 convert.py
+import base64
+import getpass
 import hashlib
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import sys
@@ -37,12 +40,128 @@ from .config import (
 LOG_FILE_PATH: Optional[Path] = None
 
 
+LLM_CONFIG_FILENAME = 'llm_config.json'
+USER_CONFIG_DIR_NAME = 'ConvertTool'
+
+
 def get_app_base_dir() -> Path:
     """Return the application root directory (exe parent when frozen, script parent otherwise)."""
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).resolve().parent
     # core/utils.py is one level below the project root
     return Path(__file__).resolve().parent.parent
+
+
+def get_user_config_dir() -> Path:
+    """Return a per-user config directory outside the packaged app installation."""
+    if platform.system() == 'Windows':
+        local_app_data = os.environ.get('LOCALAPPDATA', '')
+        if local_app_data:
+            return Path(local_app_data) / USER_CONFIG_DIR_NAME
+    elif platform.system() == 'Darwin':
+        return Path.home() / 'Library' / 'Application Support' / USER_CONFIG_DIR_NAME
+
+    xdg_config = os.environ.get('XDG_CONFIG_HOME')
+    if xdg_config:
+        return Path(xdg_config) / USER_CONFIG_DIR_NAME
+    return Path.home() / '.config' / USER_CONFIG_DIR_NAME
+
+
+def get_llm_config_path(base_dir: Optional[Path] = None) -> Path:
+    config_dir = get_user_config_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / LLM_CONFIG_FILENAME
+
+
+def _derive_machine_key() -> bytes:
+    """Derive a local machine-specific secret for lightweight API key encryption."""
+    seed = platform.node() + '|' + getpass.getuser()
+    return hashlib.sha256(seed.encode('utf-8')).digest()
+
+
+def _xor_encrypt(data: bytes, key: bytes) -> bytes:
+    return bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+
+
+def _encrypt_api_key(api_key: str) -> str:
+    try:
+        key = _derive_machine_key()
+        encrypted = _xor_encrypt(api_key.encode('utf-8'), key)
+        return base64.urlsafe_b64encode(encrypted).decode('ascii')
+    except Exception:
+        return api_key
+
+
+def _decrypt_api_key(encoded: str) -> str:
+    try:
+        key = _derive_machine_key()
+        encrypted = base64.urlsafe_b64decode(encoded.encode('ascii'))
+        return _xor_encrypt(encrypted, key).decode('utf-8', errors='replace')
+    except Exception:
+        return encoded
+
+
+def load_llm_config(base_dir: Path) -> dict[str, str]:
+    """Load stored LLM configuration from app base dir, if present."""
+    path = get_llm_config_path(base_dir)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+        api_key = payload.get('api_key', '')
+        return {
+            'api_key': _decrypt_api_key(api_key) if api_key else '',
+            'provider': str(payload.get('provider', '') or ''),
+            'model': str(payload.get('model', '') or ''),
+        }
+    except Exception:
+        return {}
+
+
+def save_llm_config(base_dir: Path, api_key: str, provider: str = '', model: str = '') -> None:
+    """Save LLM configuration to a local config file with lightweight local encryption."""
+    try:
+        path = get_llm_config_path(base_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            'api_key': _encrypt_api_key(api_key.strip()),
+            'provider': provider.strip(),
+            'model': model.strip(),
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+        try:
+            os.chmod(path, 0o600)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def load_llm_api_key(base_dir: Path) -> str:
+    return load_llm_config(base_dir).get('api_key', '')
+
+
+def load_llm_provider(base_dir: Path) -> str:
+    return load_llm_config(base_dir).get('provider', '')
+
+
+def load_llm_model(base_dir: Path) -> str:
+    return load_llm_config(base_dir).get('model', '')
+
+
+def save_llm_api_key(base_dir: Path, api_key: str) -> None:
+    config = load_llm_config(base_dir)
+    save_llm_config(base_dir, api_key.strip(), config.get('provider', ''), config.get('model', ''))
+
+
+def save_llm_provider(base_dir: Path, provider: str) -> None:
+    config = load_llm_config(base_dir)
+    save_llm_config(base_dir, config.get('api_key', ''), provider.strip(), config.get('model', ''))
+
+
+def save_llm_model(base_dir: Path, model: str) -> None:
+    config = load_llm_config(base_dir)
+    save_llm_config(base_dir, config.get('api_key', ''), config.get('provider', ''), model.strip())
 
 
 def get_runtime_search_roots() -> list[Path]:
@@ -105,7 +224,13 @@ def setup_logging(base_dir: Path) -> Optional[Path]:
 
 def log_message(message: str, level: int = logging.INFO) -> None:
     """Print message to stdout and write it to the log file, initialising logging lazily if needed."""
-    print(message)
+    try:
+        sys.stdout.buffer.write((message + '\n').encode('utf-8', errors='replace'))
+    except Exception:
+        try:
+            print(message)
+        except Exception:
+            pass
     if not LOGGER.handlers:
         try:
             setup_logging(get_app_base_dir())
@@ -331,6 +456,25 @@ def find_first_musicxml_file(audiveris_out: Path, preferred_stem: str) -> Option
     return candidates[0] if candidates else None
 
 
+def count_musicxml_notes(mxl_path: Path) -> tuple[int, int, int]:
+    """Count note and rest elements in a MusicXML/MXL file.
+
+    Returns
+    -------
+    (non_rest_notes, total_notes, measures)
+    """
+    try:
+        from music21 import converter as _conv
+        score = _conv.parse(str(mxl_path))
+        notes = list(score.recurse().notesAndRests)
+        non_rest = sum(1 for n in notes if not getattr(n, 'isRest', False))
+        total = len(notes)
+        measures = len(list(score.recurse().getElementsByClass('Measure')))
+        return non_rest, total, measures
+    except Exception:
+        return 0, 0, 0
+
+
 def collect_duplicate_names(
     source_files: list[Path],
     output_dir: Path,
@@ -345,6 +489,24 @@ def collect_duplicate_names(
         if has_existing_output_match(source_file, output_pdf, output_midi, history):
             duplicate_names.append(source_file.name)
     return duplicate_names
+
+
+def cleanup_old_temporary_paths(paths: list[Path], max_age_days: int = 7) -> None:
+    """Remove files and directories older than max_age_days under the given roots."""
+    threshold = time.time() - max_age_days * 86400
+    for root in paths:
+        if not root.exists() or not root.is_dir():
+            continue
+        for entry in root.iterdir():
+            try:
+                if entry.stat().st_mtime >= threshold:
+                    continue
+            except OSError:
+                continue
+            if entry.is_dir():
+                safe_remove_tree(entry)
+            else:
+                safe_remove_file(entry)
 
 
 def cleanup_output_directory(output_dir: Path, generate_midi: bool) -> None:

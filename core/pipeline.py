@@ -13,15 +13,19 @@ from .config import (
     LOGGER,
     AppConfig,
     ConversionSummary,
+    MAX_AUDIVERIS_SECONDS,
+    MAX_OEMER_SECONDS,
     OMREngine,
 )
 from .oemer_runner import check_oemer_available, run_oemer_batch
-from .renderer import generate_jianpu_pdf_from_mxl, generate_jianpu_pdf_from_dual_mxl
+from .renderer import generate_jianpu_pdf_from_dual_mxl, generate_jianpu_pdf_from_mxl
 from .utils import (
     build_runtime_paths,
+    cleanup_old_temporary_paths,
     cleanup_output_directory,
     collect_duplicate_names,
     confirm_skip_all_existing,
+    count_musicxml_notes,
     find_first_musicxml_file,
     get_app_base_dir,
     is_supported_score_file,
@@ -63,9 +67,12 @@ def process_single_input_to_jianpu(
     file_temp_dir: Path,
     output_pdf: Path,
     output_midi: Optional[Path],
-    engine: OMREngine = OMREngine.AUDIVERIS,
+    engine: Optional[OMREngine] = None,
     editor_workspace_dir: Optional[Path] = None,
     xml_scores_dir: Optional[Path] = None,
+    llm_api_key: Optional[str] = None,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
 ) -> bool:
     """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
 
@@ -90,27 +97,54 @@ def process_single_input_to_jianpu(
     editor_workspace_dir: When provided, intermediate .jianpu.txt and source file
                           are preserved there for manual proofreading.
     """
+    if engine is None:
+        engine = OMREngine.AUTO
+
     _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO
+    _use_image_dual = _IS_IMAGE
 
-    # ── AUTO + 图片：双引擎并行识别 + 融合 ───────────────────────────────────
-    # AUTO 模式下对图片同时运行 Oemer（深度学习）和 Audiveris（规则引擎），
-    # 两引擎均使用各自专属的预处理流程，识别结果在音符级别进行置信度融合。
-    if _is_auto and _IS_IMAGE:
+    # ── 图片输入：始终同时运行 Audiveris + Oemer，然后视大模型纠错结果选择最终输出。 ─────
+    # 图片输入下，如果用户选择 AUTO 或提供了 LLM key，都会并行运行
+    # Oemer + Audiveris，并在两者均成功时进行融合与大模型纠错。
+    if _use_image_dual:
         oemer_dir     = file_temp_dir / 'oemer'
         audiveris_dir = file_temp_dir / 'audiveris'
 
-        log_message('  [双引擎] 自动模式图片输入：同时运行 Oemer + Audiveris 进行融合识别…')
+        log_message('  [双引擎] 图片输入触发：同时运行 Oemer + Audiveris 进行融合识别…')
 
-        # ── Oemer ──────────────────────────────────────────────────────────
-        omr_oemer_out = run_oemer_batch(source_file, output_dir=oemer_dir)
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
         mxl_oemer: Optional[Path] = None
+        mxl_audiveris: Optional[Path] = None
+        executor = ThreadPoolExecutor(max_workers=2)
+        try:
+            future_oemer = executor.submit(run_oemer_batch, source_file, oemer_dir)
+            future_audiveris = executor.submit(run_audiveris_sliced_batch, source_file, audiveris_dir)
+            try:
+                omr_oemer_out = future_oemer.result(timeout=MAX_OEMER_SECONDS + 60)
+            except TimeoutError:
+                log_message('  [双引擎] Oemer 识别超时，已取消该任务。', logging.WARNING)
+                future_oemer.cancel()
+                omr_oemer_out = None
+            except Exception as exc:
+                log_message(f'  [双引擎] Oemer 识别失败：{exc}', logging.WARNING)
+                omr_oemer_out = None
+
+            try:
+                omr_aud_out = future_audiveris.result(timeout=MAX_AUDIVERIS_SECONDS + 60)
+            except TimeoutError:
+                log_message('  [双引擎] Audiveris 识别超时，已取消该任务。', logging.WARNING)
+                future_audiveris.cancel()
+                omr_aud_out = None
+            except Exception as exc:
+                log_message(f'  [双引擎] Audiveris 识别失败：{exc}', logging.WARNING)
+                omr_aud_out = None
+        finally:
+            executor.shutdown(wait=False)
+
         if omr_oemer_out is not None:
             mxl_oemer = find_first_musicxml_file(omr_oemer_out, source_file.stem)
-
-        # ── Audiveris ──────────────────────────────────────────────────────
-        omr_aud_out = run_audiveris_sliced_batch(source_file, output_dir=audiveris_dir)
-        mxl_audiveris: Optional[Path] = None
         if omr_aud_out is not None:
             mxl_audiveris = find_first_musicxml_file(omr_aud_out, source_file.stem)
 
@@ -149,13 +183,31 @@ def process_single_input_to_jianpu(
                 editor_workspace_dir=editor_workspace_dir,
             )
 
-        # ── 两者均成功：分别归档后融合 ─────────────────────────────────────
-        log_message('  [双引擎] 两引擎均识别成功，正在融合结果…')
+        # ── 两者均成功：分别归档后直接使用 Oemer 结果，不调用 LLM。────────────────────────────────────
+        log_message('  [双引擎] 两引擎均识别成功，正在比较结果完整度…')
         if xml_scores_dir is not None:
             _archive_mxl_to_xml_scores(mxl_oemer,     source_file.stem, xml_scores_dir, 'oemer')
             _archive_mxl_to_xml_scores(mxl_audiveris, source_file.stem, xml_scores_dir, 'audiveris')
-        return generate_jianpu_pdf_from_dual_mxl(
-            mxl_oemer, mxl_audiveris, output_pdf, file_temp_dir, output_midi,
+
+        oemer_non_rest, oemer_total, oemer_measures = count_musicxml_notes(mxl_oemer)
+        aud_non_rest, aud_total, aud_measures = count_musicxml_notes(mxl_audiveris)
+        log_message(
+            f'  [双引擎] 结果统计: Oemer {oemer_non_rest}/{oemer_total} 音符, {oemer_measures} 小节; '
+            f'Audiveris {aud_non_rest}/{aud_total} 音符, {aud_measures} 小节。'
+        )
+
+        use_audiveris = False
+        if aud_non_rest > oemer_non_rest and aud_non_rest >= max(8, int(oemer_non_rest * 1.05)):
+            use_audiveris = True
+        elif aud_measures > oemer_measures and aud_non_rest >= oemer_non_rest:
+            use_audiveris = True
+
+        chosen_mxl = mxl_audiveris if use_audiveris else mxl_oemer
+        chosen_engine = 'Audiveris' if use_audiveris else 'Oemer'
+        log_message(f'  [双引擎] 已选择 {chosen_engine} 结果作为最终输出。', logging.WARNING)
+
+        return generate_jianpu_pdf_from_mxl(
+            chosen_mxl, output_pdf, file_temp_dir, output_midi,
             preferred_title=source_file.stem,
             source_path=effective_source,
             editor_workspace_dir=editor_workspace_dir,
@@ -245,12 +297,18 @@ def process_single_pdf_to_jianpu(
     engine: OMREngine = OMREngine.AUDIVERIS,
     editor_workspace_dir: Optional[Path] = None,
     xml_scores_dir: Optional[Path] = None,
+    llm_api_key: Optional[str] = None,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
 ) -> bool:
     """Backward-compatible alias for process_single_input_to_jianpu."""
     return process_single_input_to_jianpu(
         pdf_file, file_temp_dir, output_pdf, output_midi, engine,
         editor_workspace_dir=editor_workspace_dir,
         xml_scores_dir=xml_scores_dir,
+        llm_api_key=llm_api_key,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
     )
 
 
@@ -322,6 +380,8 @@ def process_bulk_input_to_jianpu(
     input_dir, output_dir, temp_dir = build_runtime_paths(script_dir, config)
     history = load_conversion_history(script_dir)
     summary = ConversionSummary()
+
+    cleanup_old_temporary_paths([script_dir / 'build', temp_dir], max_age_days=7)
 
     if not input_dir.exists() or not input_dir.is_dir():
         input_dir.mkdir(parents=True, exist_ok=True)

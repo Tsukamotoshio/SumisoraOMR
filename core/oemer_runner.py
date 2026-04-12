@@ -609,8 +609,7 @@ def _run_oemer_subprocess(cmd: List[str], timeout_seconds: int):
             if elapsed > timeout_seconds:
                 proc.kill()
                 proc.wait(timeout=5)
-                sys.stdout.write('\r' + ' ' * 72 + '\r')
-                sys.stdout.flush()
+                if sys.stdout: sys.stdout.write('\r' + ' ' * 72 + '\r'); sys.stdout.flush()
                 return None, had_error
 
             # 从临时文件中实时读取 stdout 以更新步骤标签
@@ -624,20 +623,19 @@ def _run_oemer_subprocess(cmd: List[str], timeout_seconds: int):
                         break
 
             idx = int(elapsed) % len(spinner)
-            sys.stdout.write(
-                f'\r{spinner[idx]} oemer 正在识别... {int(elapsed)}s  [{current_step}]   '
-            )
-            sys.stdout.flush()
+            if sys.stdout:
+                sys.stdout.write(
+                    f'\r{spinner[idx]} oemer 正在识别... {int(elapsed)}s  [{current_step}]   '
+                )
+                sys.stdout.flush()
             time.sleep(0.25)
     except KeyboardInterrupt:
         proc.kill()
         proc.wait(timeout=5)
-        sys.stdout.write('\r' + ' ' * 72 + '\r')
-        sys.stdout.flush()
+        if sys.stdout: sys.stdout.write('\r' + ' ' * 72 + '\r'); sys.stdout.flush()
         return None, had_error
     finally:
-        sys.stdout.write('\r' + ' ' * 72 + '\r')
-        sys.stdout.flush()
+        if sys.stdout: sys.stdout.write('\r' + ' ' * 72 + '\r'); sys.stdout.flush()
 
     returncode = proc.returncode
 

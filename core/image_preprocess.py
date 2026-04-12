@@ -434,7 +434,82 @@ def preprocess_image_for_oemer(
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+
+
+def sharpen_color_image(img: 'Image.Image') -> 'Image.Image':
+    """Apply a mild unsharp mask to color images while preserving RGB channels."""
+    try:
+        return img.filter(ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=3))
+    except Exception:
+        return img
+
+
+def preprocess_image_for_oemer_v2(
+    image_path: Path,
+    work_dir: Path,
+    max_pixels: int = OEMER_MAX_PIXELS,
+) -> Optional[Path]:
+    """Improved Oemer preprocess with rotation correction and color sharpening."""
+    if not HAS_PILLOW:
+        return None
+    if image_path.suffix.lower() not in {'.png', '.jpg', '.jpeg'}:
+        return None
+
+    work_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with Image.open(image_path) as img:
+            working = img.convert('RGB')
+
+            # 1. 梯度/光照校正
+            working = correct_gradient(working)
+
+            # 2. 旋转校正
+            working, angle = detect_and_correct_rotation(working)
+            if abs(angle) >= 0.5:
+                log_message(f'  [oemer新预处理] 旋转校正 {angle:+.1f}°')
+
+            # 3. 白边裁剪
+            working, border_ratio = crop_white_border(working)
+            if border_ratio > 0.02:
+                log_message(f'  [oemer新预处理] 白边裁剪 {border_ratio:.1%}')
+
+            # 4. 轻度彩色锐化
+            working = sharpen_color_image(working)
+
+            enhanced_path = work_dir / f'new_oemer_{image_path.stem}.png'
+            working.save(enhanced_path)
+    except Exception as exc:
+        log_message(f'oemer 新预处理失败: {exc}', logging.WARNING)
+        return None
+
+    current_path = enhanced_path
+
+    if min(working.size) < LOW_RES_PIXEL_THRESHOLD:
+        upscaled_path = work_dir / f'sr_new_oemer_{image_path.stem}.png'
+        ok = upscale_image_with_waifu2x(current_path, upscaled_path, scale=2)
+        if ok:
+            safe_remove_file(current_path)
+            current_path = upscaled_path
+            log_message(
+                f'  [oemer新预处理] 短边 {min(working.size)}px < '
+                f'{LOW_RES_PIXEL_THRESHOLD}px，已执行 2× 超分辨率放大。'
+            )
+        else:
+            log_message(
+                '  [oemer新预处理] waifu2x 超分辨率失败，继续使用原分辨率。',
+                logging.WARNING,
+            )
+
+    rescaled = fit_image_within_pixel_limit(current_path, work_dir, max_pixels=max_pixels)
+    if rescaled is not None:
+        safe_remove_file(current_path)
+        current_path = rescaled
+
+    log_message('oemer 新预处理完成（旋转校正 + 彩色锐化 + SR 放大），将使用增强图像进行 OMR 识别。')
+    return current_path
+
+
+
 # 综合增强管道（原 image_enhance.py）
 # ══════════════════════════════════════════════════════════════════════════════
 

@@ -322,12 +322,12 @@ def run_subprocess_with_spinner(
                     stderr_handle.seek(0)
                     stdout = stdout_handle.read()
                     stderr = stderr_handle.read()
-                    sys.stdout.write('\r')
-                    sys.stdout.flush()
+                    if sys.stdout: sys.stdout.write('\r'); sys.stdout.flush()
                     return -1, stdout or '', stderr or 'Process timed out.'
                 idx = int(elapsed) % len(spinner)
-                sys.stdout.write(f'\r{spinner[idx]} Audiveris 正在运行... 已用 {int(elapsed)}s')
-                sys.stdout.flush()
+                if sys.stdout:
+                    sys.stdout.write(f'\r{spinner[idx]} Audiveris 正在运行... 已用 {int(elapsed)}s')
+                    sys.stdout.flush()
                 time.sleep(0.25)
 
             return_code = proc.wait(timeout=5)
@@ -335,8 +335,7 @@ def run_subprocess_with_spinner(
             stderr_handle.seek(0)
             stdout = stdout_handle.read()
             stderr = stderr_handle.read()
-            sys.stdout.write('\r')
-            sys.stdout.flush()
+            if sys.stdout: sys.stdout.write('\r'); sys.stdout.flush()
             return return_code, stdout or '', stderr or ''
     finally:
         stdout_handle.close()
@@ -710,7 +709,7 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
                 subprocess.run([cmd, str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
             return True
         except subprocess.CalledProcessError as exc:
-            print('jianpu-ly 命令处理 MXL 失败:', exc.stderr.decode('utf-8', errors='ignore'))
+            log_message(f'jianpu-ly 命令处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
 
     if find_jianpu_ly_module():
         try:
@@ -718,7 +717,7 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
                 subprocess.run([sys.executable, '-m', 'jianpu_ly', str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
             return True
         except subprocess.CalledProcessError as exc:
-            print('jianpu_ly 模块处理 MXL 失败:', exc.stderr.decode('utf-8', errors='ignore'))
+            log_message(f'jianpu_ly 模块处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
 
     script_path = _ensure_jianpu_script()
     if script_path is None:
@@ -734,5 +733,5 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
             subprocess.run([*python_cmd, str(script_path), str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
         return True
     except subprocess.CalledProcessError as exc:
-        print('jianpu-ly 脚本处理 MXL 失败:', exc.stderr.decode('utf-8', errors='ignore'))
+        log_message(f'jianpu-ly 脚本处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
         return False

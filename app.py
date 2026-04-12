@@ -157,6 +157,10 @@ def main(page: ft.Page) -> None:
         for i, (page_name, *_) in enumerate(_NAV_ITEMS):
             _content_containers[i].visible = (page_name == name)
         state.current_page = name
+        if name == 'editor' and hasattr(editor_page, 'reset_view'):
+            editor_page.reset_view()
+        if name == 'transposer' and hasattr(transposer_page, 'reset_view'):
+            transposer_page.reset_view()
         try:
             content_stack.update()
         except Exception:

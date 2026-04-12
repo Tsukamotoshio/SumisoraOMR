@@ -13,6 +13,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
+from ..backend import editor_workspace_dir, open_directory
 from ..components.jianpu_editor import JianpuEditor
 from ..theme import Palette
 
@@ -38,6 +39,7 @@ class _BinaryImageView(ft.Column):
         self._mag_visible = False
         self._mag_rendering = False   # 节流标志
         self._mag_pending: Optional[tuple] = None   # 最新位置
+        self._load_token: int = 0
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_line_selected)
 
@@ -110,14 +112,16 @@ class _BinaryImageView(ft.Column):
     def load(self, path: Path) -> None:
         self._path = path
         self._scale = 1.0
+        self._load_token += 1
+        token = self._load_token
         # 重置缩放变换
         self._image.scale = None
         if path.suffix.lower() == '.pdf':
-            threading.Thread(target=self._load_pdf_async, args=(path,), daemon=True).start()
+            threading.Thread(target=self._load_pdf_async, args=(path, token), daemon=True).start()
         else:
-            threading.Thread(target=self._load_async, args=(path,), daemon=True).start()
+            threading.Thread(target=self._load_async, args=(path, token), daemon=True).start()
 
-    def _load_pdf_async(self, path: Path) -> None:
+    def _load_pdf_async(self, path: Path, token: int) -> None:
         """PDF 文件：用 PyMuPDF 渲染第一页为 PNG，再二値化。"""
         try:
             import fitz
@@ -127,7 +131,8 @@ class _BinaryImageView(ft.Column):
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 buf = io.BytesIO(pix.tobytes('png'))
                 b64_raw = base64.b64encode(buf.getvalue()).decode()
-            # 尝试二値化（可选）
+            if token != self._load_token:
+                return
             try:
                 from PIL import Image as PILImage
                 buf2 = io.BytesIO(base64.b64decode(b64_raw))
@@ -136,62 +141,83 @@ class _BinaryImageView(ft.Column):
                     binary = gray.point(lambda p: 255 if p > 128 else 0, '1').convert('RGB')
                     out = io.BytesIO()
                     binary.save(out, format='PNG')
-                    self._raw_b64 = base64.b64encode(out.getvalue()).decode()
+                    raw_b64 = base64.b64encode(out.getvalue()).decode()
             except Exception:
-                self._raw_b64 = b64_raw
-            self._image.src = self._raw_b64
-            self._image.visible = True
-            self._placeholder.visible = False
-            try:
-                self._image.update()
-                self._placeholder.update()
-            except Exception:
-                pass
+                raw_b64 = b64_raw
+            if token != self._load_token:
+                return
+            self._schedule_image_load(raw_b64, token)
         except ImportError:
-            self._placeholder.controls[-1] = ft.Text(
-                '需要安装 PyMuPDF：pip install pymupdf', size=12, color=Palette.ERROR)
-            self._placeholder.visible = True
-            try:
-                self._placeholder.update()
-            except Exception:
-                pass
+            self._schedule_load_error('需要安装 PyMuPDF：pip install pymupdf', token)
         except Exception as exc:
-            self._placeholder.controls[-1] = ft.Text(f'加载失败: {exc}', size=12, color=Palette.ERROR)
-            self._placeholder.visible = True
-            try:
-                self._placeholder.update()
-            except Exception:
-                pass
+            self._schedule_load_error(f'加载失败: {exc}', token)
 
-    def _load_async(self, path: Path) -> None:
+    def _load_async(self, path: Path, token: int) -> None:
         try:
-            # 尝试用 Pillow 转换为二值化（预处理效果与原 pipeline 一致）
             try:
-                from PIL import Image as PILImage, ImageOps
+                from PIL import Image as PILImage
                 with PILImage.open(path) as img:
                     gray = img.convert('L')
                     binary = gray.point(lambda p: 255 if p > 128 else 0, '1').convert('RGB')
                     buf = io.BytesIO()
                     binary.save(buf, format='PNG')
-                    self._raw_b64 = base64.b64encode(buf.getvalue()).decode()
+                    raw_b64 = base64.b64encode(buf.getvalue()).decode()
             except ImportError:
                 with open(path, 'rb') as f:
-                    self._raw_b64 = base64.b64encode(f.read()).decode()
-
-            self._image.src = self._raw_b64
-            self._image.visible = True
-            self._placeholder.visible = False
-            try:
-                self._image.update()
-                self._placeholder.update()
-            except Exception:
-                pass
+                    raw_b64 = base64.b64encode(f.read()).decode()
+            if token != self._load_token:
+                return
+            self._schedule_image_load(raw_b64, token)
         except Exception as exc:
-            self._placeholder.controls[-1] = ft.Text(f'加载失败: {exc}', size=12, color=Palette.ERROR)
-            try:
-                self._placeholder.update()
-            except Exception:
-                pass
+            if token != self._load_token:
+                return
+            self._schedule_load_error(f'加载失败: {exc}', token)
+
+    def _schedule_image_load(self, raw_b64: str, token: int) -> None:
+        if not hasattr(self, 'page') or self.page is None:
+            self._apply_image_load(raw_b64, token)
+            return
+        try:
+            self.page.run_task(self._async_apply_image_load, raw_b64, token)
+        except Exception:
+            self._apply_image_load(raw_b64, token)
+
+    def _schedule_load_error(self, message: str, token: int) -> None:
+        if not hasattr(self, 'page') or self.page is None:
+            self._apply_load_error(message, token)
+            return
+        try:
+            self.page.run_task(self._async_apply_load_error, message, token)
+        except Exception:
+            self._apply_load_error(message, token)
+
+    async def _async_apply_image_load(self, raw_b64: str, token: int) -> None:
+        self._apply_image_load(raw_b64, token)
+
+    async def _async_apply_load_error(self, message: str, token: int) -> None:
+        self._apply_load_error(message, token)
+
+    def _apply_image_load(self, raw_b64: str, token: int) -> None:
+        if token != self._load_token:
+            return
+        self._raw_b64 = raw_b64
+        self._image.src = self._raw_b64
+        self._image.visible = True
+        self._placeholder.visible = False
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def _apply_load_error(self, message: str, token: int) -> None:
+        if token != self._load_token:
+            return
+        self._placeholder.controls[-1] = ft.Text(message, size=12, color=Palette.ERROR)
+        self._placeholder.visible = True
+        try:
+            self.update()
+        except Exception:
+            pass
 
     # ── 缩放 ─────────────────────────────────────────────────────────────────
 
@@ -319,6 +345,22 @@ class _BinaryImageView(ft.Column):
         # 在图像上叠加一条半透明横条（通过对整张图片应用 color_filter 近似）
         # Flet Image 不支持精确区域染色；此处仅记录状态供未来扩展。
 
+    def reset(self) -> None:
+        self._path = None
+        self._raw_b64 = None
+        self._highlighted_line = -1
+        self._image.src = None
+        self._image.visible = False
+        self._placeholder.visible = True
+        self._mag_container.visible = False
+        self._mag_crop.visible = False
+        try:
+            self._image.update()
+            self._placeholder.update()
+            self._mag_container.update()
+        except Exception:
+            pass
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 编辑套件页面
@@ -407,18 +449,12 @@ class EditorPage(ft.Row):
 
     def _on_open_output_dir(self, _e) -> None:
         try:
-            from core.utils import get_app_base_dir
-            output_dir = get_app_base_dir() / 'Output'
-            output_dir.mkdir(parents=True, exist_ok=True)
-            import os
-            os.startfile(str(output_dir))
+            open_directory(editor_workspace_dir().parent / 'Output')
         except Exception:
             pass
 
     async def _pick_open_async(self) -> None:
-        from core.utils import get_app_base_dir
-        init_dir = get_app_base_dir() / 'editor-workspace'
-        init_dir.mkdir(parents=True, exist_ok=True)
+        init_dir = editor_workspace_dir()
         files = await self._open_picker.pick_files(
             dialog_title='打开乐谱文件（图像 / PDF / 简谱文本）',
             allowed_extensions=['png', 'jpg', 'jpeg', 'pdf', 'txt'],
@@ -432,8 +468,7 @@ class EditorPage(ft.Row):
 
     def _open_file(self, path: Path) -> None:
         """智能打开文件，并自动配对另一半。"""
-        from core.utils import get_app_base_dir
-        ws = get_app_base_dir() / 'editor-workspace'
+        ws = editor_workspace_dir()
         suffix_lo = path.suffix.lower()
 
         if suffix_lo in ('.png', '.jpg', '.jpeg', '.pdf'):
@@ -464,8 +499,7 @@ class EditorPage(ft.Row):
 
     def _on_file_selected(self, path: Path, **_kw) -> None:
         # 检查是否有对应的预处理参考图
-        from core.utils import get_app_base_dir
-        ws = get_app_base_dir() / 'editor-workspace'
+        ws = editor_workspace_dir()
         ref_candidates = [
             ws / (path.stem + '.png'),
             ws / (path.stem + '_ref.png'),
@@ -488,10 +522,14 @@ class EditorPage(ft.Row):
 
     def _on_mxl_ready(self, path: Path, **_kw) -> None:
         """MXL 就绪后尝试自动加载对应的 jianpu.txt（由 pipeline 生成）。"""
-        from core.utils import get_app_base_dir
-        ws = get_app_base_dir() / 'editor-workspace'
+        ws = editor_workspace_dir()
         stem = path.stem.replace('.mxl', '').replace('.musicxml', '')
         for candidate in ws.glob(f'{stem}*.jianpu.txt'):
             self._editor.load(candidate)
             self._state.current_jianpu_txt = candidate
             break
+
+    def reset_view(self) -> None:
+        self._img_view.reset()
+        self._editor.reset()
+        self._state.current_jianpu_txt = None

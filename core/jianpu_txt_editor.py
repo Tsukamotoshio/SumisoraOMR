@@ -228,9 +228,18 @@ def parse_txt(text: str) -> JianpuTxtScore:
     section: str = ''  # 'meta' | 'score' | ''
 
     for lineno, raw_line in enumerate(text.splitlines(), start=1):
-        line = raw_line.split('#')[0].strip()  # 去掉注释
-        if not line:
+        line = raw_line.rstrip('\r\n')
+        if not line.strip():
             continue
+        if re.match(r'^\s*#(\s|$)', line):
+            continue
+        comment_index = re.search(r'(?<!\S)#(?![0-7])', line)
+        if comment_index is not None:
+            line = line[:comment_index.start()].rstrip()
+            if not line:
+                continue
+
+        line = line.strip()
 
         # 区块标记
         if line.lower() == '[meta]':

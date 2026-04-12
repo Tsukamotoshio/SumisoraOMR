@@ -51,6 +51,7 @@ class AppState:
     transposed_mxl:    Optional[Path] = None   # 移调结果
     current_jianpu_txt: Optional[Path] = None  # 当前编辑的简谱文本
     output_pdf:        Optional[Path] = None   # 已生成的简谱 PDF
+    llm_api_key:       str = ''                # 大模型 API Key
 
     # 移调参数
     transpose_from_key: str = 'C'
