@@ -29,6 +29,21 @@ __pycache__/
 
 # 测试输出
 test_score.png
+core/test_write.txt
+test_write_output.txt
+publish_release_out.txt
+
+# 临时测试/LLM 输出
+llm_config.json
+llm_test*.txt
+llm_test_raw*.txt
+temp_llm_test.py
+tmp_compare_doubao.py
+tmp_patch_image_preprocess.py
+tmp_run_test.py
+tmpis3f7ftf/
+test_lilypond_run/
+test_lilypond_run_ascii/
 
 editor-workspace/
 xml-scores/
