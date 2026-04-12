@@ -6,8 +6,9 @@
 #   或（开发模式热重载）：flet run app.py
 #
 # 依赖：
-#   pip install flet pymupdf music21 pillow
-#   （其余核心依赖见 requirements.txt）
+#   pip install -r requirements.txt
+#   或者直接安装所需依赖：flet pymupdf music21 pillow opencv-python onnxruntime-directml oemer
+#   （推荐使用 requirements.txt 统一安装）
 
 import sys
 import os
@@ -49,7 +50,8 @@ def _bootstrap_venv() -> None:
             sys.exit(subprocess.run([_py] + sys.argv).returncode)
     print(
         '\n[错误] 未找到虚拟环境或 flet 未安装。\n'
-        '  pip install flet pymupdf music21 pillow\n',
+        '  pip install -r requirements.txt\n'
+        '  或 pip install flet pymupdf music21 pillow opencv-python onnxruntime-directml oemer\n',
         file=sys.stderr,
     )
     sys.exit(1)

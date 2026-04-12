@@ -11,6 +11,7 @@ build/
 dist/
 installer-dist/
 releases/
+installer_test/
 
 # 构建脚本与构建产物
 build_installer.bat

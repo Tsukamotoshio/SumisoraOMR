@@ -32,6 +32,24 @@ This package includes or invokes the following third-party components:
 - License: BSD-3-Clause
 - Official site: <https://www.reportlab.com/>
 
+## OpenCV
+- Version: `4.8.0`
+- License: Apache-2.0
+- Upstream: <https://github.com/opencv/opencv>
+- Note: Used for advanced image preprocessing and line/staff detection in the OMER pipeline.
+
+## ONNX Runtime (DirectML)
+- Version: `1.20.0`
+- License: MIT
+- Upstream: <https://github.com/microsoft/onnxruntime>
+- Note: Windows DirectML backend for GPU-accelerated inference used by the Oemer engine.
+
+## Oemer
+- Version: `0.1.8`
+- License: MIT
+- Upstream: <https://github.com/BreezeWhite/oemer>
+- Note: Deep-learning end-to-end OMR engine invoked for image-based score recognition.
+
 ## jianpu-ly
 - Version: `1.866`
 - License: Apache-2.0
