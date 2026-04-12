@@ -218,7 +218,7 @@ def main(page: ft.Page) -> None:
 
     # ── 顶部 AppBar ──────────────────────────────────────────────────────────
     page.appbar = ft.AppBar(
-        title=ft.Text('OMR 乐谱转换工具  v0.2.0-preview', size=15, weight=ft.FontWeight.W_600),
+        title=ft.Text('OMR 乐谱转换工具  v0.2.1', size=15, weight=ft.FontWeight.W_600),
         center_title=False,
         bgcolor=Palette.BG_SURFACE,
         leading=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color=Palette.PRIMARY),

@@ -36,7 +36,7 @@ class AboutPage(ft.Column):
     """关于页面：作者、项目地址、许可证。"""
 
     _GITHUB_URL = 'https://github.com/Tsukamotoshio/omr-to-jianpu'
-    VERSION = 'v0.2.0-preview'
+    VERSION = 'v0.2.1'
 
     def __init__(self):
         super().__init__(spacing=0, expand=True,

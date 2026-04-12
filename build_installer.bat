@@ -4,7 +4,7 @@ chcp 65001 >nul
 
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%"
-set "APP_VERSION=0.2.0-preview"
+set "APP_VERSION=0.2.1"
 
 set "AUDIVERIS_SOURCE=%BASE_DIR%audiveris-5.10.2"
 set "AUDIVERIS_RUNTIME_SRC=%AUDIVERIS_SOURCE%\app\build\install\app"

@@ -12,7 +12,7 @@ cd /d "%BASE_DIR%"
 
 
 
-set "APP_VERSION=0.2.0-preview"
+set "APP_VERSION=0.2.1"
 
 
 

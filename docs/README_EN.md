@@ -2,15 +2,17 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: 0.2.0-experimental
+Version: 0.2.1
 
 Batch-convert Western staff notation PDFs/images into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
 
 
-What's New in 0.2.0-experimental
+What's New in 0.2.1
 ---------------------------------
 
+- Added GitHub Releases version checking so users can open the release page
+  from inside the app.
 - **Movable-Do (首调唱名法):** note numbers are now mapped relative to the
   key signature — `1` always represents the tonic, and accidentals use the
   key's natural tendency (sharps for sharp keys, flats for flat keys).
