@@ -12,6 +12,16 @@ dist/
 installer-dist/
 releases/
 
+# 构建脚本与构建产物
+build_installer.bat
+build_zip.bat
+publish_release.bat
+build_log.txt
+_debug_build.bat
+_test_build.bat
+_test2.bat
+_test3.bat
+
 # 转换产物
 Input/
 Output/
