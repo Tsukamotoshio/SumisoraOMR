@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-This package includes or invokes the following third-party components:
+This file provides license and attribution notices for third-party components distributed with this product, where such notices are required by the applicable licenses. It does not attempt to document every development or build dependency.
 
 ## Audiveris
 - Version: `5.10.2`
@@ -50,6 +50,16 @@ This package includes or invokes the following third-party components:
 - Upstream: <https://github.com/BreezeWhite/oemer>
 - Note: Deep-learning end-to-end OMR engine invoked for image-based score recognition.
 
+## scikit-learn
+- License: BSD-3-Clause
+- Upstream: <https://github.com/scikit-learn/scikit-learn>
+- Note: A bundled dependency of `oemer` for symbol classification and runtime inference.
+
+## SciPy
+- License: BSD-3-Clause
+- Upstream: <https://github.com/scipy/scipy>
+- Note: A bundled dependency of `oemer` used for numerical computation and matrix operations.
+
 ## jianpu-ly
 - Version: `1.866`
 - License: Apache-2.0
@@ -73,13 +83,6 @@ This package includes or invokes the following third-party components:
 - Source: <https://github.com/adoptium/temurin25-binaries>
 - Note: Bundled as the Java runtime required by Audiveris.
 
-## PyInstaller
-- Version: `6.19.0`
-- License: GPLv2-or-later with Bootloader Exception
-- Upstream: <https://pyinstaller.org/>
-- Note: PyInstaller’s bootloader (the `.exe` wrapper) carries a special exception
-  that explicitly permits packaging non-GPL applications. The resulting executable
-  is therefore **not** required to be GPL-licensed.
 ## Rich
 - Version: `14.3.3`
 - License: MIT
@@ -97,10 +100,10 @@ This package includes or invokes the following third-party components:
 - Note: Used as the GUI framework for the desktop application.
 
 ## PyMuPDF (fitz)
+- Version: `>=1.24.0`
 - License: AGPL-3.0 (free tier) / commercial
 - Upstream: <https://github.com/pymupdf/PyMuPDF>
-- Note: Used for in-memory PDF page rendering in the preview and magnifier
-  components. Invoked only at runtime; not bundled.
+- Note: Used for PDF page rendering and preview in the packaged application. Bundled into the distributed executable when shipping PDF input support.
 ---
 
 ## Important note

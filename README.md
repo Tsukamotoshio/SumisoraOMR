@@ -39,9 +39,9 @@ A tool to batch-convert Western staff notation PDFs into Jianpu (numbered musica
 
 ## Running from Source / 源码运行
 
-If you want to run `convert.py` directly instead of using the packaged executable, install the Python dependencies first:
+If you want to run `app.py` directly instead of using the packaged executable, install the Python dependencies first:
 
-如果你想直接运行 `convert.py` 而非使用打包版本，请先安装 Python 依赖：
+如果你想直接运行 `app.py` 而非使用打包版本，请先安装 Python 依赖：
 
 ```bash
 pip install -r requirements.txt
@@ -63,7 +63,7 @@ You will also need the following external tools placed in the corresponding dire
 Then run / 然后运行：
 
 ```bash
-python convert.py
+python app.py
 ```
 
 ---
@@ -73,7 +73,7 @@ python convert.py
 - `Input/` — Place source sheet music files here / 放入原始五线谱文件（PDF / PNG / JPG）
 - `Output/` — Converted Jianpu PDFs and MIDIs are saved here / 保存生成的简谱 PDF / MIDI
 - `logs/` — Runtime logs / 自动记录运行日志
-- `THIRD_PARTY_NOTICES.md` — Third-party component licenses / 第三方组件许可证说明
+- `THIRD_PARTY_NOTICES.md` — Third-party component notices / 第三方组件许可证说明。仅列出最终分发给用户且其许可证要求附带声明的组件。
 
 ---
 
