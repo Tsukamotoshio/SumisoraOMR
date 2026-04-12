@@ -33,6 +33,9 @@ core/test_write.txt
 test_write_output.txt
 publish_release_out.txt
 
+test_preprocess.py
+test_score.ly
+
 # 临时测试/LLM 输出
 llm_config.json
 llm_test*.txt
