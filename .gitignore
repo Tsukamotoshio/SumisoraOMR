@@ -21,6 +21,10 @@ _debug_build.bat
 _test_build.bat
 _test2.bat
 _test3.bat
+*_test*.bat
+*_build.bat
+build_*.bat
+publish_*.bat
 
 # 转换产物
 Input/
