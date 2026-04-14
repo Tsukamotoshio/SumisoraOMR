@@ -17,6 +17,7 @@ from .config import (
     MAX_OEMER_SECONDS,
     OMREngine,
 )
+from .homr_runner import check_homr_available, run_homr_batch
 from .oemer_runner import check_oemer_available, run_oemer_batch
 from .renderer import generate_jianpu_pdf_from_dual_mxl, generate_jianpu_pdf_from_mxl
 from .utils import (
@@ -220,8 +221,22 @@ def process_single_input_to_jianpu(
     else:
         effective_engine = engine
 
+    # ── Homr (images) ─────────────────────────────────────────────────────────
+    if effective_engine is OMREngine.HOMR:
+        if not _IS_IMAGE:
+            log_message(
+                f'  ✗ Homr 不支持 PDF 格式，跳过 {source_file.name}。\n'
+                '    → 请将 PDF 转成图片后再使用 Homr，或改用 Audiveris 引擎。',
+                logging.WARNING,
+            )
+            return False
+        if not check_homr_available():
+            return False
+        omr_out = run_homr_batch(source_file, output_dir=file_temp_dir)
+        engine_label = 'Homr'
+
     # ── Oemer (images) ────────────────────────────────────────────────────────
-    if effective_engine is OMREngine.OEMER:
+    elif effective_engine is OMREngine.OEMER:
         if not _IS_IMAGE:
             log_message(
                 f'  ✗ Oemer 不支持 PDF 格式，跳过 {source_file.name}。\n'

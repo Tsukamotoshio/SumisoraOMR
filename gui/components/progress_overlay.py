@@ -150,6 +150,8 @@ class ProgressOverlay(ft.Stack):
         self._stop_timer()
         self._backdrop.visible = False
         self._panel_wrapper.visible = False
+        # 清理完成后的日志控件，避免隐藏状态下保留过多 UI 控件导致后续卡顿。
+        self._log_list.controls.clear()
         self._update_overlay()
 
     def _update_overlay(self) -> None:
@@ -203,6 +205,10 @@ class ProgressOverlay(ft.Stack):
             ft.Text(line, size=11, font_family='Consolas',
                     color=color, selectable=True)
         )
+        # 限制日志控件数量，避免历史日志过多导致 UI 卡顿。
+        max_log_lines = 120
+        while len(self._log_list.controls) > max_log_lines:
+            self._log_list.controls.pop(0)
         try:
             self._log_list.update()
         except Exception:

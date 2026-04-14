@@ -43,6 +43,7 @@ class LandingPage(ft.Row):
                 ft.dropdown.Option('auto',      '自动（推荐）'),
                 ft.dropdown.Option('audiveris', 'Audiveris（PDF/图片）'),
                 ft.dropdown.Option('oemer',     'Oemer（仅图片）'),
+                ft.dropdown.Option('homr',      'Homr（仅图片）'),
             ],
             width=200,
             text_size=13,
