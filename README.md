@@ -1,6 +1,6 @@
 # OMR-to-Jianpu Conversion Tool / 简谱转换工具
 
-Version: 0.2.1
+Version: v0.2.2-homr-experimental
 
 **Author / 作者：Tsukamotoshio**
 
@@ -47,20 +47,37 @@ If you want to run `app.py` directly instead of using the packaged executable, i
 pip install -r requirements.txt
 ```
 
-Or install manually / 或手动安装：
+Or install the required packages manually:
+
+或者手动安装以下 Python 包：
 
 ```bash
-pip install music21 pillow reportlab
+pip install flet music21 pillow opencv-python reportlab rich pymupdf onnxruntime-directml oemer
 ```
 
-You will also need the following external tools placed in the corresponding directories (same layout as the packaged release):
-此外还需要将以下外部工具放置在对应目录（与打包版本的目录结构相同）：
+Notes:
 
-- `audiveris-5.10.2/` — Audiveris OMR engine
+- Homr support requires a local `omr_engine/homr` clone or the `homr` Python package.
+- On Windows, Homr will auto-detect CUDA or DirectML and prefer GPU inference when available.
+
+注意：
+
+- 使用 Homr 需要本地 `omr_engine/homr` 克隆仓库，或安装 `homr` Python 包。
+- 在 Windows 上，Homr 会自动检测 CUDA 或 DirectML，并优先使用 GPU 推理（如果可用）。
+
+You will also need the following local engine source/runtime directories:
+
+此外还需要以下本地引擎源码/运行时目录：
+
+- `omr_engine/audiveris/` — Audiveris OMR engine source
 - `lilypond-2.24.4/` — LilyPond engraving engine
-- `jdk/` — Java runtime (required by Audiveris)
+- `jdk/` — Java runtime required by Audiveris
+- Optional: `omr_engine/homr/` — Homr source engine for Homr support
+- Optional: `omr_engine/oemer/` — Oemer source engine if using the local Oemer repository
 
-Then run / 然后运行：
+Then run:
+
+然后运行：
 
 ```bash
 python app.py
@@ -72,6 +89,7 @@ python app.py
 
 - `Input/` — Place source sheet music files here / 放入原始五线谱文件（PDF / PNG / JPG）
 - `Output/` — Converted Jianpu PDFs and MIDIs are saved here / 保存生成的简谱 PDF / MIDI
+- `editor-workspace/` — Intermediate files for score proofreading and regeneration / 简谱校对与重新生成时的中间文件存放目录
 - `logs/` — Runtime logs / 自动记录运行日志
 - `THIRD_PARTY_NOTICES.md` — Third-party component notices / 第三方组件许可证说明。仅列出最终分发给用户且其许可证要求附带声明的组件。
 

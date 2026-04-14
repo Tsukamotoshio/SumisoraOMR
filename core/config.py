@@ -43,6 +43,7 @@ SUPPORTED_INPUT_SUFFIXES = {'.pdf', '.png', '.jpg', '.jpeg'}
 ENABLE_LYRICS_OUTPUT = True
 MAX_AUDIVERIS_SECONDS = 1800
 MAX_OEMER_SECONDS = 600
+MAX_HOMR_SECONDS = 900
 DEFAULT_AUDIVERIS_MIN_JAVA_VERSION = 25
 RUNTIME_ASSETS_DIR_NAME = 'package-assets'
 AUDIVERIS_RUNTIME_DIR_NAME = 'audiveris-runtime'
@@ -55,7 +56,7 @@ OEMER_SOURCE_DIR_NAME = 'oemer'
 HOMR_SOURCE_DIR_NAME = 'homr'
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 7
-APP_VERSION = '0.2.1'
+APP_VERSION = '0.2.2'
 AUDIVERIS_MSI_NAMES = [
     'Audiveris-5.10.2-windows-x86_64.msi',
     'Audiveris.msi',
@@ -76,7 +77,7 @@ class OMREngine(Enum):
     OEMER:     基于深度学习的端到端 OMR 引擎（pip install oemer），
                仅支持图片输入，输出 .musicxml。
                不依赖 Java，但需要 Python 环境中安装 oemer。
-    HOMR:      基于 homr 的端到端 OMR 引擎，支持图片输入，
+    HOMR:      基于 homr 的端到端 OMR 引擎，支持图片输入和 PDF 首页，
                输出 .musicxml。可直接使用本地 omr_engine/homr 仓库。
     """
     AUTO = 'auto'

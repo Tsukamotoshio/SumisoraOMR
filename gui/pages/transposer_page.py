@@ -28,6 +28,7 @@ class TransposerPage(ft.Column):
     def __init__(self, state: AppState):
         super().__init__(spacing=0, expand=True)
         self._state = state
+        self._has_been_shown = False
         self._orig_mxl: Optional[Path] = None
         self._transposed_mxl: Optional[Path] = None
         self._orig_render_token: int = 0
@@ -190,12 +191,18 @@ class TransposerPage(ft.Column):
         )
 
         # 底部状态栏
-        self._status = ft.Text('', size=12, color=Palette.TEXT_SECONDARY)
-        self._progress = ft.ProgressBar(value=None, visible=False, bgcolor=Palette.BG_CARD, color=Palette.PRIMARY, height=3)
+        self._status = ft.Text('请先打开乐谱文件。', size=12, color=Palette.TEXT_SECONDARY)
+        self._progress = ft.ProgressBar(value=0, visible=False, bgcolor=Palette.BG_CARD, color=Palette.PRIMARY, height=3)
 
         bottom_bar = ft.Container(
-            content=ft.Column([self._progress, self._status], spacing=4),
-            padding=ft.Padding.symmetric(horizontal=16, vertical=6),
+            content=ft.Column(
+                [
+                    ft.Container(content=self._progress, height=3, width=320),
+                    ft.Row([self._status], alignment=ft.MainAxisAlignment.START),
+                ],
+                spacing=8,
+            ),
+            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
             bgcolor=Palette.BG_SURFACE,
             border=ft.Border.only(top=ft.BorderSide(1, Palette.DIVIDER_DARK)),
         )
@@ -491,7 +498,7 @@ class TransposerPage(ft.Column):
         self._trans_viewer._image.src = None
         self._trans_viewer._image.visible = False
         self._trans_viewer._placeholder.visible = True
-        self._status.value = ''
+        self._status.value = '请先打开乐谱文件。'
         try:
             self._orig_viewer.update()
             self._trans_viewer.update()

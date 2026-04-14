@@ -1,7 +1,7 @@
 #define MyAppName "简谱转换工具"
-#define MyAppVersion "0.2.1"
+#define MyAppVersion "0.2.2-homr-experimental"
 
-#define MyAppVersionNumeric "0.2.1.0"
+#define MyAppVersionNumeric "0.2.2.0"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "ConvertTool.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
@@ -53,7 +53,7 @@ Source: "package-assets\oemer-runtime\*"; DestDir: "{app}\oemer-runtime"; Flags:
 Source: "package-assets\tessdata\*"; DestDir: "{app}\tessdata"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "package-assets\waifu2x-runtime\*"; DestDir: "{app}\waifu2x-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "jdk\*"; DestDir: "{app}\jdk"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
-Source: "jianpu-ly.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "scripts\jianpu-ly.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Input\Do_You_Hear_the_People_Sing.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
 Source: "Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
 Source: "README_EN.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion

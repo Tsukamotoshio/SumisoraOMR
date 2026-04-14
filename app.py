@@ -12,6 +12,13 @@
 
 import sys
 import os
+import warnings
+
+warnings.filterwarnings(
+    'ignore',
+    message='Enable tracemalloc to get the object allocation traceback',
+    category=RuntimeWarning,
+)
 
 # ─── SSL 证书：解决打包后部分环境证书验证失败问题 ─────────────────────────────
 # 在所有网络请求（flet / urllib / requests / httpx）之前设置，
@@ -20,11 +27,13 @@ import os
 #   REQUESTS_CA_BUNDLE — requests 库
 #   CURL_CA_BUNDLE   — libcurl 系库
 if getattr(sys, 'frozen', False):
-    _internal_cert = os.path.join(sys._MEIPASS, 'certifi', 'cacert.pem')
-    if os.path.exists(_internal_cert):
-        os.environ['SSL_CERT_FILE'] = _internal_cert
-        os.environ['REQUESTS_CA_BUNDLE'] = _internal_cert
-        os.environ['CURL_CA_BUNDLE'] = _internal_cert
+    _meipass = getattr(sys, '_MEIPASS', None)
+    if _meipass is not None:
+        _internal_cert = os.path.join(_meipass, 'certifi', 'cacert.pem')
+        if os.path.exists(_internal_cert):
+            os.environ['SSL_CERT_FILE'] = _internal_cert
+            os.environ['REQUESTS_CA_BUNDLE'] = _internal_cert
+            os.environ['CURL_CA_BUNDLE'] = _internal_cert
     # console=False 时 sys.stdout/stderr 为 None，所有 print() 会崩溃
     # 替换为 null 流，将输出静默丢弃（日志仍写入 logs/ 文件）
     if sys.stdout is None:
@@ -159,10 +168,12 @@ def main(page: ft.Page) -> None:
         for i, (page_name, *_) in enumerate(_NAV_ITEMS):
             _content_containers[i].visible = (page_name == name)
         state.current_page = name
-        if name == 'editor' and hasattr(editor_page, 'reset_view'):
+        if name == 'editor' and not getattr(editor_page, '_has_been_shown', False):
             editor_page.reset_view()
-        if name == 'transposer' and hasattr(transposer_page, 'reset_view'):
+            editor_page._has_been_shown = True
+        if name == 'transposer' and not getattr(transposer_page, '_has_been_shown', False):
             transposer_page.reset_view()
+            transposer_page._has_been_shown = True
         try:
             content_stack.update()
         except Exception:
@@ -220,7 +231,7 @@ def main(page: ft.Page) -> None:
 
     # ── 顶部 AppBar ──────────────────────────────────────────────────────────
     page.appbar = ft.AppBar(
-        title=ft.Text('OMR 乐谱转换工具  v0.2.1', size=15, weight=ft.FontWeight.W_600),
+        title=ft.Text('OMR 乐谱转换工具  v0.2.2-homr-experimental', size=15, weight=ft.FontWeight.W_600),
         center_title=False,
         bgcolor=Palette.BG_SURFACE,
         leading=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color=Palette.PRIMARY),
@@ -269,6 +280,18 @@ def main(page: ft.Page) -> None:
 
     # ── 初始化完成 ────────────────────────────────────────────────────────────
     _show_page('landing')
+
+    # ── 窗口事件：恢复焦点时强制刷新，防止后台返回后 UI 冻结 ─────────────────
+    def _on_window_event(e) -> None:
+        # 窗口从最小化/后台恢复时，Flutter 渲染引擎可能暂停了帧渲染；
+        # 强制一次 page.update() 让所有待处理的控件变更立即上屏。
+        if getattr(e, 'data', None) in ('focus', 'show', 'restore', 'unminimize'):
+            try:
+                page.update()
+            except Exception:
+                pass
+
+    page.window.on_event = _on_window_event
 
 
 # ─────────────────────────────────────────────────────────────────────────────

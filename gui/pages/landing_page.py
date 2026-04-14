@@ -41,9 +41,9 @@ class LandingPage(ft.Row):
             value='auto',
             options=[
                 ft.dropdown.Option('auto',      '自动（推荐）'),
-                ft.dropdown.Option('audiveris', 'Audiveris（PDF/图片）'),
-                ft.dropdown.Option('oemer',     'Oemer（仅图片）'),
-                ft.dropdown.Option('homr',      'Homr（仅图片）'),
+                ft.dropdown.Option('audiveris', 'Audiveris（启发式算法）'),
+                ft.dropdown.Option('oemer',     'Oemer（CNN模型）'),
+                ft.dropdown.Option('homr',      'Homr（实验性）'),
             ],
             width=200,
             text_size=13,
@@ -177,8 +177,6 @@ class LandingPage(ft.Row):
                 self._viewer.preload(path)
             except Exception:
                 pass
-            # 让 UI 线程有机会响应，不要一次性启动过多线程
-            time.sleep(0.02)
 
     # ── 事件 ─────────────────────────────────────────────────────────────────
 
@@ -330,6 +328,7 @@ class LandingPage(ft.Row):
                 'auto': OMREngine.AUTO,
                 'audiveris': OMREngine.AUDIVERIS,
                 'oemer': OMREngine.OEMER,
+                'homr': OMREngine.HOMR,
             }
             engine = engine_map.get(engine_val, OMREngine.AUTO)
             gen_midi = getattr(self, '_gen_midi', True)

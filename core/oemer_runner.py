@@ -84,6 +84,14 @@ def find_oemer_source_dir() -> Optional[Path]:
         base_dir / OEMER_SOURCE_DIR_NAME,
         base_dir / OMR_ENGINE_DIR_NAME / OEMER_SOURCE_DIR_NAME,
     ]
+    # PyInstaller frozen: also check _MEIPASS in case oemer was collected as a tree
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        meipass_path = Path(meipass)
+        candidates.extend([
+            meipass_path / OEMER_SOURCE_DIR_NAME,
+            meipass_path / OMR_ENGINE_DIR_NAME / OEMER_SOURCE_DIR_NAME,
+        ])
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
             return candidate
@@ -131,13 +139,14 @@ def check_oemer_available() -> bool:
 # PDF → 图片（oemer 不支持 PDF，需先转换）
 # ──────────────────────────────────────────────
 
-def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path) -> Optional[Path]:
+def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path, engine_label: str = 'oemer') -> Optional[Path]:
     """将 PDF 首页渲染为 PNG，返回生成的图片路径；失败返回 None。
 
     优先使用 Pillow + pdf2image（需依赖 poppler），若不可用则尝试 PyMuPDF (fitz)。
     """
     png_path = output_dir / f'{pdf_path.stem}_page1.png'
     output_dir.mkdir(parents=True, exist_ok=True)
+    prefix = f'[{engine_label}]'
 
     # 方案 A：pdf2image (poppler)
     try:
@@ -145,12 +154,12 @@ def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path) -> Optional[Path]:
         images = convert_from_path(str(pdf_path), first_page=1, last_page=1, dpi=300)
         if images:
             images[0].save(str(png_path), 'PNG')
-            log_message(f'[oemer] PDF 首页已转换为图片: {png_path.name}')
+            log_message(f'{prefix} PDF 首页已转换为图片: {png_path.name}')
             return png_path
     except ImportError:
         pass
     except Exception as exc:
-        log_message(f'[oemer] pdf2image 转换失败: {exc}', logging.WARNING)
+        log_message(f'{prefix} pdf2image 转换失败: {exc}', logging.WARNING)
 
     # 方案 B：PyMuPDF (fitz)
     try:
@@ -161,15 +170,15 @@ def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path) -> Optional[Path]:
         pix = page.get_pixmap(matrix=mat)
         pix.save(str(png_path))
         doc.close()
-        log_message(f'[oemer] PDF 首页已转换为图片 (PyMuPDF): {png_path.name}')
+        log_message(f'{prefix} PDF 首页已转换为图片 (PyMuPDF): {png_path.name}')
         return png_path
     except ImportError:
         pass
     except Exception as exc:
-        log_message(f'[oemer] PyMuPDF 转换失败: {exc}', logging.WARNING)
+        log_message(f'{prefix} PyMuPDF 转换失败: {exc}', logging.WARNING)
 
     log_message(
-        '[oemer] PDF 转图片失败：请安装 pdf2image（需 poppler）或 PyMuPDF：\n'
+        f'{prefix} PDF 转图片失败：请安装 pdf2image（需 poppler）或 PyMuPDF：\n'
         '  pip install pdf2image   # 还需安装 poppler-utils\n'
         '  pip install pymupdf',
         logging.ERROR,

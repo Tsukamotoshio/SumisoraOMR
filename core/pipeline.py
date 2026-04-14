@@ -14,6 +14,7 @@ from .config import (
     AppConfig,
     ConversionSummary,
     MAX_AUDIVERIS_SECONDS,
+    MAX_HOMR_SECONDS,
     MAX_OEMER_SECONDS,
     OMREngine,
 )
@@ -103,11 +104,10 @@ def process_single_input_to_jianpu(
 
     _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO
-    _use_image_dual = _IS_IMAGE
+    _use_image_dual = _IS_IMAGE and (_is_auto or bool(llm_api_key))
 
-    # ── 图片输入：始终同时运行 Audiveris + Oemer，然后视大模型纠错结果选择最终输出。 ─────
-    # 图片输入下，如果用户选择 AUTO 或提供了 LLM key，都会并行运行
-    # Oemer + Audiveris，并在两者均成功时进行融合与大模型纠错。
+    # ── 图片输入：仅当用户选择 AUTO，或提供了 LLM key 时，才同时运行 Audiveris + Oemer进行融合识别。
+    # 选择显式单引擎（Oemer/Audiveris/Homr）时，应只运行对应单引擎。 ─────────────────────────────
     if _use_image_dual:
         oemer_dir     = file_temp_dir / 'oemer'
         audiveris_dir = file_temp_dir / 'audiveris'
@@ -221,18 +221,31 @@ def process_single_input_to_jianpu(
     else:
         effective_engine = engine
 
-    # ── Homr (images) ─────────────────────────────────────────────────────────
+    # ── Homr (images / PDF first page) ────────────────────────────────────────
     if effective_engine is OMREngine.HOMR:
-        if not _IS_IMAGE:
+        if not _IS_IMAGE and source_file.suffix.lower() != '.pdf':
             log_message(
-                f'  ✗ Homr 不支持 PDF 格式，跳过 {source_file.name}。\n'
-                '    → 请将 PDF 转成图片后再使用 Homr，或改用 Audiveris 引擎。',
+                f'  ✗ Homr 仅支持图片或 PDF 首页，跳过 {source_file.name}。',
                 logging.WARNING,
             )
             return False
         if not check_homr_available():
             return False
-        omr_out = run_homr_batch(source_file, output_dir=file_temp_dir)
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
+        with ThreadPoolExecutor(max_workers=1) as _homr_ex:
+            _homr_future = _homr_ex.submit(run_homr_batch, source_file, file_temp_dir)
+            try:
+                omr_out = _homr_future.result(timeout=MAX_HOMR_SECONDS)
+            except _TimeoutError:
+                log_message(
+                    f'  [Homr] 识别超时（>{MAX_HOMR_SECONDS}s），已中止 {source_file.name}。',
+                    logging.WARNING,
+                )
+                _homr_future.cancel()
+                omr_out = None
+            except Exception as _exc:
+                log_message(f'  [Homr] 识别异常：{_exc}', logging.WARNING)
+                omr_out = None
         engine_label = 'Homr'
 
     # ── Oemer (images) ────────────────────────────────────────────────────────
@@ -256,6 +269,9 @@ def process_single_input_to_jianpu(
     if omr_out is None:
         if effective_engine is OMREngine.OEMER:
             log_message(f'  ✗ Oemer 处理失败，跳过 {source_file.name}。', logging.WARNING)
+            return False
+        elif effective_engine is OMREngine.HOMR:
+            log_message(f'  ✗ Homr 处理失败，跳过 {source_file.name}。', logging.WARNING)
             return False
         else:
             # AUTO PDF 或显式 Audiveris 失败 → 回退 Oemer

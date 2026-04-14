@@ -133,7 +133,7 @@ class FileSidebar(ft.Column):
             ),
             bgcolor=bg,
             border_radius=ft.BorderRadius.all(6),
-            padding=ft.Padding.symmetric(horizontal=6, vertical=5),
+            padding=ft.Padding.only(left=6, right=12, top=5, bottom=5),
             on_click=_on_click,
             ink=True,
         )

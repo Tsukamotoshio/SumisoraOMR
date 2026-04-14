@@ -605,9 +605,9 @@ def find_jianpu_ly_module() -> bool:
 
 
 def find_jianpu_ly_script() -> Optional[Path]:
-    """Look for jianpu-ly.py in cwd and the app base directory."""
+    """Look for jianpu-ly.py in cwd, the app base directory, and scripts/."""
     script_dir = get_app_base_dir()
-    for base in [Path.cwd(), script_dir]:
+    for base in [Path.cwd(), script_dir, script_dir / 'scripts']:
         path = base / 'jianpu-ly.py'
         if path.exists():
             return path
@@ -629,11 +629,12 @@ def download_jianpu_ly_script(dest: Path) -> bool:
 
 
 def _ensure_jianpu_script() -> Optional[Path]:
-    """Ensure jianpu-ly.py is available, downloading it to the app dir if necessary."""
+    """Ensure jianpu-ly.py is available, downloading it to the app dir or scripts/ if necessary."""
     script_path = find_jianpu_ly_script()
     if script_path is not None:
         return script_path
-    script_path = get_app_base_dir() / 'jianpu-ly.py'
+    script_path = get_app_base_dir() / 'scripts' / 'jianpu-ly.py'
+    script_path.parent.mkdir(parents=True, exist_ok=True)
     if script_path.exists() or download_jianpu_ly_script(script_path):
         return script_path
     return None

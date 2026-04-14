@@ -1,4 +1,6 @@
-# 运行时二进制（大文件，不纳入版本控制）
+# Runtime binaries / bundled runtimes
+.venv/
+.vscode/
 jdk/
 package-assets/
 lilypond-2.24.4/
@@ -6,71 +8,58 @@ audiveris-5.10.2/
 waifu2x-ncnn-vulkan/
 audiveris_job_*/
 
-# 构建输出
-build/
-dist/
-installer-dist/
-releases/
-installer_test/
+# Build outputs and packaging artifacts
+/build/
+/dist/
+/installer-dist/
+/releases/
+/installer_test/
+/build_log.txt
+/publish_release_out.txt
 
-# 构建脚本与构建产物
-build_installer.bat
-build_zip.bat
-publish_release.bat
-build_log.txt
-_debug_build.bat
-_test_build.bat
-_test2.bat
-_test3.bat
-*_test*.bat
-*_build.bat
-build_*.bat
-publish_*.bat
+# Root-only build helper scripts and temp files
+/build_installer.bat
+/build_zip.bat
+/publish_release.bat
+/_debug_build.bat
+/_test_build.bat
+/_test2.bat
+/_test3.bat
+/*_test*.bat
+/*_build.bat
+/build_*.bat
+/publish_*.bat
 
-# 转换产物
-Input/
-Output/
-logs/
-conversion_history.json
+# Install and helper scripts moved into scripts/
+scripts/install_audiveris_local.bat
+scripts/download_oemer_models.py
+scripts/jianpu-ly.py
+scripts/_sync_oemer_package_assets.py
+scripts/_sync_oemer_to_venv.py
 
-# Python 缓存
+# Generated conversion artifacts
+/Input/
+/Output/
+/logs/
+/conversion_history.json
+/test_score.png
+/test_score.ly
+
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 
-# LilyPond/jianpu-ly 临时文件
+# LilyPond / jianpu-ly temporary files
 *.jianpu.txt
 *.jianpu.ly
 
-# 测试输出
-test_score.png
-core/test_write.txt
-test_write_output.txt
-publish_release_out.txt
-
-test_preprocess.py
-test_score.ly
-
-# 临时测试/LLM 输出
-llm_config.json
-llm_test*.txt
-llm_test_raw*.txt
-temp_llm_test.py
-tmp_compare_doubao.py
-tmp_patch_image_preprocess.py
-tmp_run_test.py
-tmpis3f7ftf/
-test_lilypond_run/
-test_lilypond_run_ascii/
-
-editor-workspace/
-xml-scores/
-
-# Local environment / editor artifacts
-.venv/
-.vscode/
-
-# Additional temporary/test files and outputs
+# Test and temporary files
+test_*.py
+*_test.py
+test_*.txt
+*_test*.txt
+temp_*
+tmp_*
 *.log
 *.out
 *.tmp
@@ -79,8 +68,6 @@ xml-scores/
 *.swp
 *.cache
 
-test_*.py
-*_test.py
-test_*.txt
-*_test*.txt
-tmp_*
+# Workspace / generated dirs
+/editor-workspace/
+/xml-scores/

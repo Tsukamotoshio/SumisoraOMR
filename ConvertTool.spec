@@ -4,6 +4,17 @@ from PyInstaller.utils.hooks import collect_all
 import certifi
 import os
 
+
+def collect_tree(source, prefix):
+    """Recursively collect files from a directory tree into PyInstaller datas."""
+    for root, _, files in os.walk(source):
+        for file in files:
+            src = os.path.join(root, file)
+            rel_root = os.path.relpath(root, source)
+            dest = prefix if rel_root == '.' else os.path.join(prefix, rel_root).replace('\\', '/')
+            datas.append((src, dest))
+
+
 datas = []
 binaries = []
 hiddenimports = []
@@ -31,6 +42,17 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 # ── PyMuPDF（PDF → 图片转换，oemer 处理 PDF 输入时使用）────────────────────────
 tmp_ret = collect_all('fitz')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# ── homr 本地仓库和运行时代码（本项目扩展 OMR 引擎）────────────────────────
+if os.path.isdir(r'omr_engine\homr'):
+    collect_tree(r'omr_engine\homr', 'omr_engine/homr')
+    # homr 运行时依赖：rapidocr（含 ONNX 模型）与 musicxml（乐谱序列化）
+    # 这两个包不会被 PyInstaller 静态分析到（homr 以数据文件方式收集），
+    # 需在此手动声明，否则分发包中无法 import。
+    tmp_ret = collect_all('rapidocr')
+    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+    tmp_ret = collect_all('musicxml')
+    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 # ── OpenCV（oemer 图像处理依赖）──────────────────────────────────────────────
 tmp_ret = collect_all('cv2')

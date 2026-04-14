@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import threading
 import time
 import flet as ft
@@ -18,6 +19,11 @@ class ProgressOverlay(ft.Stack):
         self._timer_thread: threading.Thread | None = None
         self._timer_running = False
         self._start_time: float = 0.0
+        # ── 线程安全的待处理更新队列 ─────────────────────────────────────────
+        # 工作线程只向队列中追加数据（非阻塞），计时器线程负责刷新 UI，
+        # 避免工作线程在 Flet/Flutter 侧暂停时被 ctrl.update() 阻塞。
+        self._pending_logs: collections.deque[tuple[str, str]] = collections.deque()  # (line, color)
+        self._pending_progress: tuple[float, str] | None = None  # (value, message)
         self._build_panel()
         self.controls = [self._backdrop, self._panel_wrapper]
         state.on(Event.PROGRESS_UPDATE, self._on_progress)
@@ -122,13 +128,44 @@ class ProgressOverlay(ft.Stack):
         while self._timer_running:
             elapsed = int(time.monotonic() - self._start_time)
             mm, ss = divmod(elapsed, 60)
-            new_val = f'{mm:02d}:{ss:02d}'
-            if self._elapsed_text.value != new_val:
-                self._elapsed_text.value = new_val
+            self._elapsed_text.value = f'{mm:02d}:{ss:02d}'
+
+            # 消费待处理的进度更新（工作线程非阻塞写入）
+            pending = self._pending_progress
+            if pending is not None:
+                self._pending_progress = None
+                self._progress_bar.value = pending[0]
+                if pending[1]:
+                    self._status_text.value = pending[1]
+
+            # 消费待处理的日志行（批量最多 30 条/秒，防止 UI 积压）
+            _drained = 0
+            while self._pending_logs and _drained < 30:
+                line, color = self._pending_logs.popleft()
+                self._log_list.controls.append(
+                    ft.Text(line, size=11, font_family='Consolas',
+                            color=color, selectable=True)
+                )
+                _drained += 1
+            # 限制日志控件总数
+            while len(self._log_list.controls) > 120:
+                self._log_list.controls.pop(0)
+
+            # 每秒一次整体刷新，避免频繁单控件 update()
+            if _drained > 0 or pending is not None:
+                try:
+                    p = self.page
+                    if p is not None:
+                        p.update()
+                except Exception:
+                    pass
+            else:
+                # 即使无新内容也刷新计时文本
                 try:
                     self._elapsed_text.update()
                 except Exception:
                     pass
+
             time.sleep(1.0)
 
     # ── 显示 / 隐藏 ──────────────────────────────────────────────────────────
@@ -141,6 +178,8 @@ class ProgressOverlay(ft.Stack):
         self._progress_bar.color = Palette.PRIMARY
         self._elapsed_text.value = '00:00'
         self._log_list.controls.clear()
+        self._pending_logs.clear()
+        self._pending_progress = None
         self._backdrop.visible = True
         self._panel_wrapper.visible = True
         self._update_overlay()
@@ -170,10 +209,8 @@ class ProgressOverlay(ft.Stack):
     # ── 事件回调 ─────────────────────────────────────────────────────────────
 
     def _on_progress(self, value: float, message: str = '', **_kw) -> None:
-        self._progress_bar.value = value
-        if message:
-            self._status_text.value = message
-        self._try_update()
+        # 工作线程非阻塞：只写入 pending，由 _timer_loop 统一刷新
+        self._pending_progress = (value, message)
 
     def _on_done(self, message: str = '完成', **_kw) -> None:
         self._stop_timer()
@@ -201,22 +238,14 @@ class ProgressOverlay(ft.Stack):
             color = Palette.PRIMARY_LIGHT
         else:
             color = Palette.TEXT_SECONDARY
-        self._log_list.controls.append(
-            ft.Text(line, size=11, font_family='Consolas',
-                    color=color, selectable=True)
-        )
-        # 限制日志控件数量，避免历史日志过多导致 UI 卡顿。
-        max_log_lines = 120
-        while len(self._log_list.controls) > max_log_lines:
-            self._log_list.controls.pop(0)
-        try:
-            self._log_list.update()
-        except Exception:
-            pass
+        # 非阻塞：追加到队列，由 _timer_loop 批量渲染，
+        # 避免工作线程被 ctrl.update() 阻塞而挂起识别进程。
+        self._pending_logs.append((line, color))
 
     def _try_update(self) -> None:
-        for ctrl in (self._progress_bar, self._status_text, self._spinner):
-            try:
-                ctrl.update()
-            except Exception:
-                pass
+        try:
+            p = self.page
+            if p is not None:
+                p.update()
+        except Exception:
+            pass

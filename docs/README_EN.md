@@ -2,13 +2,13 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: 0.2.1
+Version: v0.2.2-homr-experimental
 
 Batch-convert Western staff notation PDFs/images into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
 
 
-What's New in 0.2.1
+What's New in 0.2.2
 ---------------------------------
 
 - Added GitHub Releases version checking so users can open the release page
@@ -45,6 +45,20 @@ Usage
 To proofread a converted score:
   Select option 4 "Jianpu Editor" from the main menu, choose a score,
   edit the .jianpu.txt in Notepad, then select "Generate Jianpu PDF".
+
+
+Running from Source
+-------------------
+
+If you run from source, install dependencies with:
+
+```bash
+pip install -r requirements.txt
+```
+
+Homr support requires either a local `omr_engine/homr` clone or an installed
+`homr` Python package. On Windows, Homr will auto-detect available CUDA or
+DirectML providers and prefer GPU inference when available.
 
 
 Directory Layout
