@@ -49,6 +49,7 @@ Name: "{app}\Output"
 Source: "dist\ConvertTool\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\lilypond-runtime\*"; DestDir: "{app}\lilypond-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\audiveris-runtime\*"; DestDir: "{app}\audiveris-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "package-assets\oemer-runtime\*"; DestDir: "{app}\oemer-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "package-assets\tessdata\*"; DestDir: "{app}\tessdata"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "package-assets\waifu2x-runtime\*"; DestDir: "{app}\waifu2x-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "jdk\*"; DestDir: "{app}\jdk"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist

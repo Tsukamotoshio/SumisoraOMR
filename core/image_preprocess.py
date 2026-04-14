@@ -59,6 +59,7 @@ AUDIVERIS_MAX_PIXELS = 20_000_000
 OEMER_MAX_PIXELS = 8_000_000
 # Laplacian stddev on 500×500 thumbnail below this → image is blurry, use aggressive sharpening
 BLURRY_SHARPNESS_THRESHOLD = 30.0
+NORMAL_MODE_GAUSSIAN_RADIUS = 0.75
 
 
 def find_waifu2x_executable() -> Optional[Path]:
@@ -202,7 +203,7 @@ def enhance_image_with_pillow(input_path: Path, output_path: Path, keep_color: b
                     ImageFilter.UnsharpMask(radius=3.0, percent=300, threshold=2))
             else:
                 # Normal mode: Gaussian blur → autocontrast (GIMP color curve step) → Unsharp mask
-                denoised = working.filter(ImageFilter.GaussianBlur(radius=1.5))
+                denoised = working.filter(ImageFilter.GaussianBlur(radius=NORMAL_MODE_GAUSSIAN_RADIUS))
                 leveled = ImageOps.autocontrast(denoised, cutoff=10)
                 result_img = leveled.filter(
                     ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=3))
@@ -669,7 +670,7 @@ def denoise_and_sharpen(img: 'Image.Image') -> 'Image.Image':
             result = leveled.filter(
                 ImageFilter.UnsharpMask(radius=3.0, percent=300, threshold=2))
         else:
-            denoised = gray.filter(ImageFilter.GaussianBlur(radius=1.5))
+            denoised = gray.filter(ImageFilter.GaussianBlur(radius=NORMAL_MODE_GAUSSIAN_RADIUS))
             leveled = ImageOps.autocontrast(denoised, cutoff=10)
             result = leveled.filter(
                 ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=3))
