@@ -510,15 +510,33 @@ class TransposerPage(ft.Column):
 
     def _set_status(self, msg: str) -> None:
         self._status.value = msg
-        try:
-            self._status.update()
-        except Exception:
-            pass
+        p = self.page
+        if p is not None:
+            async def _do():
+                try:
+                    self._status.update()
+                except Exception:
+                    pass
+            p.run_task(_do)
+        else:
+            try:
+                self._status.update()
+            except Exception:
+                pass
 
     def _set_busy(self, busy: bool) -> None:
         self._progress.visible = busy
         self._progress.value   = None if busy else 0
-        try:
-            self._progress.update()
-        except Exception:
-            pass
+        p = self.page
+        if p is not None:
+            async def _do():
+                try:
+                    self._progress.update()
+                except Exception:
+                    pass
+            p.run_task(_do)
+        else:
+            try:
+                self._progress.update()
+            except Exception:
+                pass

@@ -75,6 +75,7 @@ def process_single_input_to_jianpu(
     llm_api_key: Optional[str] = None,
     llm_provider: Optional[str] = None,
     llm_model: Optional[str] = None,
+    use_gpu_inference: Optional[bool] = None,
 ) -> bool:
     """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
 
@@ -233,7 +234,12 @@ def process_single_input_to_jianpu(
             return False
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
         with ThreadPoolExecutor(max_workers=1) as _homr_ex:
-            _homr_future = _homr_ex.submit(run_homr_batch, source_file, file_temp_dir)
+            _homr_future = _homr_ex.submit(
+                run_homr_batch,
+                source_file,
+                file_temp_dir,
+                use_gpu_inference=use_gpu_inference,
+            )
             try:
                 omr_out = _homr_future.result(timeout=MAX_HOMR_SECONDS)
             except _TimeoutError:

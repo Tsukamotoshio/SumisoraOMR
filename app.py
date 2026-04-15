@@ -36,10 +36,26 @@ if getattr(sys, 'frozen', False):
             os.environ['CURL_CA_BUNDLE'] = _internal_cert
     # console=False 时 sys.stdout/stderr 为 None，所有 print() 会崩溃
     # 替换为 null 流，将输出静默丢弃（日志仍写入 logs/ 文件）
-    if sys.stdout is None:
-        sys.stdout = open(os.devnull, 'w', encoding='utf-8', errors='replace')
-    if sys.stderr is None:
-        sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+    # 注意：Worker 子进程需要保留 stdout 作为 IPC 管道，不能重定向到 devnull
+    _is_worker_process = '--worker' in sys.argv
+    if not _is_worker_process:
+        if sys.stdout is None:
+            sys.stdout = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+        if sys.stderr is None:
+            sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+
+# ─── ONNX / OpenMP 线程限制：为 asyncio 事件循环保留 CPU 资源 ────────────────
+# homr / oemer 使用 ONNX Runtime 进行神经网络推理，默认会占满所有 CPU 核心。
+# 在打包版中，CPU 满载导致 asyncio 事件循环长时间得不到调度，
+# Flet WebSocket 心跳超时，Flutter 端显示 "Working..." 重连画面。
+# 在首次 import onnxruntime / 初始化 OpenMP 线程池之前设置，保留 1 个核心给 asyncio。
+_cpu_count = os.cpu_count() or 4
+_onnx_threads = str(max(1, _cpu_count - 1))
+os.environ.setdefault('OMP_NUM_THREADS',          _onnx_threads)
+os.environ.setdefault('OPENBLAS_NUM_THREADS',     _onnx_threads)
+os.environ.setdefault('MKL_NUM_THREADS',          _onnx_threads)
+os.environ.setdefault('VECLIB_MAXIMUM_THREADS',   _onnx_threads)
+os.environ.setdefault('NUMEXPR_NUM_THREADS',      _onnx_threads)
 
 # ─── Bootstrap：确保在正确的虚拟环境中运行 ──────────────────────────────────
 def _bootstrap_venv() -> None:
@@ -68,6 +84,15 @@ def _bootstrap_venv() -> None:
 _bootstrap_venv()
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Worker 子进程早退出：在导入 flet / GUI 模块之前分流，节省内存和启动时间
+if __name__ == '__main__' and '--worker' in sys.argv:
+    import multiprocessing
+    multiprocessing.freeze_support()
+    from core.worker_main import run_worker
+    run_worker()
+    import os as _os
+    _os._exit(0)   # 强制退出：绕过 onnxruntime 等库遗留的非 daemon 线程
+
 import flet as ft
 
 from gui.app_state import AppState, Event
@@ -95,7 +120,7 @@ _NAV_ITEMS = [
 # 主应用
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main(page: ft.Page) -> None:
+async def main(page: ft.Page) -> None:
     # ── 页面基本配置 ──────────────────────────────────────────────────────────
     page.title       = 'OMR 乐谱转换工具'
     page.window.min_width  = 900
@@ -251,10 +276,16 @@ def main(page: ft.Page) -> None:
         ))
 
     def _on_error(message: str, **_kw) -> None:
-        _show_snack(f'错误: {message}', Palette.ERROR)
+        # 工作线程通过 state.emit() 同步调用此回调；
+        # 用 run_task 调度到 asyncio 事件循环，避免与计时器 page.update() 竞争。
+        async def _do():
+            _show_snack(f'错误: {message}', Palette.ERROR)
+        page.run_task(_do)
 
     def _on_done(message: str = '完成', **_kw) -> None:
-        _show_snack(message, Palette.SUCCESS)
+        async def _do():
+            _show_snack(message, Palette.SUCCESS)
+        page.run_task(_do)
 
     state.on(Event.PROGRESS_ERROR, _on_error)
     state.on(Event.PROGRESS_DONE,  _on_done)
@@ -280,18 +311,6 @@ def main(page: ft.Page) -> None:
 
     # ── 初始化完成 ────────────────────────────────────────────────────────────
     _show_page('landing')
-
-    # ── 窗口事件：恢复焦点时强制刷新，防止后台返回后 UI 冻结 ─────────────────
-    def _on_window_event(e) -> None:
-        # 窗口从最小化/后台恢复时，Flutter 渲染引擎可能暂停了帧渲染；
-        # 强制一次 page.update() 让所有待处理的控件变更立即上屏。
-        if getattr(e, 'data', None) in ('focus', 'show', 'restore', 'unminimize'):
-            try:
-                page.update()
-            except Exception:
-                pass
-
-    page.window.on_event = _on_window_event
 
 
 # ─────────────────────────────────────────────────────────────────────────────

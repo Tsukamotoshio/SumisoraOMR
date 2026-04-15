@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import HOMR_SOURCE_DIR_NAME, OMR_ENGINE_DIR_NAME
-from .image_preprocess import preprocess_geometry_for_omr
+from .image_preprocess import preprocess_image_for_omr
 from .oemer_runner import _pdf_first_page_to_png
 from .utils import find_first_musicxml_file, get_app_base_dir, log_message
 
@@ -53,10 +53,10 @@ _add_nvidia_cuda_dll_dirs()
 def find_homr_source_dir() -> Optional[Path]:
     """Find the local homr source directory under the app root or omr_engine.
 
-    When frozen by PyInstaller the homr repo tree is bundled at
-    _MEIPASS/omr_engine/homr (collected via collect_tree).  This directory
-    must be added to sys.path so that ``import homr.main`` resolves to the
-    ``homr/`` sub-package inside it.
+    When frozen by PyInstaller only the ``homr/`` Python package is bundled at
+    _MEIPASS/omr_engine/homr/homr (collected via collect_tree on the package
+    subdirectory).  Adding _MEIPASS/omr_engine/homr to sys.path makes
+    ``import homr.main`` resolve to the ``homr/`` sub-package inside it.
     """
     base_dir = get_app_base_dir()
     candidates = [
@@ -193,18 +193,20 @@ def run_homr_batch(
     if use_gpu_inference is None:
         use_gpu_inference = _homr_gpu_available()
 
-    _log_homr_gpu_mode()
-
     preprocess_dir = output_dir / '_homr_preprocessed'
-    preprocessed_image = preprocess_geometry_for_omr(image_path, preprocess_dir)
+    log_message('[homr] 正在进行图像预处理…')
+    preprocessed_image = preprocess_image_for_omr(image_path, preprocess_dir)
     if preprocessed_image is not None:
-        log_message(f'[homr] 已完成整张图像几何预处理: {preprocessed_image.name}')
         image_path = preprocessed_image
+        log_message(f'[homr] 图像预处理完成: {preprocessed_image.name}')
+    else:
+        log_message('[homr] 图像预处理未生成新文件，使用原始输入。')
 
     safe_image_path = output_dir / f'homr_input{image_path.suffix.lower()}'
     if not safe_image_path.exists() or safe_image_path.stat().st_size != image_path.stat().st_size:
         shutil.copy2(str(image_path), str(safe_image_path))
     image_path = safe_image_path
+    log_message(f'[homr] 输入文件已准备: {safe_image_path.name}')
 
     source_dir = _ensure_homr_import_path()
     _add_nvidia_cuda_dll_dirs()
@@ -213,14 +215,16 @@ def run_homr_batch(
         # download_weights 需要联网，在弱网/限速环境下可能长时间挂起，限制为 120s
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
         with ThreadPoolExecutor(max_workers=1) as _dl_ex:
+            # homr.download_weights 只会下载缺失的 ONNX 模型权重。
+            # 如果本地已经存在对应 GPU/CPU 模型文件，则不会联网下载。
             _dl_future = _dl_ex.submit(homr_main.download_weights, use_gpu_inference)
             try:
                 _dl_future.result(timeout=120)
             except _TimeoutError:
-                log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。', )
+                log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
                 return None
             except Exception as _dl_exc:
-                log_message(f'[homr] 模型权重下载失败: {_dl_exc}', )
+                log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
                 return None
         config = homr_main.ProcessingConfig(
             enable_debug=False,
@@ -231,9 +235,11 @@ def run_homr_batch(
             use_gpu_inference=use_gpu_inference,
         )
         xml_args = homr_main.XmlGeneratorArguments(False, None, None)
-        log_message('[homr] 开始神经网络推理，请稍候（可能需要数分钟，切换窗口后仍在后台运行）…')
+        log_message('[homr] 模型文件检查完成。')
+        log_message(f'[homr] 推理模式：{"GPU" if use_gpu_inference else "CPU"}')
+        log_message('[homr] 进入推理阶段…')
         homr_main.process_image(str(image_path), config, xml_args)
-        log_message('[homr] 推理完成，正在整理输出…')
+        log_message('[homr] 识别完成。')
     except Exception as exc:
         _exc_str = str(exc)
         # CUDA / GPU 错误（session 创建成功但推理时失败）→ 回退 CPU 重试
@@ -244,7 +250,6 @@ def run_homr_batch(
             or 'not active after session creation' in _exc_str
         )
         if _is_gpu_err:
-            log_message(f'[homr] GPU 推理失败（{exc}），回退到 CPU 重试…')
             try:
                 _cpu_config = homr_main.ProcessingConfig(
                     enable_debug=False,
@@ -254,9 +259,9 @@ def run_homr_batch(
                     selected_staff=-1,
                     use_gpu_inference=False,
                 )
-                log_message('[homr] CPU 推理中，请稍候…')
+                log_message('[homr] 回退到 CPU 模式。')
                 homr_main.process_image(str(image_path), _cpu_config, xml_args)
-                log_message('[homr] CPU 推理完成，正在整理输出…')
+                log_message('[homr] 识别完成。')
             except Exception as _cpu_exc:
                 log_message(f'[homr] CPU 回退也失败: {_cpu_exc}')
                 return None

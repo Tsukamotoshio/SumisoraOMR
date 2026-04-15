@@ -29,9 +29,9 @@ set "OUTPUT_ZIP=%BASE_DIR%installer-dist\%ZIP_NAME%.zip"
 
 
 
-:: 鈹€鈹€ 姝ラ 1锛歱ackage-assets锛堝宸插瓨鍦ㄥ垯璺宠繃锛夆攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+:: ---- Step 1: package-assets (skip if already prepared) ----
 
-:: 闇€鍚屾椂婊¤冻锛歭ilypond-runtime 鍜?waifu2x-runtime锛堝鏈湴鏈夋簮鏂囦欢锛夊潎宸插氨缁?
+:: Requires: lilypond-runtime, audiveris-runtime, oemer-runtime, waifu2x-runtime (if local source exists)
 set "ASSETS_READY=1"
 
 if not exist "%BASE_DIR%package-assets\lilypond-runtime\bin" set "ASSETS_READY=0"
@@ -46,7 +46,7 @@ if exist "%BASE_DIR%waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
 
 if "%ASSETS_READY%"=="1" (
 
-    echo [璺宠繃] package-assets 宸插瓨鍦紝鏃犻渶閲嶆柊鍑嗗銆?
+echo [SKIP] package-assets already exists, skipping preparation.
 ) else (
 
     set "AUDIVERIS_SOURCE=!BASE_DIR!omr_engine\audiveris"
@@ -60,18 +60,18 @@ if "%ASSETS_READY%"=="1" (
 
     if not exist "!AUDIVERIS_SOURCE!\gradlew.bat" (
 
-        echo [ERROR] 鏈壘鍒?audiveris 源碼鐩綍銆?
+echo [ERROR] Audiveris source directory not found.
         exit /b 1
 
     )
 
-    echo [1/3] 姝ｅ湪鍑嗗杩愯鏃剁礌鏉?..
+echo [1/3] Preparing runtime assets...
 
     if not exist "!AUDIVERIS_RUNTIME_SRC!\bin\Audiveris.bat" (
 
         call "!AUDIVERIS_SOURCE!\gradlew.bat" -p "!AUDIVERIS_SOURCE!" --console=plain :app:installDist
 
-        if errorlevel 1 ( echo [ERROR] Audiveris 鏋勫缓澶辫触銆? exit /b 1 )
+    if errorlevel 1 ( echo [ERROR] Audiveris build failed. ^& exit /b 1 )
 
     )
 
@@ -95,31 +95,26 @@ if "%ASSETS_READY%"=="1" (
 
     if exist "!BASE_DIR!package-assets\waifu2x-runtime\waifu2x-ncnn-vulkan.exe" (
 
-        echo [INFO] waifu2x-runtime 鍖呭凡灏辩华銆?
+        echo [INFO] waifu2x-runtime already exists, skipping.
     ) else if exist "!BASE_DIR!waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
 
         mkdir "!PACKAGE_ASSETS!\waifu2x-runtime"
 
         robocopy "!BASE_DIR!waifu2x-ncnn-vulkan" "!PACKAGE_ASSETS!\waifu2x-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
-        echo [INFO] waifu2x-runtime 宸插鍒躲€?
+    echo [INFO] waifu2x-runtime copied.
     ) else (
 
-        echo [WARN] 鏈壘鍒?waifu2x-ncnn-vulkan 鐩綍锛岃烦杩囪秴鍒嗚鲸鐜囨ā鍧楁墦鍖呫€?
+echo [WARN] waifu2x-ncnn-vulkan not found, skipping super-resolution module.
     )
 
 )
 
 
 
-:: 鈹€鈹€ 姝ラ 2锛歅yInstaller锛堝宸插瓨鍦ㄥ垯璺宠繃锛夆攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+:: ---- Step 2: PyInstaller ----
 
-if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
-
-    echo [璺宠繃] dist\%APP_NAME% 宸插瓨鍦紝鏃犻渶閲嶆柊鎵撳寘銆?
-) else (
-
-    echo [2/3] 姝ｅ湪鍑嗗 oemer 妯″瀷鏉冮噸...
+    echo [2/3] Preparing oemer model weights...
 
 
 
@@ -137,12 +132,12 @@ if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
 
     if exist "%BASE_DIR%package-assets\oemer-runtime\checkpoints\unet_big\model.onnx" (
 
-        echo [INFO] 浣跨敤鏈湴 oemer 妯″瀷锛屾棤闇€鑱旂綉涓嬭浇銆?
+    echo [INFO] Using local oemer models, no download needed.
         %PYTHON_CMD% "%BASE_DIR%scripts\_sync_oemer_to_venv.py" "%BASE_DIR%package-assets\oemer-runtime"
 
     ) else (
 
-        echo [INFO] 姝ｅ湪閫氳繃鑴氭湰妫€鏌?鍚屾 oemer 妯"煷瓨鏁堜腑...
+        echo [INFO] Syncing oemer model cache via script...
 
         %PYTHON_CMD% "%BASE_DIR%scripts\download_oemer_models.py"
 
@@ -150,24 +145,22 @@ if exist "%BASE_DIR%dist\%APP_NAME%\%APP_NAME%.exe" (
 
     if exist "%BASE_DIR%scripts\_sync_oemer_package_assets.py" (
         %PYTHON_CMD% "%BASE_DIR%scripts\_sync_oemer_package_assets.py"
-        if errorlevel 1 ( echo [ERROR] oemer runtime sync to package-assets 澶辫触銆? exit /b 1 )
+    if errorlevel 1 ( echo [ERROR] oemer runtime sync failed. ^& exit /b 1 )
     )
 
-    echo [2/3] 姝ｅ湪鏋勫缓鍙墽琛屾枃浠?..
+    echo [2/3] Building executable...
 
 
 
     "%BASE_DIR%.venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean ConvertTool.spec
 
-    if errorlevel 1 ( echo [ERROR] PyInstaller 鎵撳寘澶辫触銆? exit /b 1 )
-
-)
+    if errorlevel 1 ( echo [ERROR] PyInstaller build failed. ^& exit /b 1 )
 
 
 
-:: 鈹€鈹€ 姝ラ 3锛氱粍瑁呬究鎼虹洰褰?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+:: ---- Step 3: Assemble portable directory ----
 
-echo [3/3] 姝ｅ湪缁勮渚挎惡鐩綍...
+echo [3/3] Assembling portable directory...
 
 if exist "%BASE_DIR%zip-stage" rmdir /s /q "%BASE_DIR%zip-stage"
 
@@ -187,19 +180,24 @@ robocopy "%BASE_DIR%package-assets\audiveris-runtime" "%STAGE_DIR%\audiveris-run
 
 if exist "%BASE_DIR%package-assets\tessdata"        robocopy "%BASE_DIR%package-assets\tessdata"        "%STAGE_DIR%\tessdata"        /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
-:: oemer-runtime 不复制到 zip stage：oemer 模型已由 collect_all('oemer') 内嵌到
-:: _internal/ 目录中，运行时直接从 Python 包路径加载，无需额外的 oemer-runtime 目录。
-:: 避免 ~240 MB 的重复打包。
+REM oemer-runtime is NOT copied to zip stage: models are bundled by collect_all('oemer') into
+REM _internal/, loaded from Python package path at runtime. Avoids ~240 MB duplicate packaging.
 
 if exist "%BASE_DIR%package-assets\waifu2x-runtime" robocopy "%BASE_DIR%package-assets\waifu2x-runtime" "%STAGE_DIR%\waifu2x-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
-if exist "%BASE_DIR%omr_engine\homr" (
-    echo [INFO] homr 源碼鏃犳硶鍒╀簨杩?鏄?瑕佸垱寤烘ā鏉ャ€? 
+if exist "%BASE_DIR%jdk" (
+    robocopy "%BASE_DIR%jdk" "%STAGE_DIR%\jdk" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+    echo [INFO] jdk 已复制到便携目录。
 ) else (
-    echo [WARN] omr_engine\homr 鏈纭鐩綍锛岃烦璇烽€? homr 閰嶇疆鍚堝苟涓嶈兘闇€瑕佸瓨鍦? 
+    echo [WARN] 未找到 jdk 目录，Audiveris 可能无法在便携版中运行。
 )
-:: oemer 妯″瀷锛堝凡鍐呭祵浜?PyInstaller 鍒嗗彂鍖呬腑锛屾澶勪粎渚涚绾垮弬鑰冿紱涓嶉噸澶嶅鍒跺ぇ鏂囦欢锛?
-:: oemer checkpoints 鍜?sklearn_models 宸茬敱 collect_all('oemer') 鎵撳寘杩?ConvertTool 鐩綍銆?
+
+if exist "%BASE_DIR%omr_engine\homr" (
+    echo [INFO] homr source found ^(already bundled via PyInstaller^).
+) else (
+    echo [WARN] omr_engine\homr not found, skipping homr config.
+)
+REM oemer models already bundled by PyInstaller collect_all; do not copy large files again.
 if exist "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       copy /y "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       "%STAGE_DIR%\Input\" >nul
 
 if exist "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" copy /y "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" "%STAGE_DIR%\Input\" >nul
@@ -208,7 +206,7 @@ copy /y "%BASE_DIR%scripts\jianpu-ly.py"            "%STAGE_DIR%\" >nul
 
 copy /y "%BASE_DIR%README_EN.txt"           "%STAGE_DIR%\README.txt" >nul
 
-copy /y "%BASE_DIR%璇绘垜.txt"               "%STAGE_DIR%\" >nul
+copy /y "%BASE_DIR%读我.txt"               "%STAGE_DIR%\" >nul
 
 copy /y "%BASE_DIR%THIRD_PARTY_NOTICES.md"  "%STAGE_DIR%\" >nul
 
@@ -216,7 +214,7 @@ copy /y "%BASE_DIR%LICENSE"                 "%STAGE_DIR%\" >nul
 
 
 
-:: 鈹€鈹€ 姝ラ 4锛氬帇缂╀负 zip 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+:: ---- Step 4: Compress to zip ----
 
 if not exist "%BASE_DIR%installer-dist" mkdir "%BASE_DIR%installer-dist"
 
@@ -226,36 +224,31 @@ if exist "%OUTPUT_ZIP%" del /q "%OUTPUT_ZIP%"
 
 if not exist "%STAGE_DIR%\%APP_NAME%.exe" (
 
-  echo [ERROR] 渚挎惡鐩綍鏈纭粍瑁咃細%STAGE_DIR%\%APP_NAME%.exe 鏈壘鍒般€?
+  echo [ERROR] Assembly failed: %STAGE_DIR%\%APP_NAME%.exe not found.
   exit /b 1
 
 )
 
 
 
-set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
+:: ── 优先使用 7-Zip（支持超长路径，不会静默漏文件）；回退到 PowerShell Compress-Archive ──
+set "SEVENZIP_EXE="
+for /f "delims=" %%I in ('where 7z 2^>nul') do set "SEVENZIP_EXE=%%I"
+if not defined SEVENZIP_EXE if exist "C:\Program Files\7-Zip\7z.exe" set "SEVENZIP_EXE=C:\Program Files\7-Zip\7z.exe"
+if not defined SEVENZIP_EXE if exist "C:\Program Files (x86)\7-Zip\7z.exe" set "SEVENZIP_EXE=C:\Program Files (x86)\7-Zip\7z.exe"
 
-if not exist "%PYTHON_CMD%" (
-
-  set "PYTHON_CMD=py -3"
-
-  where py >nul 2>nul || set "PYTHON_CMD=python"
-
+if defined SEVENZIP_EXE (
+    echo [4/4] Compressing with 7-Zip ...
+    pushd "%BASE_DIR%zip-stage"
+    "%SEVENZIP_EXE%" a -tzip -mx=5 -mmt=4 "%OUTPUT_ZIP%" "%ZIP_NAME%"
+    set "ZIP_ERR=%ERRORLEVEL%"
+    popd
+    if "!ZIP_ERR!" neq "0" ( echo [ERROR] 7-Zip compression failed. & exit /b 1 )
+) else (
+    echo [4/4] 7-Zip not found, falling back to PowerShell Compress-Archive ...
+    powershell -NoProfile -Command "Compress-Archive -LiteralPath '%STAGE_DIR%' -DestinationPath '%OUTPUT_ZIP%' -CompressionLevel Optimal -Force"
+    if errorlevel 1 ( echo [ERROR] PowerShell compression failed. & exit /b 1 )
 )
-
-
-
-set "ZIP_PY=%TEMP%\convert_zip_stage_%RANDOM%.py"
-
-powershell -NoProfile -Command "Set-Content -Path '%ZIP_PY%' -Value \"import pathlib`nimport zipfile`nimport sys`nsrc=pathlib.Path(r'%STAGE_DIR%')`ndst=pathlib.Path(r'%OUTPUT_ZIP%')`nif not src.exists(): sys.exit('missing stage dir: '+str(src))`nif dst.exists(): dst.unlink()`nz=zipfile.ZipFile(dst, 'w', compression=zipfile.ZIP_DEFLATED)`nfor p in sorted(src.rglob('*')):`n    z.write(p, p.relative_to(src.parent))`nz.close()`n\" -Encoding UTF8"
-
-"%PYTHON_CMD%" "%ZIP_PY%"
-
-set "PYTHON_EXIT=%ERRORLEVEL%"
-
-del /q "%ZIP_PY%" >nul 2>nul
-
-if "%PYTHON_EXIT%" neq "0" ( echo [ERROR] 鍘嬬缉澶辫触銆? exit /b 1 )
 
 
 
@@ -265,6 +258,6 @@ rmdir /s /q "%BASE_DIR%zip-stage"
 
 echo.
 
-echo [OK] 渚挎惡鍘嬬缉鍖呭凡鐢熸垚锛?OUTPUT_ZIP%
+echo [OK] Portable zip created: %OUTPUT_ZIP%
 
 exit /b 0
