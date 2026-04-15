@@ -14,6 +14,7 @@ releases/
 installer_test/
 
 # 构建脚本与构建产物
+install_audiveris_local.bat
 build_installer.bat
 build_zip.bat
 publish_release.bat
