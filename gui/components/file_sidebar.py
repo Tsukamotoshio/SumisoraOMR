@@ -190,7 +190,16 @@ class FileSidebar(ft.Column):
         self._file_list_col.controls = [
             self._make_file_row(p) for p in self._state.pinned_files
         ]
-        try:
-            self._file_list_col.update()
-        except Exception:
-            pass
+        p = self.page
+        if p is not None:
+            async def _do():
+                try:
+                    self._file_list_col.update()
+                except Exception:
+                    pass
+            p.run_task(_do)
+        else:
+            try:
+                self._file_list_col.update()
+            except Exception:
+                pass

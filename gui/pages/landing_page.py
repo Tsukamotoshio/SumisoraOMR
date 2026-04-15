@@ -1,10 +1,13 @@
-﻿# gui/pages/landing_page.py — 文件管理 + PDF 预览页（Landing Page）
+# gui/pages/landing_page.py — 文件管理 + PDF 预览页（Landing Page）
 # 左侧：文件钉选侧边栏；右侧：预览区 + 转换按钮。
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
+import sys
 import threading
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +21,9 @@ from ..components.progress_overlay import ProgressOverlay
 from ..theme import Palette
 
 
+_ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+
+
 class LandingPage(ft.Row):
     """首页：文件管理 + PDF 预览 + "开始转换"按钮。"""
 
@@ -28,8 +34,8 @@ class LandingPage(ft.Row):
         self._scan_token: int = 0
         self._preloaded_paths: set[str] = set()
         self._build_ui()
-        state.on(Event.FILE_SELECTED, self._on_file_selected)
-        state.on(Event.FILES_CHANGED, self._on_files_changed)
+        state.on(Event.FILE_SELECTED,   self._on_file_selected)
+        state.on(Event.FILES_CHANGED,   self._on_files_changed)
 
     def _build_ui(self) -> None:
         self._sidebar = FileSidebar(self._state)
@@ -69,7 +75,7 @@ class LandingPage(ft.Row):
             spacing=6,
         )
 
-        convert_btn = ft.Button(
+        self._convert_btn = ft.Button(
             content=ft.Row(
                 [ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, size=18), ft.Text('开始转换')],
                 tight=True, spacing=6,
@@ -106,7 +112,7 @@ class LandingPage(ft.Row):
                     ft.Divider(height=1, color=Palette.DIVIDER_DARK),
                     output_row,
                     ft.Container(height=8),
-                    convert_btn,
+                    self._convert_btn,
                     open_output_btn,
                 ],
                 spacing=10,
@@ -162,8 +168,13 @@ class LandingPage(ft.Row):
                 self._viewer.load(self._state.current_file)
             # 预加载所有文件，减少后续切换延迟
             threading.Thread(target=self._preload_all_files, args=(list(self._state.pinned_files), token), daemon=True).start()
-            # 一次性推送所有 UI 变更
-            self.page.update()
+            # 一次性推送所有 UI 变更（通过 asyncio 事件循环，避免跨线程 page.update）
+            async def _do_page_update():
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+            self.page.run_task(_do_page_update)
         except Exception:
             pass
 
@@ -189,6 +200,7 @@ class LandingPage(ft.Row):
                 self._viewer.preload(path)
             except Exception:
                 pass
+
 
     def _on_choose_output(self, _e) -> None:
         self.page.run_task(self._pick_output_dir_async)
@@ -313,107 +325,149 @@ class LandingPage(ft.Row):
         threading.Thread(target=self._run_conversion, daemon=True).start()
 
     def _run_conversion(self) -> None:
-        """在后台线程中执行转换流程，通过 AppState 事件更新进度条。"""
+        """在后台线程中启动 Worker 子进程并通过 JSON IPC 更新进度。"""
+        _done_or_error_received = False
         try:
-            from core.config import OMREngine, AppConfig
-            from core.pipeline import process_single_input_to_jianpu
-            from core.utils import setup_logging
-            import tempfile
-
             base_dir = app_base_dir()
             output_path = output_dir(self._output_dir_text.value)
 
             engine_val = self._engine_dd.value or 'auto'
-            engine_map = {
-                'auto': OMREngine.AUTO,
-                'audiveris': OMREngine.AUDIVERIS,
-                'oemer': OMREngine.OEMER,
-                'homr': OMREngine.HOMR,
-            }
-            engine = engine_map.get(engine_val, OMREngine.AUTO)
             gen_midi = getattr(self, '_gen_midi', True)
-
             files = list(self._state.pinned_files)
-            total = len(files)
-            success_count = 0
-            fail_count = 0
+            retry_cpu = False
 
-            for idx, src in enumerate(files):
-                self._state.set_progress((idx / total) * 0.9, f'[{idx+1}/{total}] {src.name}')
-                self._state.append_log(f'▶ 开始处理: {src.name}')
+            while True:
+                task = {
+                    'files': [str(f) for f in files],
+                    'engine': engine_val,
+                    'output_dir': str(output_path),
+                    'gen_midi': gen_midi,
+                    'skip_dup': getattr(self, '_skip_dup', False),
+                    'dup_files': list(getattr(self, '_dup_files', set())),
+                    'base_dir': str(base_dir),
+                    'use_gpu': engine_val == 'homr' and not retry_cpu,
+                }
 
-                if getattr(self, '_skip_dup', False) and src.name in getattr(self, '_dup_files', set()):
-                    self._state.append_log(f'  ⏭ 已跳过（输出已存在）: {src.name}')
-                    continue
+                # ── 确定 Worker 命令 ──────────────────────────────────────────────
+                if getattr(sys, 'frozen', False):
+                    # 打包版：直接复用自身可执行文件
+                    worker_cmd = [sys.executable, '--worker']
+                else:
+                    # 开发模式：通过 Python 解释器运行 app.py
+                    worker_cmd = [sys.executable, str(Path(__file__).parent.parent.parent / 'app.py'), '--worker']
 
-                (base_dir / 'build').mkdir(parents=True, exist_ok=True)
-                temp_dir = Path(tempfile.mkdtemp(prefix='convert_', dir=base_dir / 'build'))
-                out_pdf  = output_path / (src.stem + '_jianpu.pdf')
-                out_midi = (output_path / (src.stem + '.mid')) if gen_midi else None
+                # CREATE_NO_WINDOW 防止 Windows 弹出控制台窗口
+                extra_kwargs: dict = {}
+                if sys.platform == 'win32':
+                    extra_kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
 
-                try:
-                    ok = process_single_input_to_jianpu(
-                        source_file=src,
-                        file_temp_dir=temp_dir,
-                        output_pdf=out_pdf,
-                        output_midi=out_midi,
-                        engine=engine,
-                        editor_workspace_dir=base_dir / 'editor-workspace',
-                        xml_scores_dir=base_dir / 'xml-scores',
-                        llm_api_key=None,
-                        llm_provider=None,
-                        llm_model=None,
-                    )
-                    if ok:
-                        success_count += 1
-                        self._state.append_log(f'  ✓ 完成 → {out_pdf.name}')
-                        self._state.output_pdf = out_pdf
-                        # 定位刚刚归档到 xml-scores 的五线谱 MusicXML
-                        # 手算顺序：单引擎 → oemer 变体 → audiveris 变体
-                        xml_scores_dir = base_dir / 'xml-scores'
-                        archived_mxl: Optional[Path] = None
-                        for candidate_name in (
-                            src.stem + '.musicxml',
-                            src.stem + '.mxl',
-                            src.stem + '.oemer.musicxml',
-                            src.stem + '.oemer.mxl',
-                            src.stem + '.audiveris.musicxml',
-                            src.stem + '.audiveris.mxl',
-                        ):
-                            c = xml_scores_dir / candidate_name
-                            if c.exists():
-                                archived_mxl = c
+                proc = subprocess.Popen(
+                    worker_cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    **extra_kwargs,
+                )
+
+                err_lines: list[str] = []
+                homr_log_shown = False
+
+                def _read_stderr() -> None:
+                    try:
+                        for raw_line in proc.stderr:
+                            if not self._state.is_processing:
                                 break
-                        if archived_mxl is not None:
-                            self._state.current_mxl = archived_mxl
-                            self._state.emit(Event.MXL_READY, path=archived_mxl)
+                            line_str = raw_line.decode('utf-8', errors='replace')
+                            line_str = _ANSI_ESCAPE_RE.sub('', line_str).strip()
+                            if line_str:
+                                err_lines.append(line_str)
+                    except Exception:
+                        pass
+
+                threading.Thread(target=_read_stderr, daemon=True).start()
+
+                # ── 发送任务 ──────────────────────────────────────────────────────
+                proc.stdin.write((json.dumps(task, ensure_ascii=False) + '\n').encode('utf-8'))
+                proc.stdin.flush()
+                proc.stdin.close()
+
+                # ── 逐行读取 Worker 响应 ──────────────────────────────────────────
+                for raw_line in proc.stdout:
+                    # 用户关闭了进度浮层：终止子进程，退出读取循环
+                    if not self._state.is_processing:
+                        try:
+                            proc.terminate()
+                        except Exception:
+                            pass
+                        break
+                    line_str = raw_line.decode('utf-8', errors='replace').strip()
+                    if not line_str:
+                        continue
+                    try:
+                        msg = json.loads(line_str)
+                    except json.JSONDecodeError:
+                        # 非 JSON 行（Worker 意外输出）忽略
+                        continue
+
+                    mtype = msg.get('type', '')
+                    if mtype == 'progress':
+                        self._state.set_progress(msg.get('value', 0.0), msg.get('message', ''))
+                    elif mtype == 'log':
+                        text = msg.get('text', '').strip()
+                        if engine_val == 'homr':
+                            if not homr_log_shown:
+                                if text:
+                                    self._state.append_log(text)
+                                    homr_log_shown = True
+                                continue
+                            if any(keyword in text for keyword in (
+                                '失败', '异常', '崩溃', '回退', '超时',
+                                'error', 'Error', 'Segnet', 'GPU', 'CPU',
+                                '模型权重', '识别完成', '推理模式', '输入文件已准备',
+                                '图像预处理', '几何预处理', '增强', 'oemer',
+                            )):
+                                self._state.append_log(text)
+                            continue
+                        self._state.append_log(text)
+                    elif mtype == 'result':
+                        if msg.get('success'):
+                            self._state.output_pdf = Path(msg['output_pdf'])
+                            if msg.get('archived_mxl'):
+                                archived = Path(msg['archived_mxl'])
+                                self._state.current_mxl = archived
+                                self._state.emit(Event.MXL_READY, path=archived)
+                    elif mtype == 'done':
+                        _done_or_error_received = True
+                        self._state.set_done(msg.get('message', '完成。'))
+                    elif mtype == 'error':
+                        _done_or_error_received = True
+                        self._state.set_error(msg.get('message', '未知错误'))
+
+                proc.wait()
+
+                # ── Worker 异常退出且未发送 done/error ────────────────────────────
+                if not _done_or_error_received:
+                    err_text = '\n'.join(err_lines).strip()
+                    if proc.returncode != 0:
+                        gpu_access_violation_codes = {-1073741819, 3221225477}
+                        if engine_val == 'homr' and task.get('use_gpu') and proc.returncode in gpu_access_violation_codes:
+                            # 0xC0000005 访问冲突，GPU 模式崩溃，尝试回退到 CPU
+                            self._state.append_log('[homr] GPU 模式发生崩溃，正在回退到 CPU 模式重试…')
+                            retry_cpu = True
+                            _done_or_error_received = False
+                            continue
+                        self._state.set_error(
+                            f'Worker 进程异常退出（{proc.returncode}）：{err_text[:300] if err_text else "无详情"}'
+                        )
                     else:
-                        fail_count += 1
-                        self._state.append_log(f'  ✗ 失败: {src.name}')
-                except Exception as exc:
-                    fail_count += 1
-                    self._state.append_log(f'  ✗ 异常: {exc}')
+                        self._state.set_done('完成。')
+                    break
+                else:
+                    break
 
-            if success_count > 0:
-                msg = f'完成：{success_count} 个成功'
-                if fail_count:
-                    msg += f'，{fail_count} 个失败'
-                self._state.set_done(msg + '。')
-            elif fail_count > 0:
-                self._state.set_error(f'全部 {fail_count} 个文件转换失败，请查看日志。')
-            else:
-                self._state.set_done('没有需要处理的文件。')
         except Exception as exc:
-            self._state.set_error(str(exc))
-
-    def _show_snack(self, msg: str, color: str = Palette.INFO) -> None:
-        try:
-            p = self.page
-            if p:
-                p.show_dialog(ft.SnackBar(
-                    content=ft.Text(msg, color='#FFFFFF'),
-                    bgcolor=color,
-                    duration=3000,
-                ))
-        except Exception:
-            pass
+            if not _done_or_error_received:
+                self._state.set_error(str(exc))
+        finally:
+            if self._state.is_processing:
+                self._state.is_processing = False

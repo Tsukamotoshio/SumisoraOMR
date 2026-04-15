@@ -34,7 +34,7 @@ from .config import (
 from .image_preprocess import (
     OEMER_MAX_PIXELS,
     fit_image_within_pixel_limit,
-    preprocess_image_for_oemer,
+    preprocess_image_for_omr,
 )
 from .utils import (
     find_first_musicxml_file,
@@ -288,6 +288,7 @@ def _run_oemer_inprocess(image_path: Path, output_dir: Path) -> Optional[Path]:
     if out_path_str and Path(out_path_str).exists():
         mxl = Path(out_path_str)
         log_message(f'[oemer] 输出 MusicXML: {mxl.name}')
+        log_message('[oemer] 识别完成。')
         return mxl
 
     mxl = find_first_musicxml_file(output_dir, search_stem)
@@ -906,15 +907,20 @@ def run_oemer_batch(input_path: Path, output_dir: Optional[Path] = None) -> Opti
         img_path = input_path
 
     # ── 图像预处理（oemer 专用预设：内容裁剪 + 梯度修正 + 低分辨率 SR 放大）─────────────────
-    # 使用 preprocess_image_for_oemer：
+    # 使用 preprocess_image_for_omr：
     #   · 保留 RGB 彩色（oemer 深度学习模型利用颜色信息，不做灰度转换）
     #   · 短边 < 1200px 时自动调用 waifu2x 2× 超分辨率，防止模型只检出首行谱线
     #   · 不做去噪/锐化，减少引入影响深度学习模型感知的伪影
+    #
+    # Oemer 目前仍为整图识别管线，不像 Audiveris 切片版那样执行“逐行切片 → 单行识别 → 合并”。
     omr_input_path = img_path
     omr_preprocessed_path: Optional[Path] = None
     if img_path.suffix.lower() in {'.png', '.jpg', '.jpeg'}:
-        preprocessed = preprocess_image_for_oemer(
-            img_path, output_dir, max_pixels=OEMER_MAX_PIXELS
+        preprocessed = preprocess_image_for_omr(
+            img_path,
+            output_dir,
+            keep_color=True,
+            max_pixels=OEMER_MAX_PIXELS,
         )
         if preprocessed is not None:
             omr_preprocessed_path = preprocessed

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
 import collections
-import threading
 import time
 import flet as ft
 from ..app_state import AppState, Event
@@ -16,14 +16,15 @@ class ProgressOverlay(ft.Stack):
     def __init__(self, state: AppState):
         super().__init__(expand=True)
         self._state = state
-        self._timer_thread: threading.Thread | None = None
         self._timer_running = False
         self._start_time: float = 0.0
-        # ── 线程安全的待处理更新队列 ─────────────────────────────────────────
-        # 工作线程只向队列中追加数据（非阻塞），计时器线程负责刷新 UI，
+        # ── 跨线程安全的待处理更新队列 ──────────────────────────────────────
+        # 工作线程只向队列中追加数据（非阻塞），计时器异步任务负责刷新 UI，
         # 避免工作线程在 Flet/Flutter 侧暂停时被 ctrl.update() 阻塞。
         self._pending_logs: collections.deque[tuple[str, str]] = collections.deque()  # (line, color)
         self._pending_progress: tuple[float, str] | None = None  # (value, message)
+        # 计时器线程在此时刻后自动隐藏浮层（_on_done 设置，避免额外线程）
+        self._should_hide_after: float | None = None
         self._build_panel()
         self.controls = [self._backdrop, self._panel_wrapper]
         state.on(Event.PROGRESS_UPDATE, self._on_progress)
@@ -113,20 +114,24 @@ class ProgressOverlay(ft.Stack):
             visible=False,
         )
 
-    # ── 计时器线程 ────────────────────────────────────────────────────────────
+    # ── 计时器异步任务 ────────────────────────────────────────────────────────
 
     def _start_timer(self) -> None:
         self._start_time = time.monotonic()
         self._timer_running = True
-        self._timer_thread = threading.Thread(target=self._timer_loop, daemon=True)
-        self._timer_thread.start()
+        p = self.page
+        if p is not None:
+            p.run_task(self._timer_task)
 
     def _stop_timer(self) -> None:
         self._timer_running = False
 
-    def _timer_loop(self) -> None:
+    async def _timer_task(self) -> None:
+        """运行于 asyncio 事件循环，协作式调度，不阻塞 Flet 心跳帧。"""
+        _last_page_update: float = 0.0
         while self._timer_running:
-            elapsed = int(time.monotonic() - self._start_time)
+            now = time.monotonic()
+            elapsed = int(now - self._start_time)
             mm, ss = divmod(elapsed, 60)
             self._elapsed_text.value = f'{mm:02d}:{ss:02d}'
 
@@ -138,9 +143,9 @@ class ProgressOverlay(ft.Stack):
                 if pending[1]:
                     self._status_text.value = pending[1]
 
-            # 消费待处理的日志行（批量最多 30 条/秒，防止 UI 积压）
+            # 消费待处理的日志行（批量最多 8 条/次，防止 UI 积压）
             _drained = 0
-            while self._pending_logs and _drained < 30:
+            while self._pending_logs and _drained < 8:
                 line, color = self._pending_logs.popleft()
                 self._log_list.controls.append(
                     ft.Text(line, size=11, font_family='Consolas',
@@ -148,25 +153,44 @@ class ProgressOverlay(ft.Stack):
                 )
                 _drained += 1
             # 限制日志控件总数
-            while len(self._log_list.controls) > 120:
+            while len(self._log_list.controls) > 80:
                 self._log_list.controls.pop(0)
 
-            # 每秒一次整体刷新，避免频繁单控件 update()
-            if _drained > 0 or pending is not None:
+            # ── 限速：只在有实际内容变化时推送 page.update()，
+            #    或距上次更新超过 3 秒时推送一次（仅刷新计时文字）。
+            # 运行于 asyncio 事件循环，page.update() 在当前协程调度点执行，
+            # 与 Flet WebSocket 处理器协作，彻底消除跨线程竞争。
+            has_changes = _drained > 0 or pending is not None
+            if has_changes or (now - _last_page_update) >= 3.0:
+                _last_page_update = now
                 try:
                     p = self.page
                     if p is not None:
                         p.update()
                 except Exception:
                     pass
-            else:
-                # 即使无新内容也刷新计时文本
+                # update() 完成后立即让出事件循环，确保 Flet 心跳帧可以被及时处理
+                await asyncio.sleep(0)
+
+            # 延迟自动隐藏（由 _on_done 设置）
+            if self._should_hide_after is not None and now >= self._should_hide_after:
+                self._should_hide_after = None
+                self._timer_running = False
+                self._backdrop.visible = False
+                self._panel_wrapper.visible = False
+                self._log_list.controls.clear()
                 try:
-                    self._elapsed_text.update()
+                    p = self.page
+                    if p is not None:
+                        p.update()
                 except Exception:
                     pass
+                await asyncio.sleep(0)
+                break
 
-            time.sleep(1.0)
+            # 0.5s 睡眠取代原来的 2.0s：更频繁地让出事件循环给 Flet 心跳任务，
+            # 防止 ONNX 推理占满 CPU 时 asyncio 被 OS 调度器长时间饿死。
+            await asyncio.sleep(0.5)
 
     # ── 显示 / 隐藏 ──────────────────────────────────────────────────────────
 
@@ -180,6 +204,7 @@ class ProgressOverlay(ft.Stack):
         self._log_list.controls.clear()
         self._pending_logs.clear()
         self._pending_progress = None
+        self._should_hide_after = None  # 取消上次可能未完成的自动隐藏
         self._backdrop.visible = True
         self._panel_wrapper.visible = True
         self._update_overlay()
@@ -187,6 +212,7 @@ class ProgressOverlay(ft.Stack):
 
     def hide(self) -> None:
         self._stop_timer()
+        self._should_hide_after = None  # 取消计时器任务的延迟隐藏
         self._backdrop.visible = False
         self._panel_wrapper.visible = False
         # 清理完成后的日志控件，避免隐藏状态下保留过多 UI 控件导致后续卡顿。
@@ -194,16 +220,17 @@ class ProgressOverlay(ft.Stack):
         self._update_overlay()
 
     def _update_overlay(self) -> None:
+        # 统一走 page.update()，避免从不同线程调用单控件 update() 竞争 Flet socket
         try:
-            self._backdrop.update()
-        except Exception:
-            pass
-        try:
-            self._panel_wrapper.update()
+            p = self.page
+            if p is not None:
+                p.update()
         except Exception:
             pass
 
     def _on_close_click(self, _e) -> None:
+        # 用户主动关闭：重置处理标志，_run_conversion 检测到后会终止子进程
+        self._state.is_processing = False
         self.hide()
 
     # ── 事件回调 ─────────────────────────────────────────────────────────────
@@ -213,20 +240,30 @@ class ProgressOverlay(ft.Stack):
         self._pending_progress = (value, message)
 
     def _on_done(self, message: str = '完成', **_kw) -> None:
-        self._stop_timer()
-        self._progress_bar.value = 1.0
-        self._status_text.value = message
-        self._spinner.visible = False   # 停止旋转圈
-        self._try_update()
-        threading.Timer(2.5, self.hide).start()
+        # 写入待处理队列，由计时器线程统一渲染，避免工作线程直接调用 page.update()
+        self._pending_progress = (1.0, message)
+        self._spinner.visible = False  # 属性修改，计时器下次刷新时生效
+        # 在计时器线程内延迟 2.5 秒自动隐藏，无需额外的 threading.Timer 线程
+        self._should_hide_after = time.monotonic() + 2.5
 
     def _on_error(self, message: str, **_kw) -> None:
         self._stop_timer()
-        self._progress_bar.value = 0.0
-        self._progress_bar.color = Palette.ERROR
-        self._status_text.value = f'错误：{message}'
-        self._spinner.color = Palette.ERROR
-        self._try_update()
+        self._should_hide_after = None  # 错误状态需用户手动关闭
+        # 可能从工作线程调用，通过 run_task 将 UI 更新调度到 asyncio 事件循环
+        async def _apply():
+            self._progress_bar.value = 0.0
+            self._progress_bar.color = Palette.ERROR
+            self._status_text.value = f'错误：{message}'
+            self._spinner.color = Palette.ERROR
+            self._try_update()
+        p = self.page
+        if p is not None:
+            p.run_task(_apply)
+        else:
+            self._progress_bar.value = 0.0
+            self._progress_bar.color = Palette.ERROR
+            self._status_text.value = f'错误：{message}'
+            self._spinner.color = Palette.ERROR
 
     def _on_log(self, line: str, **_kw) -> None:
         # 根据内容选颜色：✓ 绿色，✗ 红色，其余默认
