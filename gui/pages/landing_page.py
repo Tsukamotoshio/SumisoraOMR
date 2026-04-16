@@ -391,7 +391,9 @@ class LandingPage(ft.Row):
                 proc.stdin.flush()
                 proc.stdin.close()
 
-                # ── 逐行读取 Worker 响应 ──────────────────────────────────────────                _files_done_this_run = 0  # 本次 worker 运行中已完成（收到 result）的文件数                for raw_line in proc.stdout:
+                # ── 逐行读取 Worker 响应 ──────────────────────────────────────────
+                _files_done_this_run = 0  # 本次 worker 运行中已完成（收到 result）的文件数
+                for raw_line in proc.stdout:
                     # 用户关闭了进度浮层：终止子进程，退出读取循环
                     if not self._state.is_processing:
                         try:
