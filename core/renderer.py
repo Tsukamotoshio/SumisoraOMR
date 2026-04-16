@@ -546,14 +546,8 @@ def generate_jianpu_pdf_from_dual_mxl(
     preferred_title: Optional[str] = None,
     source_path: Optional[Path] = None,
     editor_workspace_dir: Optional[Path] = None,
-    llm_api_key: Optional[str] = None,
-    llm_provider: Optional[str] = None,
-    llm_model: Optional[str] = None,
     original_image_path: Optional[Path] = None,
 ) -> bool:
-    if not llm_api_key:
-        log_message('[双引擎] 未提供大模型 API Key，跳过本地融合。')
-        return False
     """融合两个 OMR 引擎的 MusicXML 输出，生成简谱 PDF。
 
     调用 ``core.omr_fusion.merge_dual_omr_results`` 将 Oemer 与 Audiveris 的
@@ -568,9 +562,6 @@ def generate_jianpu_pdf_from_dual_mxl(
 
     result = merge_dual_omr_results(
         mxl_oemer, mxl_audiveris,
-        llm_api_key=llm_api_key,
-        llm_provider=llm_provider,
-        llm_model=llm_model,
         original_image_path=original_image_path,
     )
     if result is None:

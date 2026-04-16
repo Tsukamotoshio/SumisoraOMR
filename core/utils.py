@@ -1,8 +1,5 @@
 # core/utils.py — 基础工具函数
 # 拆分自 convert.py
-import base64
-import getpass
-import hashlib
 import json
 import logging
 import os
@@ -40,8 +37,6 @@ from .config import (
 # 可变全局：由 setup_logging 在首次调用时赋值
 LOG_FILE_PATH: Optional[Path] = None
 
-
-LLM_CONFIG_FILENAME = 'llm_config.json'
 USER_CONFIG_DIR_NAME = 'ConvertTool'
 
 
@@ -66,103 +61,6 @@ def get_user_config_dir() -> Path:
     if xdg_config:
         return Path(xdg_config) / USER_CONFIG_DIR_NAME
     return Path.home() / '.config' / USER_CONFIG_DIR_NAME
-
-
-def get_llm_config_path(base_dir: Optional[Path] = None) -> Path:
-    config_dir = get_user_config_dir()
-    config_dir.mkdir(parents=True, exist_ok=True)
-    return config_dir / LLM_CONFIG_FILENAME
-
-
-def _derive_machine_key() -> bytes:
-    """Derive a local machine-specific secret for lightweight API key encryption."""
-    seed = platform.node() + '|' + getpass.getuser()
-    return hashlib.sha256(seed.encode('utf-8')).digest()
-
-
-def _xor_encrypt(data: bytes, key: bytes) -> bytes:
-    return bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
-
-
-def _encrypt_api_key(api_key: str) -> str:
-    try:
-        key = _derive_machine_key()
-        encrypted = _xor_encrypt(api_key.encode('utf-8'), key)
-        return base64.urlsafe_b64encode(encrypted).decode('ascii')
-    except Exception:
-        return api_key
-
-
-def _decrypt_api_key(encoded: str) -> str:
-    try:
-        key = _derive_machine_key()
-        encrypted = base64.urlsafe_b64decode(encoded.encode('ascii'))
-        return _xor_encrypt(encrypted, key).decode('utf-8', errors='replace')
-    except Exception:
-        return encoded
-
-
-def load_llm_config(base_dir: Path) -> dict[str, str]:
-    """Load stored LLM configuration from app base dir, if present."""
-    path = get_llm_config_path(base_dir)
-    if not path.exists():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding='utf-8'))
-        api_key = payload.get('api_key', '')
-        return {
-            'api_key': _decrypt_api_key(api_key) if api_key else '',
-            'provider': str(payload.get('provider', '') or ''),
-            'model': str(payload.get('model', '') or ''),
-        }
-    except Exception:
-        return {}
-
-
-def save_llm_config(base_dir: Path, api_key: str, provider: str = '', model: str = '') -> None:
-    """Save LLM configuration to a local config file with lightweight local encryption."""
-    try:
-        path = get_llm_config_path(base_dir)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            'api_key': _encrypt_api_key(api_key.strip()),
-            'provider': provider.strip(),
-            'model': model.strip(),
-        }
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
-        try:
-            os.chmod(path, 0o600)
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-
-def load_llm_api_key(base_dir: Path) -> str:
-    return load_llm_config(base_dir).get('api_key', '')
-
-
-def load_llm_provider(base_dir: Path) -> str:
-    return load_llm_config(base_dir).get('provider', '')
-
-
-def load_llm_model(base_dir: Path) -> str:
-    return load_llm_config(base_dir).get('model', '')
-
-
-def save_llm_api_key(base_dir: Path, api_key: str) -> None:
-    config = load_llm_config(base_dir)
-    save_llm_config(base_dir, api_key.strip(), config.get('provider', ''), config.get('model', ''))
-
-
-def save_llm_provider(base_dir: Path, provider: str) -> None:
-    config = load_llm_config(base_dir)
-    save_llm_config(base_dir, config.get('api_key', ''), provider.strip(), config.get('model', ''))
-
-
-def save_llm_model(base_dir: Path, model: str) -> None:
-    config = load_llm_config(base_dir)
-    save_llm_config(base_dir, config.get('api_key', ''), config.get('provider', ''), model.strip())
 
 
 def get_runtime_search_roots() -> list[Path]:
