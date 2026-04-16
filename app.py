@@ -12,6 +12,13 @@
 
 import sys
 import os
+import warnings
+
+warnings.filterwarnings(
+    'ignore',
+    message='Enable tracemalloc to get the object allocation traceback',
+    category=RuntimeWarning,
+)
 
 # ─── SSL 证书：解决打包后部分环境证书验证失败问题 ─────────────────────────────
 # 在所有网络请求（flet / urllib / requests / httpx）之前设置，
@@ -20,17 +27,35 @@ import os
 #   REQUESTS_CA_BUNDLE — requests 库
 #   CURL_CA_BUNDLE   — libcurl 系库
 if getattr(sys, 'frozen', False):
-    _internal_cert = os.path.join(sys._MEIPASS, 'certifi', 'cacert.pem')
-    if os.path.exists(_internal_cert):
-        os.environ['SSL_CERT_FILE'] = _internal_cert
-        os.environ['REQUESTS_CA_BUNDLE'] = _internal_cert
-        os.environ['CURL_CA_BUNDLE'] = _internal_cert
+    _meipass = getattr(sys, '_MEIPASS', None)
+    if _meipass is not None:
+        _internal_cert = os.path.join(_meipass, 'certifi', 'cacert.pem')
+        if os.path.exists(_internal_cert):
+            os.environ['SSL_CERT_FILE'] = _internal_cert
+            os.environ['REQUESTS_CA_BUNDLE'] = _internal_cert
+            os.environ['CURL_CA_BUNDLE'] = _internal_cert
     # console=False 时 sys.stdout/stderr 为 None，所有 print() 会崩溃
     # 替换为 null 流，将输出静默丢弃（日志仍写入 logs/ 文件）
-    if sys.stdout is None:
-        sys.stdout = open(os.devnull, 'w', encoding='utf-8', errors='replace')
-    if sys.stderr is None:
-        sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+    # 注意：Worker 子进程需要保留 stdout 作为 IPC 管道，不能重定向到 devnull
+    _is_worker_process = '--worker' in sys.argv
+    if not _is_worker_process:
+        if sys.stdout is None:
+            sys.stdout = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+        if sys.stderr is None:
+            sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+
+# ─── ONNX / OpenMP 线程限制：为 asyncio 事件循环保留 CPU 资源 ────────────────
+# homr / oemer 使用 ONNX Runtime 进行神经网络推理，默认会占满所有 CPU 核心。
+# 在打包版中，CPU 满载导致 asyncio 事件循环长时间得不到调度，
+# Flet WebSocket 心跳超时，Flutter 端显示 "Working..." 重连画面。
+# 在首次 import onnxruntime / 初始化 OpenMP 线程池之前设置，保留 1 个核心给 asyncio。
+_cpu_count = os.cpu_count() or 4
+_onnx_threads = str(max(1, _cpu_count - 1))
+os.environ.setdefault('OMP_NUM_THREADS',          _onnx_threads)
+os.environ.setdefault('OPENBLAS_NUM_THREADS',     _onnx_threads)
+os.environ.setdefault('MKL_NUM_THREADS',          _onnx_threads)
+os.environ.setdefault('VECLIB_MAXIMUM_THREADS',   _onnx_threads)
+os.environ.setdefault('NUMEXPR_NUM_THREADS',      _onnx_threads)
 
 # ─── Bootstrap：确保在正确的虚拟环境中运行 ──────────────────────────────────
 def _bootstrap_venv() -> None:
@@ -59,6 +84,15 @@ def _bootstrap_venv() -> None:
 _bootstrap_venv()
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Worker 子进程早退出：在导入 flet / GUI 模块之前分流，节省内存和启动时间
+if __name__ == '__main__' and '--worker' in sys.argv:
+    import multiprocessing
+    multiprocessing.freeze_support()
+    from core.worker_main import run_worker
+    run_worker()
+    import os as _os
+    _os._exit(0)   # 强制退出：绕过 onnxruntime 等库遗留的非 daemon 线程
+
 import flet as ft
 
 from gui.app_state import AppState, Event
@@ -86,7 +120,7 @@ _NAV_ITEMS = [
 # 主应用
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main(page: ft.Page) -> None:
+async def main(page: ft.Page) -> None:
     # ── 页面基本配置 ──────────────────────────────────────────────────────────
     page.title       = 'OMR 乐谱转换工具'
     page.window.min_width  = 900
@@ -159,10 +193,12 @@ def main(page: ft.Page) -> None:
         for i, (page_name, *_) in enumerate(_NAV_ITEMS):
             _content_containers[i].visible = (page_name == name)
         state.current_page = name
-        if name == 'editor' and hasattr(editor_page, 'reset_view'):
+        if name == 'editor' and not getattr(editor_page, '_has_been_shown', False):
             editor_page.reset_view()
-        if name == 'transposer' and hasattr(transposer_page, 'reset_view'):
+            editor_page._has_been_shown = True
+        if name == 'transposer' and not getattr(transposer_page, '_has_been_shown', False):
             transposer_page.reset_view()
+            transposer_page._has_been_shown = True
         try:
             content_stack.update()
         except Exception:
@@ -220,7 +256,7 @@ def main(page: ft.Page) -> None:
 
     # ── 顶部 AppBar ──────────────────────────────────────────────────────────
     page.appbar = ft.AppBar(
-        title=ft.Text('OMR 乐谱转换工具  v0.2.1', size=15, weight=ft.FontWeight.W_600),
+        title=ft.Text('OMR 乐谱转换工具  v0.2.2-homr-experimental', size=15, weight=ft.FontWeight.W_600),
         center_title=False,
         bgcolor=Palette.BG_SURFACE,
         leading=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color=Palette.PRIMARY),
@@ -240,10 +276,16 @@ def main(page: ft.Page) -> None:
         ))
 
     def _on_error(message: str, **_kw) -> None:
-        _show_snack(f'错误: {message}', Palette.ERROR)
+        # 工作线程通过 state.emit() 同步调用此回调；
+        # 用 run_task 调度到 asyncio 事件循环，避免与计时器 page.update() 竞争。
+        async def _do():
+            _show_snack(f'错误: {message}', Palette.ERROR)
+        page.run_task(_do)
 
     def _on_done(message: str = '完成', **_kw) -> None:
-        _show_snack(message, Palette.SUCCESS)
+        async def _do():
+            _show_snack(message, Palette.SUCCESS)
+        page.run_task(_do)
 
     state.on(Event.PROGRESS_ERROR, _on_error)
     state.on(Event.PROGRESS_DONE,  _on_done)

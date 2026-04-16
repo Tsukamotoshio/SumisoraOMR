@@ -9,6 +9,7 @@ import io
 import threading
 import time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Any
 
@@ -47,6 +48,9 @@ class PdfViewer(ft.Column):
         self._mag_rendering = False   # 节流标志：防止 hover 事件堆积线程
         self._mag_pending: Optional[tuple] = None   # 最新待渲染位置
         self._render_timer: Optional[threading.Timer] = None
+        self._refresh_pending = False
+        self._refresh_waiting = False
+        self._executor = ThreadPoolExecutor(max_workers=4)
         # 平移状态（scale > 1 时生效）
         self._pan_x: float = 0.0
         self._pan_y: float = 0.0
@@ -174,7 +178,7 @@ class PdfViewer(ft.Column):
         key = self._cache_key(path)
         if key in self._preview_cache:
             return
-        threading.Thread(target=self._preload_path, args=(path, key), daemon=True).start()
+        self._executor.submit(self._preload_path, path, key)
 
     def _preload_path(self, path: Path, key: str) -> None:
         if key in self._preview_cache:
@@ -254,31 +258,15 @@ class PdfViewer(ft.Column):
             self._set_image_b64(self._raw_b64)
             self._update_toolbar()
             if path.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
-                threading.Thread(target=self._ensure_document_loaded, args=(path, current_token), daemon=True).start()
+                self._executor.submit(self._ensure_document_loaded, path, current_token)
             return
 
         if path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
             # 直接图片格式，用 BytesIO → base64
-            threading.Thread(target=self._load_image_async, args=(path, current_token), daemon=True).start()
+            self._executor.submit(self._load_image_async, path, current_token)
         else:
             # PDF 用 PyMuPDF
-            threading.Thread(target=self._load_pdf_async, args=(path, current_token), daemon=True).start()
-
-    def _ensure_document_loaded(self, path: Path, token: int) -> None:
-        if token != self._load_token:
-            return
-        try:
-            import fitz
-            doc = fitz.open(str(path))
-            if token != self._load_token:
-                try:
-                    doc.close()
-                except Exception:
-                    pass
-                return
-            self._fitz_doc = doc
-        except Exception:
-            pass
+            self._executor.submit(self._load_pdf_async, path, current_token)
 
     def _load_image_async(self, path: Path, token: int) -> None:
         try:
@@ -453,9 +441,14 @@ class PdfViewer(ft.Column):
     def _request_page_refresh(self) -> None:
         if not hasattr(self, 'page') or self.page is None:
             return
+        if self._refresh_pending:
+            self._refresh_waiting = True
+            return
+        self._refresh_pending = True
         try:
             self.page.run_task(self._async_refresh)
         except Exception:
+            self._refresh_pending = False
             try:
                 self.page.schedule_update()
             except Exception:
@@ -466,6 +459,11 @@ class PdfViewer(ft.Column):
             self.update()
         except Exception:
             pass
+        finally:
+            self._refresh_pending = False
+            if self._refresh_waiting:
+                self._refresh_waiting = False
+                self._request_page_refresh()
 
     # ── 工具栏事件 ───────────────────────────────────────────────────────────
 

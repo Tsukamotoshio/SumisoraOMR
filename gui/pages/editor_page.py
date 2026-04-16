@@ -68,7 +68,8 @@ class _BinaryImageView(ft.Column):
             content=ft.Column(
                 [
                     ft.Icon(ft.Icons.IMAGE_OUTLINED, size=40, color=Palette.TEXT_DISABLED),
-                    ft.Text('请先在首页选择并转换文件', size=12, color=Palette.TEXT_DISABLED),
+                    ft.Text('请先在首页选择并转换文件，或在此页打开对应图像/简谱文件',
+                            size=12, color=Palette.TEXT_DISABLED, text_align=ft.TextAlign.CENTER),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -372,6 +373,7 @@ class EditorPage(ft.Row):
     def __init__(self, state: AppState):
         super().__init__(spacing=0, expand=True)
         self._state = state
+        self._has_been_shown = False
         self._img_view = _BinaryImageView(state)
         self._editor   = JianpuEditor(state)
         self._open_picker = ft.FilePicker()
@@ -456,8 +458,8 @@ class EditorPage(ft.Row):
     async def _pick_open_async(self) -> None:
         init_dir = editor_workspace_dir()
         files = await self._open_picker.pick_files(
-            dialog_title='打开乐谱文件（图像 / PDF / 简谱文本）',
-            allowed_extensions=['png', 'jpg', 'jpeg', 'pdf', 'txt'],
+            dialog_title='打开图像文件（PDF / PNG / JPG）',
+            allowed_extensions=['png', 'jpg', 'jpeg', 'pdf'],
             allow_multiple=False,
             initial_directory=str(init_dir),
         )
@@ -466,68 +468,110 @@ class EditorPage(ft.Row):
         path = Path(files[0].path)
         self._open_file(path)
 
+    def _normalize_editor_stem(self, stem: str) -> str:
+        for suffix in ('.oemer', '.audiveris'):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        if stem.endswith('.source'):
+            stem = stem[: -len('.source')]
+        return stem
+
+    def _find_matching_jianpu(self, stem: str, parent: Path, ws: Path) -> Optional[Path]:
+        stem = self._normalize_editor_stem(stem)
+        candidates = list(parent.glob(f'{stem}*.jianpu.txt')) + list(ws.glob(f'{stem}*.jianpu.txt'))
+        for cand in candidates:
+            if cand.exists():
+                return cand
+        return None
+
+    def _find_matching_source(self, stem: str, parent: Path, ws: Path) -> Optional[Path]:
+        stem = self._normalize_editor_stem(stem)
+        for ext in ('.png', '.jpg', '.jpeg', '.pdf'):
+            for cand in [
+                parent / f'{stem}.source{ext}',
+                ws / f'{stem}.source{ext}',
+                parent / f'{stem}{ext}',
+                ws / f'{stem}{ext}',
+            ]:
+                if cand.exists():
+                    return cand
+        return None
+
     def _open_file(self, path: Path) -> None:
         """智能打开文件，并自动配对另一半。"""
         ws = editor_workspace_dir()
         suffix_lo = path.suffix.lower()
 
         if suffix_lo in ('.png', '.jpg', '.jpeg', '.pdf'):
-            # 图像文件：加载图像，自动寻找同名 .jianpu.txt
             self._img_view.load(path)
             stem = path.stem
-            for cand in [
-                path.parent / (stem + '.jianpu.txt'),
-                ws / (stem + '.jianpu.txt'),
-            ]:
-                if cand.exists():
-                    self._editor.load(cand)
-                    self._state.current_jianpu_txt = cand
-                    break
+            matched_txt = self._find_matching_jianpu(stem, path.parent, ws)
+            if matched_txt is not None:
+                self._editor.load(matched_txt)
+                self._state.current_jianpu_txt = matched_txt
+            else:
+                self._editor.reset()
+                self._state.current_jianpu_txt = None
         elif suffix_lo == '.txt':
-            # 文本文件：加载简谱，自动寻找同名图像
             self._editor.load(path)
             self._state.current_jianpu_txt = path
             stem = path.stem.replace('.jianpu', '')
-            for ext in ('.png', '.jpg', '.jpeg', '.pdf'):
-                for cand in [
-                    path.parent / (stem + ext),
-                    ws / (stem + ext),
-                ]:
-                    if cand.exists():
-                        self._img_view.load(cand)
-                        return
+            matched_source = self._find_matching_source(stem, path.parent, ws)
+            if matched_source is not None:
+                self._img_view.load(matched_source)
+            else:
+                self._img_view.reset()
+                self._state.current_jianpu_txt = path
 
     def _on_file_selected(self, path: Path, **_kw) -> None:
-        # 检查是否有对应的预处理参考图
         ws = editor_workspace_dir()
-        ref_candidates = [
-            ws / (path.stem + '.png'),
-            ws / (path.stem + '_ref.png'),
-            path.with_suffix('.png'),
-        ]
-        for cand in ref_candidates:
-            if cand.exists():
-                self._img_view.load(cand)
-                break
+        suffix_lo = path.suffix.lower()
 
-        jianpu_candidates = [
-            ws / (path.stem + '.jianpu.txt'),
-            ws / (path.stem + '_jianpu.txt'),
-        ]
-        for jc in jianpu_candidates:
-            if jc.exists():
-                self._editor.load(jc)
-                self._state.current_jianpu_txt = jc
-                break
+        if suffix_lo in ('.png', '.jpg', '.jpeg', '.pdf'):
+            self._img_view.load(path)
+            matched_txt = self._find_matching_jianpu(path.stem, path.parent, ws)
+            if matched_txt is not None:
+                self._editor.load(matched_txt)
+                self._state.current_jianpu_txt = matched_txt
+            else:
+                self._editor.reset()
+                self._state.current_jianpu_txt = None
+        elif suffix_lo in ('.mxl', '.musicxml'):
+            matched_txt = self._find_matching_jianpu(path.stem, path.parent, ws)
+            if matched_txt is not None:
+                self._editor.load(matched_txt)
+                self._state.current_jianpu_txt = matched_txt
+            else:
+                self._editor.reset()
+                self._state.current_jianpu_txt = None
+
+            matched_source = self._find_matching_source(path.stem, path.parent, ws)
+            if matched_source is not None:
+                self._img_view.load(matched_source)
+            else:
+                self._img_view.reset()
+        else:
+            self._editor.reset()
+            self._state.current_jianpu_txt = None
 
     def _on_mxl_ready(self, path: Path, **_kw) -> None:
-        """MXL 就绪后尝试自动加载对应的 jianpu.txt（由 pipeline 生成）。"""
+        """MXL 就绪后尝试自动加载对应的 jianpu.txt 和源图像。"""
         ws = editor_workspace_dir()
-        stem = path.stem.replace('.mxl', '').replace('.musicxml', '')
-        for candidate in ws.glob(f'{stem}*.jianpu.txt'):
-            self._editor.load(candidate)
-            self._state.current_jianpu_txt = candidate
-            break
+        stem = path.stem
+        matched_txt = self._find_matching_jianpu(stem, path.parent, ws)
+        if matched_txt is not None:
+            self._editor.load(matched_txt)
+            self._state.current_jianpu_txt = matched_txt
+        else:
+            self._editor.reset()
+            self._state.current_jianpu_txt = None
+
+        matched_source = self._find_matching_source(stem, path.parent, ws)
+        if matched_source is not None:
+            self._img_view.load(matched_source)
+        else:
+            self._img_view.reset()
 
     def reset_view(self) -> None:
         self._img_view.reset()

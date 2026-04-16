@@ -30,6 +30,7 @@ from .config import (
     CONVERSION_PIPELINE_VERSION,
     ENABLE_LYRICS_OUTPUT,
     LOGGER,
+    OMR_ENGINE_DIR_NAME,
     RUNTIME_ASSETS_DIR_NAME,
     SUPPORTED_INPUT_SUFFIXES,
     AppConfig,
@@ -415,13 +416,18 @@ def find_local_tessdata_dir() -> Optional[Path]:
     """Locate the local Tesseract tessdata directory used by Audiveris for OCR."""
     candidates: list[Path] = []
     for base_dir in get_runtime_search_roots():
-        candidates.extend([
+        omr_engine_dir = base_dir / OMR_ENGINE_DIR_NAME
+    candidates.extend([
             base_dir / 'tessdata',
             base_dir / RUNTIME_ASSETS_DIR_NAME / 'tessdata',
             base_dir / 'audiveris-5.10.2' / 'app' / 'dev' / 'tessdata',
             base_dir / 'audiveris-5.10.2' / 'dev' / 'tessdata',
             base_dir / 'audiveris' / 'app' / 'dev' / 'tessdata',
             base_dir / 'audiveris' / 'dev' / 'tessdata',
+            omr_engine_dir / 'audiveris-5.10.2' / 'app' / 'dev' / 'tessdata',
+            omr_engine_dir / 'audiveris-5.10.2' / 'dev' / 'tessdata',
+            omr_engine_dir / 'audiveris' / 'app' / 'dev' / 'tessdata',
+            omr_engine_dir / 'audiveris' / 'dev' / 'tessdata',
         ])
 
     packaged_audiveris_dir = find_packaged_runtime_dir(AUDIVERIS_RUNTIME_DIR_NAME)

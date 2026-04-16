@@ -50,6 +50,12 @@ This file provides license and attribution notices for third-party components di
 - Upstream: <https://github.com/BreezeWhite/oemer>
 - Note: Deep-learning end-to-end OMR engine invoked for image-based score recognition.
 
+## Homr
+- Version: `0.1.0`
+- License: AGPL-3.0
+- Upstream: <https://github.com/liebharc/homr>
+- Note: End-to-end optical music recognition engine integrated as an optional local repository under `omr_engine/homr`.
+
 ## scikit-learn
 - License: BSD-3-Clause
 - Upstream: <https://github.com/scikit-learn/scikit-learn>

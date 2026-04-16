@@ -141,7 +141,7 @@ def run_audiveris_batch(
 
     # Determine OCR language based on filename — avoids chi_sim interference for Western scores.
     ocr_lang = _choose_ocr_lang(input_path)
-    log_message(f'  [Audiveris] OCR 语言规格: {ocr_lang}')
+    log_message(f'[audiveris] OCR 语言规格: {ocr_lang}')
 
     # Pre-process raster images (PNG/JPG) to improve OMR accuracy before passing to Audiveris.
     # For PDF inputs Audiveris renders pages internally, so preprocessing is skipped.
@@ -202,23 +202,23 @@ def run_audiveris_batch(
 
     try:
         if exe is None:
-            log_message('未能生成或定位 Audiveris 启动器。根据官方文档，应先完成源码构建，再使用生成的 Audiveris.bat 运行。', logging.WARNING)
-            log_message('请确认 audiveris-5.10.2 已构建成功，或重新运行程序让其自动准备启动器。', logging.WARNING)
+            log_message('[audiveris] 未能生成或定位启动器。根据官方文档，应先完成源码构建，再使用生成的 Audiveris.bat 运行。', logging.WARNING)
+            log_message('[audiveris] 请确认 audiveris-5.10.2 已构建成功，或重新运行程序让其自动准备启动器。', logging.WARNING)
             return None
 
-        log_message(f'调用 Audiveris 启动器: {exe}')
+        log_message(f'[audiveris] 调用启动器: {exe}')
         return_code, stdout, stderr, exported_file = invoke_audiveris(safe_output_dir)
         if return_code == 0 or exported_file is not None:
             if return_code != 0:
-                log_message('Audiveris 返回了非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
-            log_message('Audiveris 执行完成。')
+                log_message('[audiveris] 返回了非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
+            log_message('[audiveris] 执行完成。')
             _maybe_merge_mvt_files(safe_output_dir)
             _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
             return safe_output_dir
 
         page_count = get_pdf_page_count(safe_input_path)
         if safe_input_path.suffix.lower() == '.pdf' and page_count > 1:
-            log_message(f'检测到多页 PDF（共 {page_count} 页），正在按页回退处理，跳过识别失败的页面...', logging.WARNING)
+            log_message(f'[audiveris] 检测到多页 PDF（共 {page_count} 页），正在按页回退处理，跳过识别失败的页面...', logging.WARNING)
             success_pages: list[int] = []
             for page_number in range(1, page_count + 1):
                 page_output_dir = safe_output_dir / f'sheet_{page_number:03d}'
@@ -227,16 +227,16 @@ def run_audiveris_batch(
                 page_code, page_stdout, page_stderr, page_exported = invoke_audiveris(page_output_dir, sheet_number=page_number)
                 if page_code == 0 or page_exported is not None:
                     success_pages.append(page_number)
-                    log_message(f'第 {page_number} 页已成功导出。')
+                    log_message(f'[audiveris] 第 {page_number} 页已成功导出。')
                 else:
                     page_combined = (page_stderr or '') + '\n' + (page_stdout or '')
                     no_staves_kw = ['Created scores: []', 'Sheet flagged as invalid', 'No good interline', 'Too few black pixels', 'no staves']
                     page_reason = '（图像过于模糊或无法检测五线谱）' if any(k.lower() in page_combined.lower() for k in no_staves_kw) else ''
                     detail_parts = [part.strip() for part in (page_stderr, page_stdout) if part and part.strip()]
                     detail = '\n'.join(detail_parts)
-                    log_message(f'第 {page_number} 页无法识别为有效五线谱，已跳过。{page_reason}{detail[:240]}', logging.WARNING)
+                    log_message(f'[audiveris] 第 {page_number} 页无法识别为有效五线谱，已跳过。{page_reason}{detail[:240]}', logging.WARNING)
             if success_pages:
-                log_message(f'Audiveris 已按页完成导出，成功页: {success_pages}')
+                log_message(f'[audiveris] 已按页完成导出，成功页: {success_pages}')
                 _maybe_merge_mvt_files(safe_output_dir)
                 _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
                 return safe_output_dir
@@ -264,8 +264,8 @@ def run_audiveris_batch(
             )
             if r2_code == 0 or r2_exported is not None:
                 if r2_code != 0:
-                    log_message('重试时 Audiveris 返回非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
-                log_message('使用原始图像重试成功。')
+                    log_message('[audiveris] 重试时返回非零退出码，但已成功导出 MusicXML，继续后续处理。', logging.WARNING)
+                log_message('[audiveris] 使用原始图像重试成功。')
                 _maybe_merge_mvt_files(safe_output_dir)
                 _copy_preprocessed_ref(omr_preprocessed_path, safe_output_dir)
                 return safe_output_dir

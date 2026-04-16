@@ -26,6 +26,7 @@ from .config import (
     LILYPOND_RUNTIME_DIR_NAME,
     LOGGER,
     MAX_AUDIVERIS_SECONDS,
+    OMR_ENGINE_DIR_NAME,
 )
 from .utils import (
     find_local_tessdata_dir,
@@ -136,10 +137,13 @@ def find_java_executable(min_major_version: int = DEFAULT_AUDIVERIS_MIN_JAVA_VER
 # ──────────────────────────────────────────────
 
 def find_audiveris_source_dir() -> Optional[Path]:
-    """Find the Audiveris source directory (audiveris-5.10.2 or audiveris) under the app root."""
+    """Find the Audiveris source directory under the app root or omr_engine."""
     script_dir = get_app_base_dir()
+    candidates: list[Path] = []
     for name in AUDIVERIS_SOURCE_DIR_NAMES:
-        candidate = script_dir / name
+        candidates.append(script_dir / name)
+        candidates.append(script_dir / OMR_ENGINE_DIR_NAME / name)
+    for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
             return candidate
     return None
@@ -271,6 +275,12 @@ def prepare_subprocess_command(cmd: list[str]) -> list[str]:
     return cmd
 
 
+def _determine_audiveris_thread_limit() -> int:
+    """Determine Audiveris thread limits based on the user's CPU core count."""
+    cpu_count = os.cpu_count() or 1
+    return 1 if cpu_count <= 2 else max(1, cpu_count - 2)
+
+
 def run_subprocess_with_spinner(
     cmd: list[str],
     cwd: str,
@@ -285,7 +295,23 @@ def run_subprocess_with_spinner(
     start_time = time.time()
     prepared_cmd = prepare_subprocess_command(cmd)
     env = os.environ.copy()
-    env.setdefault('JAVA_TOOL_OPTIONS', '-Dfile.encoding=UTF-8')
+    thread_limit = _determine_audiveris_thread_limit()
+    java_opts = env.get('JAVA_TOOL_OPTIONS', '-Dfile.encoding=UTF-8').strip()
+    if '-XX:ActiveProcessorCount=' not in java_opts:
+        java_opts = f"{java_opts} -XX:ActiveProcessorCount={thread_limit}".strip()
+    env['JAVA_TOOL_OPTIONS'] = java_opts
+    for thread_var in (
+        'OMP_NUM_THREADS',
+        'OPENBLAS_NUM_THREADS',
+        'MKL_NUM_THREADS',
+        'NUMEXPR_NUM_THREADS',
+        'VECLIB_MAXIMUM_THREADS',
+        'OMP_THREAD_LIMIT',
+    ):
+        env.setdefault(thread_var, str(thread_limit))
+    log_message(
+        f'已限制 Audiveris Java 线程数: {thread_limit}（CPU 核心数 {os.cpu_count() or 1} - 2，最小 1）。'
+    )
     if java_exe is not None:
         java_home = java_exe.parent.parent
         env['JAVA_HOME'] = str(java_home)
@@ -579,9 +605,9 @@ def find_jianpu_ly_module() -> bool:
 
 
 def find_jianpu_ly_script() -> Optional[Path]:
-    """Look for jianpu-ly.py in cwd and the app base directory."""
+    """Look for jianpu-ly.py in cwd, the app base directory, and scripts/."""
     script_dir = get_app_base_dir()
-    for base in [Path.cwd(), script_dir]:
+    for base in [Path.cwd(), script_dir, script_dir / 'scripts']:
         path = base / 'jianpu-ly.py'
         if path.exists():
             return path
@@ -603,11 +629,12 @@ def download_jianpu_ly_script(dest: Path) -> bool:
 
 
 def _ensure_jianpu_script() -> Optional[Path]:
-    """Ensure jianpu-ly.py is available, downloading it to the app dir if necessary."""
+    """Ensure jianpu-ly.py is available, downloading it to the app dir or scripts/ if necessary."""
     script_path = find_jianpu_ly_script()
     if script_path is not None:
         return script_path
-    script_path = get_app_base_dir() / 'jianpu-ly.py'
+    script_path = get_app_base_dir() / 'scripts' / 'jianpu-ly.py'
+    script_path.parent.mkdir(parents=True, exist_ok=True)
     if script_path.exists() or download_jianpu_ly_script(script_path):
         return script_path
     return None

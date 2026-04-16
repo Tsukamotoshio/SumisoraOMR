@@ -539,8 +539,8 @@ class AppConfig:
 |------|---------|
 | **PyInstaller** | Bundles Python + `core/` + dependencies into a standalone `.exe` |
 | **Inno Setup** (`convert_setup.iss`) | Creates the Windows installer (.exe) from the PyInstaller output |
-| **build_installer.bat** | Orchestrates the full PyInstaller → Inno Setup build pipeline |
-| **build_zip.bat** | Creates a portable zip distribution |
+| **scripts/build_installer.bat** | Orchestrates the full PyInstaller → Inno Setup build pipeline |
+| **scripts/build_zip.bat** | Creates a portable zip distribution |
 
 ### 7.3 Technology Selection Rationale
 
@@ -694,7 +694,7 @@ The TUI is implemented as an explicit state machine rather than a linear input-p
 |---------|-------|---------------|
 | v0.1.3 | Stability | TUI polish, waifu2x fix, text editor foundation |
 | v0.2.0 | Usability | Full GUI (Tkinter/Swing-inspired); Oemer engine promotion |
-| v0.2.1 | Lifecycle | GitHub Releases update checker |
+| v0.2.2 | Lifecycle | GitHub Releases update checker |
 | v0.3.0 | Editing | Graphical Jianpu editor (click-to-edit notes) |
 | v0.4.0 | Auto-update | Zip-based self-update with hash verification |
 
