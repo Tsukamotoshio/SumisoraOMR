@@ -51,10 +51,12 @@ This file provides license and attribution notices for third-party components di
 - Note: Deep-learning end-to-end OMR engine invoked for image-based score recognition.
 
 ## Homr
-- Version: `0.1.0`
+- Version: `0.1.0` (fork)
 - License: AGPL-3.0
-- Upstream: <https://github.com/liebharc/homr>
-- Note: End-to-end optical music recognition engine integrated as an optional local repository under `omr_engine/homr`.
+- Upstream (original): <https://github.com/liebharc/homr>
+- Fork used by this project: <https://github.com/Tsukamotoshio/homr>
+- Modifications: DirectML GPU inference support, ORT thread limits, explicit resource teardown, and safe XML output preservation on post-write exceptions.
+- Note: End-to-end optical music recognition engine integrated as a local repository under `omr_engine/homr`.
 
 ## scikit-learn
 - License: BSD-3-Clause
@@ -65,6 +67,16 @@ This file provides license and attribution notices for third-party components di
 - License: BSD-3-Clause
 - Upstream: <https://github.com/scipy/scipy>
 - Note: A bundled dependency of `oemer` used for numerical computation and matrix operations.
+
+## NumPy
+- License: BSD-3-Clause
+- Upstream: <https://github.com/numpy/numpy>
+- Note: Core numerical array library required by `homr` and `oemer` for image tensor operations and model inference.
+
+## tqdm
+- License: MPL-2.0 AND MIT
+- Upstream: <https://github.com/tqdm/tqdm>
+- Note: Progress-bar library; a transitive dependency of `oemer` and `homr`. Only `oemer`/`homr` internals use it directly; no tqdm source is modified by this project, so MPL-2.0 file-level copyleft is not triggered.
 
 ## jianpu-ly
 - Version: `1.866`
@@ -88,15 +100,6 @@ This file provides license and attribution notices for third-party components di
 - Official site: <https://adoptium.net/>
 - Source: <https://github.com/adoptium/temurin25-binaries>
 - Note: Bundled as the Java runtime required by Audiveris.
-
-## Rich
-- Version: `14.3.3`
-- License: MIT
-- Copyright: © 2020 Will McGugan
-- Upstream: <https://github.com/Textualize/rich>
-- Documentation: <https://rich.readthedocs.io/>
-- Note: Used for the terminal UI (TUI) state machine — panels, colour markup,
-  and styled console output.
 
 ## Flet
 - Version: `0.84`

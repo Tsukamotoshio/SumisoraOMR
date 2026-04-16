@@ -1,5 +1,5 @@
 # gui/pages/about_page.py — 关于页面
-# 展示作者信息、项目主页链接与 MIT 许可证文本。
+# 展示作者信息、项目主页链接与 AGPL-3.0 许可证文本。
 
 from __future__ import annotations
 
@@ -11,28 +11,24 @@ import flet as ft
 from ..theme import Palette
 
 
-_MIT_LICENSE = """\
-MIT License
+_AGPL_LICENSE = """\
+GNU Affero General Public License v3.0
 
 Copyright (c) 2026 Tsukamotoshio
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+本程序是自由软件：您可以根据自由软件基金会发布的 GNU Affero 通用公共许可证
+（第 3 版或更高版本）重新分发或修改它。
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本程序的发布是希望它有用，但不提供任何担保；甚至不提供对适销性或特定用途
+适用性的隐含担保。详情请参阅 GNU Affero 通用公共许可证。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE."""
+您应该已收到 GNU Affero 通用公共许可证的副本；如未收到，请访问：
+https://www.gnu.org/licenses/agpl-3.0.html
+
+附加条款：若您通过网络向用户提供此程序的修改版本，您必须向所有与之交互的
+用户提供获取对应源代码的途径（AGPL-3.0 第 13 条）。
+
+完整许可证文本：https://github.com/Tsukamotoshio/OMR-to-Jianpu-Conversion-Tool/blob/main/LICENSE"""
 
 
 class AboutPage(ft.Column):
@@ -42,7 +38,6 @@ class AboutPage(ft.Column):
     VERSION = 'v0.2.2-homr-experimental'
 
     def __init__(self):
-        self._url_launcher = ft.UrlLauncher()
         self._opening = False
         super().__init__(spacing=0, expand=True,
                          horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -143,11 +138,11 @@ class AboutPage(ft.Column):
         license_card = _card(
             ft.Column(
                 [
-                    ft.Text('开源许可证 (MIT)', size=13, weight=ft.FontWeight.W_600,
+                    ft.Text('开源许可证 (AGPL-3.0)', size=13, weight=ft.FontWeight.W_600,
                             color=Palette.TEXT_SECONDARY),
                     ft.Container(
                         content=ft.Text(
-                            _MIT_LICENSE,
+                            _AGPL_LICENSE,
                             size=11,
                             color=Palette.TEXT_SECONDARY,
                             font_family='Consolas',
@@ -170,5 +165,4 @@ class AboutPage(ft.Column):
             ft.Container(height=16),
             license_card,
             ft.Container(height=32),
-            self._url_launcher,
         ]
