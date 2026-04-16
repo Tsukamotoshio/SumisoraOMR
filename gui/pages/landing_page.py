@@ -335,6 +335,8 @@ class LandingPage(ft.Row):
             gen_midi = getattr(self, '_gen_midi', True)
             files = list(self._state.pinned_files)
             _gpu_crash_count = 0
+            _total_files_orig = len(files)   # GPU 崩溃重试时保持总数不变
+            _files_done_total = 0             # 跨次 worker 运行累计完成数
 
             while True:
                 task = {
@@ -346,6 +348,8 @@ class LandingPage(ft.Row):
                     'dup_files': list(getattr(self, '_dup_files', set())),
                     'base_dir': str(base_dir),
                     'use_gpu': engine_val == 'homr' and _gpu_crash_count < 2,
+                    'files_offset': _files_done_total,       # GPU崩溃重试用
+                    'total_files_orig': _total_files_orig,   # GPU崩溃重试用
                 }
 
                 # ── 确定 Worker 命令 ──────────────────────────────────────────────
@@ -370,7 +374,6 @@ class LandingPage(ft.Row):
                 )
 
                 err_lines: list[str] = []
-                homr_log_shown = False
 
                 def _read_stderr() -> None:
                     try:
@@ -413,22 +416,10 @@ class LandingPage(ft.Row):
                     mtype = msg.get('type', '')
                     if mtype == 'progress':
                         self._state.set_progress(msg.get('value', 0.0), msg.get('message', ''))
+                    elif mtype == 'sub_progress':
+                        self._overlay.set_sub_progress(msg.get('value', 0.0), msg.get('message', ''))
                     elif mtype == 'log':
                         text = msg.get('text', '').strip()
-                        if engine_val == 'homr':
-                            if not homr_log_shown:
-                                if text:
-                                    self._state.append_log(text)
-                                    homr_log_shown = True
-                                continue
-                            if any(keyword in text for keyword in (
-                                '失败', '异常', '崩溃', '回退', '超时',
-                                'error', 'Error', 'Segnet', 'GPU', 'CPU',
-                                '模型权重', '识别完成', '推理模式', '输入文件已准备',
-                                '图像预处理', '几何预处理', '增强', 'oemer',
-                            )):
-                                self._state.append_log(text)
-                            continue
                         self._state.append_log(text)
                     elif mtype == 'result':
                         _files_done_this_run += 1
@@ -455,6 +446,7 @@ class LandingPage(ft.Row):
                         if engine_val == 'homr' and task.get('use_gpu') and proc.returncode in gpu_access_violation_codes:
                             # 0xC0000005 访问冲突，GPU 模式崩溃
                             # 裁掉已处理完的文件，从崩溃位置继续重试
+                            _files_done_total += _files_done_this_run
                             files = files[_files_done_this_run:]
                             _gpu_crash_count += 1
                             if _gpu_crash_count < 2:

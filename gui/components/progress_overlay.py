@@ -23,6 +23,7 @@ class ProgressOverlay(ft.Stack):
         # 避免工作线程在 Flet/Flutter 侧暂停时被 ctrl.update() 阻塞。
         self._pending_logs: collections.deque[tuple[str, str]] = collections.deque()  # (line, color)
         self._pending_progress: tuple[float, str] | None = None  # (value, message)
+        self._pending_sub_progress: tuple[float, str] | None = None  # 子步骤进度
         # 计时器线程在此时刻后自动隐藏浮层（_on_done 设置，避免额外线程）
         self._should_hide_after: float | None = None
         self._build_panel()
@@ -41,6 +42,15 @@ class ProgressOverlay(ft.Stack):
             color=Palette.PRIMARY,
             height=6,
         )
+        # 每个文件内子步骤进度条（细，辅色）
+        self._sub_progress_bar = ft.ProgressBar(
+            value=0.0,
+            bgcolor=Palette.BG_CARD,
+            color=Palette.INFO,
+            height=3,
+            visible=False,
+        )
+        self._sub_status_text = ft.Text('', size=11, color=Palette.TEXT_SECONDARY, visible=False)
         # 旋转进度圈（不确定模式，视觉动画）
         self._spinner = ft.ProgressRing(
             width=20, height=20,
@@ -80,6 +90,19 @@ class ProgressOverlay(ft.Stack):
                     ),
                     ft.Container(content=self._progress_bar,
                                  padding=ft.Padding.symmetric(vertical=8)),
+                    # 子步骤进度（隶时隐藏）
+                    ft.Container(
+                        content=ft.Column(
+                            [
+                                self._sub_status_text,
+                                ft.Container(content=self._sub_progress_bar,
+                                             padding=ft.Padding.only(bottom=4)),
+                            ],
+                            spacing=2,
+                            tight=True,
+                        ),
+                        visible=True,
+                    ),
                     ft.Container(
                         content=self._log_list,
                         height=200,
@@ -143,6 +166,16 @@ class ProgressOverlay(ft.Stack):
                 if pending[1]:
                     self._status_text.value = pending[1]
 
+            # 消费子步骤进度
+            pending_sub = self._pending_sub_progress
+            if pending_sub is not None:
+                self._pending_sub_progress = None
+                v, m = pending_sub
+                self._sub_progress_bar.value = v
+                self._sub_progress_bar.visible = True
+                self._sub_status_text.value = m
+                self._sub_status_text.visible = bool(m)
+
             # 消费待处理的日志行（批量最多 8 条/次，防止 UI 积压）
             _drained = 0
             while self._pending_logs and _drained < 8:
@@ -160,7 +193,7 @@ class ProgressOverlay(ft.Stack):
             #    或距上次更新超过 3 秒时推送一次（仅刷新计时文字）。
             # 运行于 asyncio 事件循环，page.update() 在当前协程调度点执行，
             # 与 Flet WebSocket 处理器协作，彻底消除跨线程竞争。
-            has_changes = _drained > 0 or pending is not None
+            has_changes = _drained > 0 or pending is not None or pending_sub is not None
             if has_changes or (now - _last_page_update) >= 3.0:
                 _last_page_update = now
                 try:
@@ -204,6 +237,11 @@ class ProgressOverlay(ft.Stack):
         self._log_list.controls.clear()
         self._pending_logs.clear()
         self._pending_progress = None
+        self._pending_sub_progress = None
+        self._sub_progress_bar.value = 0.0
+        self._sub_progress_bar.visible = False
+        self._sub_status_text.value = ''
+        self._sub_status_text.visible = False
         self._should_hide_after = None  # 取消上次可能未完成的自动隐藏
         self._backdrop.visible = True
         self._panel_wrapper.visible = True
@@ -234,6 +272,10 @@ class ProgressOverlay(ft.Stack):
         self.hide()
 
     # ── 事件回调 ─────────────────────────────────────────────────────────────
+
+    def set_sub_progress(self, value: float, message: str = '') -> None:
+        """面向工作线程的非阻塞接口：设置当前文件内子步骤进度。"""
+        self._pending_sub_progress = (max(0.0, min(1.0, value)), message)
 
     def _on_progress(self, value: float, message: str = '', **_kw) -> None:
         # 工作线程非阻塞：只写入 pending，由 _timer_loop 统一刷新

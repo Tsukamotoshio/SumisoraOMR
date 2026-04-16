@@ -40,6 +40,21 @@ from .utils import (
     update_conversion_history,
 )
 
+# ── 子进度回调（由 worker_main.py 在子进程模式下注入）──────────────────────────
+# 调用签名：_subprogress_fn(value: float 0.0-1.0, message: str)
+# 在各主要流程节点处调用 _report_subprogress() 以向 GUI 报告文件内子步骤进度。
+_subprogress_fn: Optional[object] = None
+
+
+def _report_subprogress(value: float, message: str = '') -> None:
+    """向 GUI 报告当前文件内处理子步骤进度（0.0–1.0）。"""
+    fn = _subprogress_fn
+    if fn is not None:
+        try:
+            fn(value, message)  # type: ignore[operator]
+        except Exception:
+            pass
+
 
 def _archive_mxl_to_xml_scores(
     mxl_path: Path,
@@ -257,12 +272,18 @@ def process_single_input_to_jianpu(
                 logging.WARNING,
             )
             return False
+        _report_subprogress(0.05, '[Oemer] 启动 OMR 识别…')
         omr_out = run_oemer_batch(source_file, output_dir=file_temp_dir)
+        if omr_out is not None:
+            _report_subprogress(0.65, 'OMR 完成，正在生成简谱…')
         engine_label = 'Oemer'
 
     # ── Audiveris (PDF and images) ────────────────────────────────────────────
     else:
+        _report_subprogress(0.05, '[Audiveris] 启动 OMR 识别…')
         omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
+        if omr_out is not None:
+            _report_subprogress(0.65, 'OMR 完成，正在生成简谱…')
         engine_label = 'Audiveris'
 
     # ── Error / fallback ────────────────────────────────────────────────────────
@@ -307,20 +328,23 @@ def process_single_input_to_jianpu(
     else:
         effective_source = source_file
 
-    # ── Homr 后处理：重建延音线 ────────────────────────────────────────────────
+    # ── Homr 后处理：重建延音线（暂时禁用，算法有待修复）────────────────────────
     # homr 当前不输出 tie 符号，需在 MusicXML 后处理阶段补全。
     # 注意：必须在归档到 xml-scores 之前执行，使归档文件包含完整 tie 信息。
-    if effective_engine is OMREngine.HOMR:
-        try:
-            from .tie_reconstruction import reconstruct_ties_in_mxl, reconstruct_ties_in_musicxml
-            if mxl_file.suffix.lower() == '.mxl':
-                _n_ties = reconstruct_ties_in_mxl(mxl_file)
-            else:
-                _n_ties = reconstruct_ties_in_musicxml(mxl_file)
-            if _n_ties:
-                log_message(f'  [Homr 后处理] 重建了 {_n_ties} 对延音线。')
-        except Exception as _tie_exc:
-            log_message(f'  [Homr 后处理] 延音线重建失败（不影响输出）：{_tie_exc}')
+    # TODO: 重新启用，待 tie 重建算法经过充分验证后取消注释。
+    # if effective_engine is OMREngine.HOMR:
+    #     try:
+    #         from .tie_reconstruction import reconstruct_ties_in_mxl, reconstruct_ties_in_musicxml
+    #         if mxl_file.suffix.lower() == '.mxl':
+    #             _n_ties = reconstruct_ties_in_mxl(mxl_file)
+    #         else:
+    #             _n_ties = reconstruct_ties_in_musicxml(mxl_file)
+    #         if _n_ties:
+    #             log_message(f'  [Homr 后处理] 重建了 {_n_ties} 对延音线。')
+    #     except Exception as _tie_exc:
+    #         log_message(f'  [Homr 后处理] 延音线重建失败（不影响输出）：{_tie_exc}')
+
+    _report_subprogress(0.70, '正在生成简谱 PDF…')
 
     if xml_scores_dir is not None:
         _archive_mxl_to_xml_scores(mxl_file, source_file.stem, xml_scores_dir)

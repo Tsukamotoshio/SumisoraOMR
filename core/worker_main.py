@@ -158,14 +158,19 @@ def run_worker() -> None:
         gen_midi: bool = task.get('gen_midi', True)
         skip_dup: bool = task.get('skip_dup', False)
         dup_files: set[str] = set(task.get('dup_files', []))
-        base_dir = Path(task['base_dir'])
-
+        base_dir = Path(task['base_dir'])        # GPU 崩溃重试时传入的偏移量——确保进度条不会重置
+        _file_start_offset: int = task.get('files_offset', 0)
+        _total_files_orig: int = task.get('total_files_orig', 0)  # 0 = 会在下面用 total 充实
         # ── 修补日志函数 ──────────────────────────────────────────────────────
         _patch_log_message()
 
         # ── 导入（延迟，避免在修补前触发 import-time 副作用）──────────────────
         from core.config import OMREngine  # noqa: PLC0415
         from core.pipeline import process_single_input_to_jianpu  # noqa: PLC0415
+        import core.pipeline as _pipeline
+
+        # ── 注入子进度回调——pipeline 内部调用时发送 IPC sub_progress 消息 ───────
+        _pipeline._subprogress_fn = lambda v, m: _send({'type': 'sub_progress', 'value': v, 'message': m})
 
         engine_map = {
             'auto': OMREngine.AUTO,
@@ -176,6 +181,8 @@ def run_worker() -> None:
         engine = engine_map.get(engine_str, OMREngine.AUTO)
 
         total = len(files)
+        if _total_files_orig == 0:
+            _total_files_orig = _file_start_offset + total
         if total == 0:
             _send({'type': 'done', 'success_count': 0, 'fail_count': 0, 'message': '没有需要处理的文件。'})
             return
@@ -184,8 +191,9 @@ def run_worker() -> None:
         fail_count = 0
 
         for idx, src in enumerate(files):
-            base_progress = (idx / total) * 0.9
-            _send({'type': 'progress', 'value': base_progress, 'message': f'[{idx+1}/{total}] {src.name}'})
+            base_progress = ((_file_start_offset + idx) / _total_files_orig) * 0.9
+            _send({'type': 'progress', 'value': base_progress, 'message': f'[{_file_start_offset+idx+1}/{_total_files_orig}] {src.name}'})
+            _send({'type': 'sub_progress', 'value': 0.0, 'message': ''})
             _send({'type': 'log', 'text': f'▶ 开始处理: {src.name}'})
 
             if skip_dup and src.name in dup_files:
