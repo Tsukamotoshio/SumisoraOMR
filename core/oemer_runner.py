@@ -11,6 +11,7 @@
 #
 import io
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -27,11 +28,13 @@ from typing import List, Optional
 from .config import (
     LOGGER,
     MAX_OEMER_SECONDS,
+    OMR_ENGINE_DIR_NAME,
+    OEMER_SOURCE_DIR_NAME,
 )
 from .image_preprocess import (
     OEMER_MAX_PIXELS,
     fit_image_within_pixel_limit,
-    preprocess_image_for_oemer,
+    preprocess_image_for_omr,
 )
 from .utils import (
     find_first_musicxml_file,
@@ -74,13 +77,46 @@ def find_oemer_executable() -> Optional[str]:
     return found
 
 
+def find_oemer_source_dir() -> Optional[Path]:
+    """Find the local Oemer source directory under the app root or omr_engine."""
+    base_dir = get_app_base_dir()
+    candidates = [
+        base_dir / OEMER_SOURCE_DIR_NAME,
+        base_dir / OMR_ENGINE_DIR_NAME / OEMER_SOURCE_DIR_NAME,
+    ]
+    # PyInstaller frozen: also check _MEIPASS in case oemer was collected as a tree
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        meipass_path = Path(meipass)
+        candidates.extend([
+            meipass_path / OEMER_SOURCE_DIR_NAME,
+            meipass_path / OMR_ENGINE_DIR_NAME / OEMER_SOURCE_DIR_NAME,
+        ])
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+    return None
+
+
 def _oemer_api_available() -> bool:
     """检查 oemer Python 包是否可直接导入（进程内调用路径）。"""
     try:
         import oemer.ete  # noqa: F401
         return True
     except ImportError:
-        return False
+        source_dir = find_oemer_source_dir()
+        if source_dir is None:
+            return False
+        if str(source_dir) not in sys.path:
+            sys.path.insert(0, str(source_dir))
+        try:
+            import oemer.ete  # noqa: F401
+            return True
+        except ImportError:
+            return False
+        finally:
+            if str(source_dir) in sys.path:
+                sys.path.remove(str(source_dir))
 
 
 def check_oemer_available() -> bool:
@@ -103,13 +139,14 @@ def check_oemer_available() -> bool:
 # PDF → 图片（oemer 不支持 PDF，需先转换）
 # ──────────────────────────────────────────────
 
-def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path) -> Optional[Path]:
+def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path, engine_label: str = 'oemer') -> Optional[Path]:
     """将 PDF 首页渲染为 PNG，返回生成的图片路径；失败返回 None。
 
     优先使用 Pillow + pdf2image（需依赖 poppler），若不可用则尝试 PyMuPDF (fitz)。
     """
     png_path = output_dir / f'{pdf_path.stem}_page1.png'
     output_dir.mkdir(parents=True, exist_ok=True)
+    prefix = f'[{engine_label}]'
 
     # 方案 A：pdf2image (poppler)
     try:
@@ -117,12 +154,12 @@ def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path) -> Optional[Path]:
         images = convert_from_path(str(pdf_path), first_page=1, last_page=1, dpi=300)
         if images:
             images[0].save(str(png_path), 'PNG')
-            log_message(f'[oemer] PDF 首页已转换为图片: {png_path.name}')
+            log_message(f'{prefix} PDF 首页已转换为图片: {png_path.name}')
             return png_path
     except ImportError:
         pass
     except Exception as exc:
-        log_message(f'[oemer] pdf2image 转换失败: {exc}', logging.WARNING)
+        log_message(f'{prefix} pdf2image 转换失败: {exc}', logging.WARNING)
 
     # 方案 B：PyMuPDF (fitz)
     try:
@@ -133,15 +170,15 @@ def _pdf_first_page_to_png(pdf_path: Path, output_dir: Path) -> Optional[Path]:
         pix = page.get_pixmap(matrix=mat)
         pix.save(str(png_path))
         doc.close()
-        log_message(f'[oemer] PDF 首页已转换为图片 (PyMuPDF): {png_path.name}')
+        log_message(f'{prefix} PDF 首页已转换为图片 (PyMuPDF): {png_path.name}')
         return png_path
     except ImportError:
         pass
     except Exception as exc:
-        log_message(f'[oemer] PyMuPDF 转换失败: {exc}', logging.WARNING)
+        log_message(f'{prefix} PyMuPDF 转换失败: {exc}', logging.WARNING)
 
     log_message(
-        '[oemer] PDF 转图片失败：请安装 pdf2image（需 poppler）或 PyMuPDF：\n'
+        f'{prefix} PDF 转图片失败：请安装 pdf2image（需 poppler）或 PyMuPDF：\n'
         '  pip install pdf2image   # 还需安装 poppler-utils\n'
         '  pip install pymupdf',
         logging.ERROR,
@@ -163,13 +200,23 @@ def _run_oemer_inprocess(image_path: Path, output_dir: Path) -> Optional[Path]:
     3. 噪声抑制：suppressing sklearn/onnxruntime 警告，保持日志清洁。
     """
     import warnings
+    source_dir = find_oemer_source_dir()
+    added_import_path = False
+    if source_dir is not None and str(source_dir) not in sys.path:
+        sys.path.insert(0, str(source_dir))
+        added_import_path = True
     try:
         from argparse import Namespace
         import oemer.ete as _oemer_ete
     except ImportError as exc:
         log_message(f'[oemer] 无法导入 oemer 包: {exc}', logging.ERROR)
         return None
+    finally:
+        if added_import_path and str(source_dir) in sys.path:
+            sys.path.remove(str(source_dir))
 
+    # ── 设置 Oemer 线程限制，避免 ONNX / 数值库并发过载──────────────────
+    _set_oemer_thread_env(os.environ)
     # ── 首次调用时完成 ONNX Runtime 提供程序初始化（后续调用为 no-op）──────────
     _patch_ort_session_caching()
     # ── 打 build_system 容错补丁（防止 track 越界 IndexError）────────────────
@@ -241,6 +288,7 @@ def _run_oemer_inprocess(image_path: Path, output_dir: Path) -> Optional[Path]:
     if out_path_str and Path(out_path_str).exists():
         mxl = Path(out_path_str)
         log_message(f'[oemer] 输出 MusicXML: {mxl.name}')
+        log_message('[oemer] 识别完成。')
         return mxl
 
     mxl = find_first_musicxml_file(output_dir, search_stem)
@@ -303,26 +351,139 @@ def _cuda_cudnn_available() -> bool:
     return False
 
 
+def _determine_oemer_thread_limit() -> int:
+    """Determine Oemer thread limits based on the user's CPU core count."""
+    cpu_count = os.cpu_count() or 1
+    return 1 if cpu_count <= 2 else max(1, cpu_count - 2)
+
+
+def _set_oemer_thread_env(env: dict) -> None:
+    """Set thread-limit and DirectML environment variables for Oemer / ONNX / native libs."""
+    thread_limit = _determine_oemer_thread_limit()
+    for thread_var in (
+        'OMP_NUM_THREADS',
+        'OPENBLAS_NUM_THREADS',
+        'MKL_NUM_THREADS',
+        'NUMEXPR_NUM_THREADS',
+        'VECLIB_MAXIMUM_THREADS',
+        'OMP_THREAD_LIMIT',
+    ):
+        env.setdefault(thread_var, str(thread_limit))
+
+    # Prefer the high-performance GPU for DirectML when multiple adapters exist.
+    env.setdefault('DML_USE_HIGH_PERFORMANCE_GPU', '1')
+    env.setdefault('ORT_DML_USE_HIGH_PERFORMANCE_GPU', '1')
+
+    log_message(
+        f'[oemer] 线程限制已设置: {thread_limit}（CPU 核心数 {os.cpu_count() or 1} - 2，最小 1）。'
+    )
+    log_message('[oemer] DirectML 默认已设置为优先高性能 GPU。', logging.DEBUG)
+
+
+def _find_preferred_dml_device_id() -> Optional[int]:
+    """Enumerate DXGI adapters and choose the highest-performance DirectML adapter."""
+    if os.name != 'nt':
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [
+                ('Data1', wintypes.DWORD),
+                ('Data2', wintypes.WORD),
+                ('Data3', wintypes.WORD),
+                ('Data4', wintypes.BYTE * 8),
+            ]
+
+        class DXGI_ADAPTER_DESC(ctypes.Structure):
+            _fields_ = [
+                ('Description', wintypes.WCHAR * 128),
+                ('VendorId', wintypes.UINT),
+                ('DeviceId', wintypes.UINT),
+                ('SubSysId', wintypes.UINT),
+                ('Revision', wintypes.UINT),
+                ('DedicatedVideoMemory', ctypes.c_size_t),
+                ('DedicatedSystemMemory', ctypes.c_size_t),
+                ('SharedSystemMemory', ctypes.c_size_t),
+                ('AdapterLuid', ctypes.c_uint64),
+            ]
+
+        IID_IDXGIFactory1 = GUID(
+            0x770aae78, 0xf26f, 0x4dba,
+            (0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87),
+        )
+
+        CreateDXGIFactory1 = ctypes.windll.dxgi.CreateDXGIFactory1
+        CreateDXGIFactory1.argtypes = [ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p)]
+        CreateDXGIFactory1.restype = ctypes.c_long
+
+        factory = ctypes.c_void_p()
+        if CreateDXGIFactory1(ctypes.byref(IID_IDXGIFactory1), ctypes.byref(factory)) != 0:
+            return None
+
+        try:
+            vtbl = ctypes.cast(factory, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+            enum_adapters = ctypes.WINFUNCTYPE(
+                ctypes.c_long, ctypes.c_void_p, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p)
+            )(vtbl[7])
+            best_index = None
+            best_memory = -1
+            for adapter_index in range(0, 16):
+                adapter = ctypes.c_void_p()
+                hr = enum_adapters(factory, adapter_index, ctypes.byref(adapter))
+                if hr != 0:
+                    break
+                ad_vtbl = ctypes.cast(adapter, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+                get_desc = ctypes.WINFUNCTYPE(
+                    ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(DXGI_ADAPTER_DESC)
+                )(ad_vtbl[8])
+                desc = DXGI_ADAPTER_DESC()
+                if get_desc(adapter, ctypes.byref(desc)) != 0:
+                    Release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(ad_vtbl[2])
+                    Release(adapter)
+                    continue
+                name = desc.Description
+                dedicated = desc.DedicatedVideoMemory
+                if dedicated > best_memory and dedicated > 0 and 'Microsoft Basic Render Driver' not in name:
+                    best_memory = dedicated
+                    best_index = adapter_index
+                Release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(ad_vtbl[2])
+                Release(adapter)
+            return best_index
+        finally:
+            ReleaseFactory = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl[2])
+            ReleaseFactory(factory)
+    except Exception as exc:
+        log_message(f'[oemer] 枚举 DirectML GPU 适配器失败: {exc}', logging.DEBUG)
+        return None
+
+
 def _pick_ort_providers() -> list:
     """返回实际可用的 ONNX Runtime 执行提供程序列表。
 
-    优先级: DirectML > CUDA（cuDNN 可用时）> CPU。
+    优先级: CUDA（cuDNN 可用时）> DirectML > CPU。
     跳过无法使用的提供程序，避免漫长的探测超时。
     """
     try:
         import onnxruntime as rt
         available = rt.get_available_providers()
+        if 'CUDAExecutionProvider' in available and _cuda_cudnn_available():
+            return [('CUDAExecutionProvider', {'device_id': 0}), 'CPUExecutionProvider']
         if 'DmlExecutionProvider' in available:
             # disable_metacommands=true：禁止 DirectML MetaCommands（实验性高性能 GPU 算子）。
             # 在部分 NVIDIA 驱动版本下，MetaCommands 会触发 GPU TDR（超时检测与恢复失败），
             # 导致驱动崩溃甚至系统蓝屏。禁用后退回着色器路径，稳定性显著提升。
             dml_options = {
-                'device_id': '0',
                 'disable_metacommands': 'true',
             }
+            preferred_device = _find_preferred_dml_device_id()
+            if preferred_device is not None:
+                dml_options['device_id'] = preferred_device
+                log_message(f'[oemer] DirectML 优选 GPU 适配器序号: {preferred_device}', logging.DEBUG)
+            else:
+                dml_options['device_id'] = 0
             return [('DmlExecutionProvider', dml_options), 'CPUExecutionProvider']
-        if 'CUDAExecutionProvider' in available and _cuda_cudnn_available():
-            return [('CUDAExecutionProvider', {'device_id': 0}), 'CPUExecutionProvider']
     except Exception:
         pass
     return ['CPUExecutionProvider']
@@ -333,12 +494,12 @@ def _detect_gpu_provider() -> str:
     try:
         import onnxruntime as ort
         available = ort.get_available_providers()
-        if 'DmlExecutionProvider' in available:
-            return 'DirectML GPU 加速（支持 NVIDIA / AMD / Intel 显卡）'
         if 'CUDAExecutionProvider' in available or 'TensorrtExecutionProvider' in available:
             if _cuda_cudnn_available():
                 return 'CUDA (NVIDIA 独立显卡)'
             return 'CPU（NVIDIA 驱动已就绪，但缺少 cuDNN 9.x）'
+        if 'DmlExecutionProvider' in available:
+            return 'DirectML GPU 加速（支持 NVIDIA / AMD / Intel 显卡）'
         return 'CPU（无 GPU 加速）'
     except ImportError:
         return '未知（onnxruntime 未安装）'
@@ -582,6 +743,8 @@ def _run_oemer_subprocess(cmd: List[str], timeout_seconds: int):
     """
     stdout_f = tempfile.TemporaryFile(mode='w+', encoding='utf-8', errors='replace')
     stderr_f = tempfile.TemporaryFile(mode='w+', encoding='utf-8', errors='replace')
+    env = os.environ.copy()
+    _set_oemer_thread_env(env)
     try:
         proc = subprocess.Popen(
             cmd,
@@ -590,6 +753,7 @@ def _run_oemer_subprocess(cmd: List[str], timeout_seconds: int):
             text=True,
             encoding='utf-8',
             errors='replace',
+            env=env,
             creationflags=_WIN_NO_WINDOW,
         )
     except Exception as exc:
@@ -743,15 +907,20 @@ def run_oemer_batch(input_path: Path, output_dir: Optional[Path] = None) -> Opti
         img_path = input_path
 
     # ── 图像预处理（oemer 专用预设：内容裁剪 + 梯度修正 + 低分辨率 SR 放大）─────────────────
-    # 使用 preprocess_image_for_oemer：
+    # 使用 preprocess_image_for_omr：
     #   · 保留 RGB 彩色（oemer 深度学习模型利用颜色信息，不做灰度转换）
     #   · 短边 < 1200px 时自动调用 waifu2x 2× 超分辨率，防止模型只检出首行谱线
     #   · 不做去噪/锐化，减少引入影响深度学习模型感知的伪影
+    #
+    # Oemer 目前仍为整图识别管线，不像 Audiveris 切片版那样执行“逐行切片 → 单行识别 → 合并”。
     omr_input_path = img_path
     omr_preprocessed_path: Optional[Path] = None
     if img_path.suffix.lower() in {'.png', '.jpg', '.jpeg'}:
-        preprocessed = preprocess_image_for_oemer(
-            img_path, output_dir, max_pixels=OEMER_MAX_PIXELS
+        preprocessed = preprocess_image_for_omr(
+            img_path,
+            output_dir,
+            keep_color=True,
+            max_pixels=OEMER_MAX_PIXELS,
         )
         if preprocessed is not None:
             omr_preprocessed_path = preprocessed

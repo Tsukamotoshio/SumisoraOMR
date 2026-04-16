@@ -481,13 +481,16 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
             if current_offset >= measure_length - tol:
                 break
             if offset > current_offset + tol:
+                gap = min(offset - current_offset, measure_length - current_offset)
                 rest = m21note.Rest()
-                rest.duration.quarterLength = normalize_jianpu_duration(min(offset - current_offset, measure_length - current_offset))
-                measure_notes.append(note_to_jianpu(rest, key_tonic_semitone))
+                for piece in split_duration_chunks(gap):
+                    rest_piece = m21note.Rest()
+                    rest_piece.duration.quarterLength = piece
+                    measure_notes.append(note_to_jianpu(rest_piece, key_tonic_semitone))
+                    current_offset += piece
 
             next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else measure_length
             next_offset = min(next_offset, measure_length)
-            span = max(min(next_offset - offset, measure_length - offset), 0.125)
             for element in by_offset[offset]:
                 measure_notes.append(note_to_jianpu(element, key_tonic_semitone))
             current_offset = next_offset

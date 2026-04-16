@@ -1,7 +1,7 @@
 简谱转换工具
 ============
 
-版本：0.2.1
+版本：v0.2.2-homr-experimental
 
 author：Tsukamotoshio
 
@@ -13,7 +13,7 @@ author：Tsukamotoshio
 版本更新
 --------
 
-0.2.1（当前版本）
+0.2.2（当前版本）
   - 权限错误修复：安装在 C:\Program Files 下以普通用户身份运行时
     不再闪退，改为显示友好提示，指引用户以管理员身份重新运行
   - MIDI 与 PDF 内容一致性修复：生成的 MIDI 现在与简谱 PDF 完全

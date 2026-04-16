@@ -29,9 +29,6 @@ class JianpuEditor(ft.Column):
         self._state = state
         self._path: Optional[Path] = None
         self._lines: list[str] = []
-        self._selected_line: int = -1
-        self._last_line_count: int = 0
-        self._last_selected_line: int = -1
         self._load_token: int = 0
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_external_select)
@@ -77,25 +74,13 @@ class JianpuEditor(ft.Column):
             focused_border_color=Palette.PRIMARY,
             cursor_color=Palette.PRIMARY,
             on_change=self._on_text_change,
+            on_selection_change=self._on_selection_change,
             hint_text='尚未加载简谱文件…',
             hint_style=ft.TextStyle(color=Palette.TEXT_DISABLED),
         )
 
-        # 行号侧边（只读文字，与编辑区同步）
-        self._line_numbers = ft.Column(
-            spacing=0,
-            width=40,
-            scroll=ft.ScrollMode.HIDDEN,
-        )
-
         editor_row = ft.Row(
             [
-                ft.Container(
-                    content=self._line_numbers,
-                    bgcolor=Palette.BG_SURFACE,
-                    padding=ft.Padding.only(right=4, top=4),
-                    border=ft.Border.only(right=ft.BorderSide(1, Palette.DIVIDER_DARK)),
-                ),
                 ft.Container(content=self._editor, expand=True, padding=ft.Padding.all(4)),
             ],
             spacing=0,
@@ -157,7 +142,6 @@ class JianpuEditor(ft.Column):
             return
         self._lines = text.splitlines()
         self._editor.value = text
-        self._refresh_line_numbers()
         self._refresh_component()
 
     def _apply_load_error(self, message: str, token: int) -> None:
@@ -180,7 +164,6 @@ class JianpuEditor(ft.Column):
     def _on_text_change(self, e) -> None:
         if self._editor.value:
             self._lines = self._editor.value.splitlines()
-            self._refresh_line_numbers()
 
     def _on_save(self, _e) -> None:
         if self._path is None:
@@ -226,45 +209,13 @@ class JianpuEditor(ft.Column):
         except Exception as exc:
             self._state.append_log(f'导出 PDF 出错: {exc}')
 
-    # ── 行号刷新 ─────────────────────────────────────────────────────────────
-
-    def _refresh_line_numbers(self) -> None:
-        n = max(len(self._lines), 1)
-        if n == self._last_line_count and self._selected_line == self._last_selected_line:
-            return
-        self._last_line_count = n
-        self._last_selected_line = self._selected_line
-        self._line_numbers.controls = [
-            ft.Container(
-                content=ft.Text(
-                    str(i + 1),
-                    size=12,
-                    font_family='Consolas',
-                    font_family_fallback='YaHei',
-                    color=Palette.PRIMARY if i == self._selected_line else Palette.TEXT_DISABLED,
-                    text_align=ft.TextAlign.RIGHT,
-                ),
-                height=20,
-                alignment=ft.Alignment(1, 0),
-                bgcolor=Palette.HIGHLIGHT if i == self._selected_line else 'transparent',
-                on_click=lambda _e, li=i: self._on_line_click(li),
-            )
-            for i in range(n)
-        ]
-        try:
-            self._line_numbers.update()
-        except Exception:
-            pass
-
-    def _on_line_click(self, line_no: int) -> None:
-        self._selected_line = line_no
-        self._refresh_line_numbers()
-        self._state.emit(Event.JIANPU_TXT_SELECTED, line_no=line_no)
-
     def _on_external_select(self, line_no: int, **_kw) -> None:
-        """由图像区触发：高亮对应行。"""
-        self._selected_line = line_no
-        self._refresh_line_numbers()
+        """由图像区触发：当前不再显示行号，因此无需处理。"""
+        pass
+
+    def _on_selection_change(self, e) -> None:
+        # TextField 的光标变化仍可用于未来扩展，但当前仅保留编辑行为。
+        return
 
     def _request_page_refresh(self) -> None:
         if not hasattr(self, 'page') or self.page is None:
@@ -286,19 +237,15 @@ class JianpuEditor(ft.Column):
     def reset(self) -> None:
         self._path = None
         self._lines = []
-        self._selected_line = -1
-        self._last_line_count = 0
-        self._last_selected_line = -1
         self._editor.value = ''
-        self._refresh_line_numbers()
         self._request_page_refresh()
 
     # ── 对外 API ─────────────────────────────────────────────────────────────
 
     def scroll_to_line(self, line_no: int) -> None:
         """滚动编辑区到指定行（近似，Flet TextField 不支持精确滚动）。"""
-        self._selected_line = line_no
-        self._refresh_line_numbers()
+        # 当前编辑器不包含独立行号视图，仅保留方法接口。
+        return
 
     @property
     def text(self) -> str:

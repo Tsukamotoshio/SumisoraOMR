@@ -59,6 +59,7 @@ AUDIVERIS_MAX_PIXELS = 20_000_000
 OEMER_MAX_PIXELS = 8_000_000
 # Laplacian stddev on 500×500 thumbnail below this → image is blurry, use aggressive sharpening
 BLURRY_SHARPNESS_THRESHOLD = 30.0
+NORMAL_MODE_GAUSSIAN_RADIUS = 0.75
 
 
 def find_waifu2x_executable() -> Optional[Path]:
@@ -202,7 +203,7 @@ def enhance_image_with_pillow(input_path: Path, output_path: Path, keep_color: b
                     ImageFilter.UnsharpMask(radius=3.0, percent=300, threshold=2))
             else:
                 # Normal mode: Gaussian blur → autocontrast (GIMP color curve step) → Unsharp mask
-                denoised = working.filter(ImageFilter.GaussianBlur(radius=1.5))
+                denoised = working.filter(ImageFilter.GaussianBlur(radius=NORMAL_MODE_GAUSSIAN_RADIUS))
                 leveled = ImageOps.autocontrast(denoised, cutoff=10)
                 result_img = leveled.filter(
                     ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=3))
@@ -255,7 +256,8 @@ def preprocess_image_for_omr(
     ----------
     image_path  : 输入图像（PNG / JPG / JPEG）。
     work_dir    : 中间文件输出目录。
-    keep_color  : 保留此参数以兼容旧调用，此函数输出灰度（Audiveris 偏好）。
+    keep_color  : True 时保留 RGB 输出，适用于需要彩色输入的深度学习模型；
+                  False 时输出灰度图（Audiveris 偏好）。
     max_pixels  : 输出像素上限。
 
     Returns
@@ -269,7 +271,7 @@ def preprocess_image_for_omr(
         return None
 
     work_dir.mkdir(parents=True, exist_ok=True)
-    result = enhance_image(image_path, work_dir, max_pixels=max_pixels)
+    result = enhance_image(image_path, work_dir, max_pixels=max_pixels, keep_color=keep_color)
     if result is None:
         return None
     log_message('图像预处理完成，将使用增强图像进行 OMR 识别。')
@@ -429,7 +431,7 @@ def preprocess_image_for_oemer(
         safe_remove_file(current_path)
         current_path = rescaled
 
-    log_message('图像预处理完成（内容裁剪 + 梯度修正 + SR 放大），将使用增强图像进行 OMR 识别。')
+    log_message(f'oemer 图像预处理完成: {current_path.name}，将使用增强图像进行 OMR 识别。')
     return current_path
 
 
@@ -505,7 +507,7 @@ def preprocess_image_for_oemer_v2(
         safe_remove_file(current_path)
         current_path = rescaled
 
-    log_message('oemer 新预处理完成（旋转校正 + 彩色锐化 + SR 放大），将使用增强图像进行 OMR 识别。')
+    log_message('oemer 新预处理完成，将使用增强图像进行 OMR 识别。')
     return current_path
 
 
@@ -653,8 +655,11 @@ def correct_gradient(img: 'Image.Image') -> 'Image.Image':
         return img
 
 
-def denoise_and_sharpen(img: 'Image.Image') -> 'Image.Image':
-    """自适应去噪 + 锐化，输出灰度图（OMR 引擎通常偏好灰度/二值化输入）。
+def denoise_and_sharpen(img: 'Image.Image', keep_color: bool = False) -> 'Image.Image':
+    """自适应去噪 + 锐化。
+
+    keep_color=False：输出灰度图（OMR 引擎通常偏好灰度/二值化输入）。
+    keep_color=True ：保留 RGB 彩色通道，适用于深度学习模型需要颜色信息的引擎。
 
     清晰图像（Laplacian stddev >= BLURRY_SHARPNESS_THRESHOLD）：
         GaussianBlur(1.5) 温和去噪 → autocontrast → UnsharpMask(r=1, p=150)
@@ -664,24 +669,26 @@ def denoise_and_sharpen(img: 'Image.Image') -> 'Image.Image':
     try:
         gray = img.convert('L')
         sharpness = _measure_laplacian_stddev(gray)
+        target = img if keep_color else gray
         if sharpness < BLURRY_SHARPNESS_THRESHOLD:
-            leveled = ImageOps.autocontrast(gray, cutoff=10)
+            leveled = ImageOps.autocontrast(target, cutoff=10)
             result = leveled.filter(
                 ImageFilter.UnsharpMask(radius=3.0, percent=300, threshold=2))
         else:
-            denoised = gray.filter(ImageFilter.GaussianBlur(radius=1.5))
+            denoised = target.filter(ImageFilter.GaussianBlur(radius=NORMAL_MODE_GAUSSIAN_RADIUS))
             leveled = ImageOps.autocontrast(denoised, cutoff=10)
             result = leveled.filter(
                 ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=3))
         return result
     except Exception:
-        return img.convert('L')
+        return img if keep_color else img.convert('L')
 
 
 def enhance_image(
     image_path: Path,
     work_dir: Path,
     max_pixels: int = AUDIVERIS_MAX_PIXELS,
+    keep_color: bool = False,
 ) -> Optional[EnhanceResult]:
     """对乐谱图像执行完整的六步增强管道。
 
@@ -736,8 +743,8 @@ def enhance_image(
             log_message(f'  [增强] 自动白边裁剪，移除 {border_ratio:.1%} 白边。')
 
 
-        # ── 步骤 4：去噪 + 锐化（转灰度输出）────────────────────
-        working = denoise_and_sharpen(working)
+        # ── 步骤 4：去噪 + 锐化────────────────────
+        working = denoise_and_sharpen(working, keep_color=keep_color)
         steps.append('去噪锐化')
 
         # 保存中间结果以供后续文件操作（超分 / 下采样需要路径）

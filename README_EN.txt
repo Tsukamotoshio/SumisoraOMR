@@ -2,7 +2,7 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: 0.2.1
+Version: v0.2.2-homr-experimental
 
 Batch-convert Western staff notation PDFs into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
@@ -13,7 +13,7 @@ Tip: Type H or ? at the prompt for in-app help. Type Q to quit at any time.
 What's New
 ----------
 
-0.2.1 (current)
+0.2.2 (current)
   - Added GitHub Releases update checking so users can conveniently open the
     download page from within the app.
   - Movable-Do (首调唱名法): note numbers are now mapped relative to the key
