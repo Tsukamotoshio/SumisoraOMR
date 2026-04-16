@@ -52,7 +52,7 @@ Or install the required packages manually:
 或者手动安装以下 Python 包：
 
 ```bash
-pip install flet music21 pillow opencv-python reportlab rich pymupdf onnxruntime-directml oemer
+pip install flet music21 pillow opencv-python reportlab df onnxruntime-directml oemer
 ```
 
 Notes:
@@ -120,9 +120,19 @@ If redistributing, please retain this attribution and `THIRD_PARTY_NOTICES.md` t
 
 ## License / 许可证
 
-This project is licensed under the **MIT License** — see the `LICENSE` file for details.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** — see the `LICENSE` file for details.
 
-本项目采用 **MIT License** 授权，详见 `LICENSE` 文件。
+本项目采用 **GNU Affero 通用公共许可证第三版（AGPL-3.0）** 授权，详见 `LICENSE` 文件。
+
+Key obligations / 主要义务：
+- You may use, modify, and redistribute this software under AGPL-3.0. /可以使用、修改和再分发，但必须遵守 AGPL-3.0 的条款。
+- Modified versions must also be released under AGPL-3.0. / 修改版本必须同样以 AGPL-3.0 发布。
+- If you run a modified version as a network service, you must make the source code available to users. / 若将修改版本作为网络服务提供，必须向用户开放源代码* 授权，详见 `LICENSE` 文件。
+
+Key obligations / 主要义务：
+- You may use, modify, and redistribute this software under AGPL-3.0. /可以使用、修改和再分发，但必须遵守 AGPL-3.0 的条款。
+- Modified versions must also be released under AGPL-3.0. / 修改版本必须同样以 AGPL-3.0 发布。
+- If you run a modified version as a network service, you must make the source code available to users. / 若将修改版本作为网络服务提供，必须向用户开放源代码。
 
 This tool bundles third-party components (Audiveris, LilyPond, music21, etc.).
 Their respective copyrights and licenses are listed in `THIRD_PARTY_NOTICES.md`.
