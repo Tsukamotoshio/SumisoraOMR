@@ -33,6 +33,7 @@ class LandingPage(ft.Row):
         self._overlay = overlay
         self._scan_token: int = 0
         self._preloaded_paths: set[str] = set()
+        self._worker_proc: Optional[subprocess.Popen] = None
         self._build_ui()
         state.on(Event.FILE_SELECTED,   self._on_file_selected)
         state.on(Event.FILES_CHANGED,   self._on_files_changed)
@@ -41,14 +42,13 @@ class LandingPage(ft.Row):
         self._sidebar = FileSidebar(self._state)
         self._viewer = PdfViewer()
 
-        # 引擎选择
+        # 引擎选择（'auto' 已关闭，待重新设计后恢复）
         self._engine_dd = ft.Dropdown(
             label='OMR 引擎',
-            value='auto',
+            value='audiveris',
             options=[
-                ft.dropdown.Option('auto',      '自动（推荐）'),
+                # ft.dropdown.Option('auto',  '自动（暂未开放）'),
                 ft.dropdown.Option('audiveris', 'Audiveris（启发式算法）'),
-                ft.dropdown.Option('oemer',     'Oemer（CNN模型）'),
                 ft.dropdown.Option('homr',      'Homr（实验性）'),
             ],
             width=200,
@@ -372,6 +372,7 @@ class LandingPage(ft.Row):
                     stderr=subprocess.PIPE,
                     **extra_kwargs,
                 )
+                self._worker_proc = proc
 
                 err_lines: list[str] = []
 
@@ -400,7 +401,7 @@ class LandingPage(ft.Row):
                     # 用户关闭了进度浮层：终止子进程，退出读取循环
                     if not self._state.is_processing:
                         try:
-                            proc.terminate()
+                            proc.kill()
                         except Exception:
                             pass
                         break
@@ -468,5 +469,35 @@ class LandingPage(ft.Row):
             if not _done_or_error_received:
                 self._state.set_error(str(exc))
         finally:
+            self._worker_proc = None
             if self._state.is_processing:
                 self._state.is_processing = False
+
+    def terminate_worker(self) -> None:
+        """关闭 GUI 时强制终止 Worker 子进程及其所有子进程（如 java.exe）。"""
+        self._state.is_processing = False
+        p = self._worker_proc
+        if p is None:
+            return
+        self._worker_proc = None
+        if sys.platform == 'win32':
+            # taskkill /F /T 递归终止整个进程树（包含 Audiveris 启动的 java.exe）
+            try:
+                subprocess.run(
+                    ['taskkill', '/F', '/T', '/PID', str(p.pid)],
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                import os as _os2
+                import signal as _sig
+                _os2.killpg(_os2.getpgid(p.pid), _sig.SIGKILL)
+            except Exception:
+                pass
+        try:
+            p.kill()
+        except Exception:
+            pass

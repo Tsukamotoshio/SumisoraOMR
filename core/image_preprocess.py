@@ -53,10 +53,6 @@ except ImportError:
 LOW_RES_PIXEL_THRESHOLD = 1200
 # Audiveris 允许处理的最大像素总数（超出则报 Too large image 并拒绝识别）
 AUDIVERIS_MAX_PIXELS = 20_000_000
-# oemer 深度学习模型建议的最大像素总数（超出则降采样以节省 GPU 内存）
-# 注意：调低此阈值可以显著减少 GPU 显存占用，降低 DirectML 驱动过载风险；
-#       8 MP 约等于 2828×2828 px，已足够 300 DPI A4 谱面的 OMR 识别精度。
-OEMER_MAX_PIXELS = 8_000_000
 # Laplacian stddev on 500×500 thumbnail below this → image is blurry, use aggressive sharpening
 BLURRY_SHARPNESS_THRESHOLD = 30.0
 NORMAL_MODE_GAUSSIAN_RADIUS = 0.75
@@ -171,7 +167,7 @@ def enhance_image_with_pillow(input_path: Path, output_path: Path, keep_color: b
     Pipeline follows the official Audiveris/GIMP guide:
       1. Color mode selection:
          - keep_color=False (Audiveris): Convert to grayscale — prefers grayscale for its binarizer.
-         - keep_color=True  (Oemer):    Keep RGB — deep-learning model benefits from color info.
+         - keep_color=True  (deep-learning engines e.g. Homr): Keep RGB — model benefits from color info.
       2. Sharpness detection   — selects normal vs. blurry enhancement mode.
 
       - Normal mode  (stddev >= BLURRY_SHARPNESS_THRESHOLD):
@@ -185,7 +181,7 @@ def enhance_image_with_pillow(input_path: Path, output_path: Path, keep_color: b
     try:
         with Image.open(input_path) as img:
             if keep_color:
-                # Keep color channels for deep-learning OMR engines (e.g. oemer)
+                # Keep color channels for deep-learning OMR engines (e.g. Homr)
                 working = img.convert('RGB')
             else:
                 # Convert to grayscale — matches Audiveris scanning guide recommendation
@@ -342,174 +338,6 @@ def preprocess_geometry_for_omr(
     except Exception as exc:
         log_message(f'几何预处理失败: {exc}', logging.WARNING)
         return None
-
-
-def preprocess_image_for_oemer(
-    image_path: Path,
-    work_dir: Path,
-    max_pixels: int = OEMER_MAX_PIXELS,
-) -> Optional[Path]:
-    """oemer 专用预处理：自动剪裁白边 + 梯度修正 + 低分辨率超分放大。
-
-    oemer 深度学习模型的谱线检测对图像分辨率敏感：当短边 < 1200px 时，
-    模型往往只能检测出首行谱线而忽略其余行。本函数在检测到低分辨率时
-    自动调用 waifu2x-ncnn-vulkan 执行 2× GPU 超分辨率放大，解决该问题。
-
-    步骤顺序（保留 RGB，不做灰度转换）：
-      步骤 1 — 内容裁剪：去除四边空白/白色边距，保留乐谱内容区域。
-      步骤 2 — 梯度修正：autocontrast（2% 截断）校正扫描光照不均。
-      步骤 3 — SR 放大 ：短边 < LOW_RES_PIXEL_THRESHOLD (1200px) 时，
-                           调用 waifu2x 2× 超分辨率（GPU 加速），提升后续
-                           深度学习模型对多行谱面的检测能力。
-      步骤 4 — 像素上限：超出 OEMER_MAX_PIXELS 时等比例缩小，节省 GPU 显存。
-
-    保留 RGB 彩色通道（oemer 深度学习模型利用颜色信息）。
-    成功时返回预处理后的图片路径；失败或不适用时返回 None。
-    """
-    if not HAS_PILLOW:
-        return None
-    if image_path.suffix.lower() not in {'.png', '.jpg', '.jpeg'}:
-        return None
-
-    work_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        with Image.open(image_path) as img:
-            working = img.convert('RGB')
-
-            # 步骤 1：自动剪裁——找到非白色内容的边界框，去除外侧空白边距
-            # 将灰度图中亮度 ≥ 240 的像素视为背景（白色），反转后获取内容 bbox
-            gray = working.convert('L')
-            # 二值化：内容像素（暗）→ 255（白），背景（亮）→ 0（黑），再取 bbox
-            content_mask = gray.point(lambda px: 0 if px >= 240 else 255, '1')
-            bbox = content_mask.getbbox()
-            if bbox is not None:
-                w, h = working.size
-                # 在内容边界外各加约 1% 的安全边距，避免裁切到边缘符号
-                margin_x = max(4, int(w * 0.01))
-                margin_y = max(4, int(h * 0.01))
-                x0 = max(0, bbox[0] - margin_x)
-                y0 = max(0, bbox[1] - margin_y)
-                x1 = min(w, bbox[2] + margin_x)
-                y1 = min(h, bbox[3] + margin_y)
-                working = working.crop((x0, y0, x1, y1))
-
-            # 步骤 2：梯度修正——autocontrast（2% 截断）校正光照不均
-            working = ImageOps.autocontrast(working, cutoff=2)
-
-            # 记录增强后图像的短边，用于决策是否执行 SR
-            min_dim_after_enhance = min(working.size)
-
-            enhanced_path = work_dir / f'enhanced_{image_path.stem}.png'
-            working.save(enhanced_path)
-    except Exception as exc:
-        log_message(f'oemer 图像预处理失败: {exc}', logging.WARNING)
-        return None
-
-    current_path = enhanced_path
-
-    # 步骤 3：超分辨率放大——低分辨率时用 waifu2x 2× 提升谱线检测能力
-    # 根因：oemer 谱线分割模型在短边 < 1200px 时易仅检出首行，漏掉其余行。
-    if min_dim_after_enhance < LOW_RES_PIXEL_THRESHOLD:
-        upscaled_path = work_dir / f'sr_{image_path.stem}.png'
-        ok = upscale_image_with_waifu2x(current_path, upscaled_path, scale=2)
-        if ok:
-            safe_remove_file(current_path)
-            current_path = upscaled_path
-            log_message(
-                f'  [oemer预处理] 短边 {min_dim_after_enhance}px < '
-                f'{LOW_RES_PIXEL_THRESHOLD}px，已执行 2× 超分辨率放大。'
-            )
-        else:
-            log_message(
-                '  [oemer预处理] waifu2x 超分辨率失败，继续使用原分辨率。',
-                logging.WARNING,
-            )
-
-    # 步骤 4：像素上限——超出则等比例缩小
-    rescaled = fit_image_within_pixel_limit(current_path, work_dir, max_pixels=max_pixels)
-    if rescaled is not None:
-        safe_remove_file(current_path)
-        current_path = rescaled
-
-    log_message(f'oemer 图像预处理完成: {current_path.name}，将使用增强图像进行 OMR 识别。')
-    return current_path
-
-
-
-
-
-def sharpen_color_image(img: 'Image.Image') -> 'Image.Image':
-    """Apply a mild unsharp mask to color images while preserving RGB channels."""
-    try:
-        return img.filter(ImageFilter.UnsharpMask(radius=1.0, percent=150, threshold=3))
-    except Exception:
-        return img
-
-
-def preprocess_image_for_oemer_v2(
-    image_path: Path,
-    work_dir: Path,
-    max_pixels: int = OEMER_MAX_PIXELS,
-) -> Optional[Path]:
-    """Improved Oemer preprocess with rotation correction and color sharpening."""
-    if not HAS_PILLOW:
-        return None
-    if image_path.suffix.lower() not in {'.png', '.jpg', '.jpeg'}:
-        return None
-
-    work_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        with Image.open(image_path) as img:
-            working = img.convert('RGB')
-
-            # 1. 梯度/光照校正
-            working = correct_gradient(working)
-
-            # 2. 旋转校正
-            working, angle = detect_and_correct_rotation(working)
-            if abs(angle) >= 0.5:
-                log_message(f'  [oemer新预处理] 旋转校正 {angle:+.1f}°')
-
-            # 3. 白边裁剪
-            working, border_ratio = crop_white_border(working)
-            if border_ratio > 0.02:
-                log_message(f'  [oemer新预处理] 白边裁剪 {border_ratio:.1%}')
-
-            # 4. 轻度彩色锐化
-            working = sharpen_color_image(working)
-
-            enhanced_path = work_dir / f'new_oemer_{image_path.stem}.png'
-            working.save(enhanced_path)
-    except Exception as exc:
-        log_message(f'oemer 新预处理失败: {exc}', logging.WARNING)
-        return None
-
-    current_path = enhanced_path
-
-    if min(working.size) < LOW_RES_PIXEL_THRESHOLD:
-        upscaled_path = work_dir / f'sr_new_oemer_{image_path.stem}.png'
-        ok = upscale_image_with_waifu2x(current_path, upscaled_path, scale=2)
-        if ok:
-            safe_remove_file(current_path)
-            current_path = upscaled_path
-            log_message(
-                f'  [oemer新预处理] 短边 {min(working.size)}px < '
-                f'{LOW_RES_PIXEL_THRESHOLD}px，已执行 2× 超分辨率放大。'
-            )
-        else:
-            log_message(
-                '  [oemer新预处理] waifu2x 超分辨率失败，继续使用原分辨率。',
-                logging.WARNING,
-            )
-
-    rescaled = fit_image_within_pixel_limit(current_path, work_dir, max_pixels=max_pixels)
-    if rescaled is not None:
-        safe_remove_file(current_path)
-        current_path = rescaled
-
-    log_message('oemer 新预处理完成，将使用增强图像进行 OMR 识别。')
-    return current_path
-
 
 
 # 综合增强管道（原 image_enhance.py）

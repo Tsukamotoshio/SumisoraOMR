@@ -469,10 +469,8 @@ class EditorPage(ft.Row):
         self._open_file(path)
 
     def _normalize_editor_stem(self, stem: str) -> str:
-        for suffix in ('.oemer', '.audiveris'):
-            if stem.endswith(suffix):
-                stem = stem[: -len(suffix)]
-                break
+        if stem.endswith('.audiveris'):
+            stem = stem[: -len('.audiveris')]
         if stem.endswith('.source'):
             stem = stem[: -len('.source')]
         return stem

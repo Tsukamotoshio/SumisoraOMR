@@ -1,16 +1,74 @@
 # core/homr_runner.py — homr OMR 引擎封装
 # 本模块将本地 homr 仓库目录作为可选 OMR 引擎，支持图片输入和 PDF 首页。
 
+import logging
+import io
 import os
 import shutil
 import sys
+import threading
+from contextlib import contextmanager
+import time
 from pathlib import Path
 from typing import Optional
 
 from .config import HOMR_SOURCE_DIR_NAME, OMR_ENGINE_DIR_NAME
 from .image_preprocess import preprocess_image_for_omr
-from .oemer_runner import _pdf_first_page_to_png
 from .utils import find_first_musicxml_file, get_app_base_dir, log_message
+
+
+@contextmanager
+def _suppress_homr_output():
+    """将 homr 库的 stdout/stderr 重定向到 /dev/null，避免淹没应用日志。"""
+    devnull = open(os.devnull, 'w', encoding='utf-8', errors='replace')
+    old_stdout, old_stderr = sys.stdout, sys.stderr
+    # 同时压制 homr 可能使用的 root logger handlers 产生的控制台输出
+    root_logger = logging.getLogger()
+    old_handlers = root_logger.handlers[:]
+    # 暂时移除所有 StreamHandler（避免 homr 内部 logging 写到控制台）
+    stream_handlers = [h for h in old_handlers if isinstance(h, logging.StreamHandler)
+                       and not isinstance(h, logging.FileHandler)]
+    for h in stream_handlers:
+        root_logger.removeHandler(h)
+    sys.stdout = devnull
+    sys.stderr = devnull
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        devnull.close()
+        for h in stream_handlers:
+            root_logger.addHandler(h)
+
+
+def _pdf_first_page_to_png(
+    pdf_path: Path,
+    output_dir: Path,
+    engine_label: str = 'homr',
+) -> Optional[Path]:
+    """Convert the first page of a PDF to a PNG file using PyMuPDF.
+
+    Returns the PNG path on success, or None if conversion fails.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        log_message(f'[{engine_label}] PyMuPDF (fitz) 未安装，无法处理 PDF 输入。', logging.WARNING)
+        return None
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        doc = fitz.open(str(pdf_path))
+        page = doc.load_page(0)
+        mat = fitz.Matrix(2.0, 2.0)  # 2× zoom → ~144 DPI from 72 DPI base
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        doc.close()
+        png_path = output_dir / (pdf_path.stem + '_page1.png')
+        pix.save(str(png_path))
+        return png_path
+    except Exception as exc:
+        log_message(f'[{engine_label}] PDF 首页转 PNG 失败：{exc}', logging.WARNING)
+        return None
 
 
 def _add_nvidia_cuda_dll_dirs() -> None:
@@ -48,6 +106,36 @@ def _add_nvidia_cuda_dll_dirs() -> None:
 # onnxruntime 第一次试图创建 CUDAExecutionProvider session 时才加载
 # onnxruntime_providers_cuda.dll，若此前 PATH 不包含 cudnn64_9.dll 所在目录则失败。
 _add_nvidia_cuda_dll_dirs()
+
+
+def _run_with_heartbeat(
+    fn,
+    label: str,
+    heartbeat_interval: int = 30,
+) -> None:
+    """在子线程中执行 fn()，主线程每隔 heartbeat_interval 秒输出一条进度日志。
+
+    若 fn 抛出异常，异常会在主线程重新抛出。
+    """
+    exc_holder: list[BaseException] = []
+
+    def _worker():
+        try:
+            with _suppress_homr_output():
+                fn()
+        except BaseException as e:
+            exc_holder.append(e)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    start = time.monotonic()
+    while t.is_alive():
+        t.join(timeout=heartbeat_interval)
+        if t.is_alive():
+            elapsed = int(time.monotonic() - start)
+            log_message(f'  {label}仍在识别中…已耗时 {elapsed} 秒，请耐心等待。')
+    if exc_holder:
+        raise exc_holder[0]
 
 
 def find_homr_source_dir() -> Optional[Path]:
@@ -195,7 +283,7 @@ def run_homr_batch(
 
     preprocess_dir = output_dir / '_homr_preprocessed'
     log_message('[homr] 正在进行图像预处理…')
-    preprocessed_image = preprocess_image_for_omr(image_path, preprocess_dir)
+    preprocessed_image = preprocess_image_for_omr(image_path, preprocess_dir, keep_color=True)
     if preprocessed_image is not None:
         image_path = preprocessed_image
         log_message(f'[homr] 图像预处理完成: {preprocessed_image.name}')
@@ -217,15 +305,17 @@ def run_homr_batch(
         with ThreadPoolExecutor(max_workers=1) as _dl_ex:
             # homr.download_weights 只会下载缺失的 ONNX 模型权重。
             # 如果本地已经存在对应 GPU/CPU 模型文件，则不会联网下载。
-            _dl_future = _dl_ex.submit(homr_main.download_weights, use_gpu_inference)
-            try:
-                _dl_future.result(timeout=120)
-            except _TimeoutError:
-                log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
-                return None
-            except Exception as _dl_exc:
-                log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
-                return None
+            log_message('[homr] 检查模型权重…')
+            with _suppress_homr_output():
+                _dl_future = _dl_ex.submit(homr_main.download_weights, use_gpu_inference)
+                try:
+                    _dl_future.result(timeout=120)
+                except _TimeoutError:
+                    log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
+                    return None
+                except Exception as _dl_exc:
+                    log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
+                    return None
         config = homr_main.ProcessingConfig(
             enable_debug=False,
             enable_cache=False,
@@ -235,10 +325,12 @@ def run_homr_batch(
             use_gpu_inference=use_gpu_inference,
         )
         xml_args = homr_main.XmlGeneratorArguments(False, None, None)
-        log_message('[homr] 模型文件检查完成。')
-        log_message(f'[homr] 推理模式：{"GPU" if use_gpu_inference else "CPU"}')
-        log_message('[homr] 进入推理阶段…')
-        homr_main.process_image(str(image_path), config, xml_args)
+        mode_label = 'GPU' if use_gpu_inference else 'CPU'
+        log_message(f'[homr] 开始识别（{mode_label} 模式）…')
+        _run_with_heartbeat(
+            lambda: homr_main.process_image(str(image_path), config, xml_args),
+            label='[homr] ',
+        )
         log_message('[homr] 识别完成。')
     except Exception as exc:
         _exc_str = str(exc)
@@ -259,9 +351,12 @@ def run_homr_batch(
                     selected_staff=-1,
                     use_gpu_inference=False,
                 )
-                log_message('[homr] 回退到 CPU 模式。')
-                homr_main.process_image(str(image_path), _cpu_config, xml_args)
-                log_message('[homr] 识别完成。')
+                log_message('[homr] 回退到 CPU 模式重试…')
+                _run_with_heartbeat(
+                    lambda: homr_main.process_image(str(image_path), _cpu_config, xml_args),
+                    label='[homr] ',
+                )
+                log_message('[homr] 识别完成（CPU 模式）。')
             except Exception as _cpu_exc:
                 log_message(f'[homr] CPU 回退也失败: {_cpu_exc}')
                 return None

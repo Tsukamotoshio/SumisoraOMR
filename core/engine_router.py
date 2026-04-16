@@ -9,8 +9,6 @@ score >= QUALITY_THRESHOLD (6.0)  →  "audiveris"
 score <  QUALITY_THRESHOLD        →  "audiveris_with_dl_fix"
     图像质量不足，使用 Audiveris 进行主要识别，
     再叠加深度学习辅助修复层校正可能的识别错误。
-
-注意：Oemer 引擎不参与路由决策（Oemer 保留为独立的显式引擎选项）。
 """
 from __future__ import annotations
 

@@ -275,7 +275,7 @@ class TUI:
     def _screen_convert(self) -> None:
         import dataclasses
         from .config import AppConfig, OMREngine
-        from .oemer_runner import _detect_gpu_provider
+        from .homr_runner import _homr_gpu_available
 
         from .pipeline import process_bulk_input_to_jianpu
 
@@ -292,7 +292,7 @@ class TUI:
             '  [bold]1[/bold]  [green]自动（按格式选择）[/green]  [bold green]← 推荐[/bold green]'
         )
         self.console.print(
-            '         [dim]PDF 输入 → Audiveris；图片（PNG/JPG）输入 → Oemer[/dim]'
+            '         [dim]PDF 输入 → Audiveris；图片（PNG/JPG）输入 → Audiveris[/dim]'
         )
         self.console.print()
         self.console.print(
@@ -305,9 +305,10 @@ class TUI:
             '         [dim]基于传统启发式算法，不依赖 GPU，任何机器均可运行[/dim]'
         )
         self.console.print()
-        gpu_info = _detect_gpu_provider()
+        gpu_available = _homr_gpu_available()
+        gpu_info = '已检测到 GPU（DirectML/CUDA）' if gpu_available else 'CPU（未检测到可用 GPU）'
         self.console.print(
-            '  [bold]3[/bold]  [cyan]Oemer[/cyan]  [dim]（手动指定，强制用于所有格式）[/dim]'
+            '  [bold]3[/bold]  [cyan]Homr[/cyan]  [dim]（实验性，手动指定，强制用于所有格式）[/dim]'
         )
         self.console.print(
             '         [dim]对拍照乐谱（手机拍摄、光线不均匀、低对比度图像）效果更好[/dim]'
@@ -315,13 +316,6 @@ class TUI:
         self.console.print(
             f'         [dim]识别速度取决于 GPU 性能（当前计算设备：{gpu_info}[/dim]'
         )
-        if 'CPU' in gpu_info and 'cuDNN' in gpu_info:
-            self.console.print(
-                '         [yellow]⚠ 未检测到 cuDNN 9.x — 当前将在 CPU 上运行（速度较慢）[/yellow]'
-            )
-            self.console.print(
-                '           [dim]如需 GPU 加速：安装 CUDA+cuDNN 或 pip install onnxruntime-directml[/dim]'
-            )
         self.console.print(
             '         [dim]GPU 优先级：DirectML (任意 GPU) > CUDA+cuDNN > CPU 回退[/dim]'
 
@@ -338,12 +332,12 @@ class TUI:
             selected_engine = OMREngine.AUDIVERIS
             engine_display = 'Audiveris（强制）'
         elif engine_key == '3':
-            selected_engine = OMREngine.OEMER
-            engine_display = 'Oemer（强制）'
+            selected_engine = OMREngine.HOMR
+            engine_display = 'Homr（强制）'
         else:
             # '1' 或任意其他键 → 自动按格式选择（默认）
             selected_engine = OMREngine.AUTO
-            engine_display = '自动（PDF→Audiveris / 图片→Oemer）'
+            engine_display = '自动（Audiveris）'
 
         config_with_engine = dataclasses.replace(self.config, omr_engine=selected_engine)
 
@@ -609,13 +603,11 @@ class TUI:
             '  3. 转换结果（简谱 PDF / MIDI）保存在 [cyan]Output[/cyan] 文件夹\n'
             '  4. 如需手动校对，选择「4. 打开简谱编辑器」\n\n'
             '[bold]引擎选择说明[/bold]\n'
-            '  • [green]自动（推荐）[/green] — PDF → Audiveris；图片（PNG/JPG）→ Oemer\n'
+            '  • [green]自动（推荐）[/green] — PDF + 图片（PNG/JPG）→ Audiveris\n'
             '  • [cyan]Audiveris[/cyan] — 手动指定，强制用于所有格式\n'
             '    基于规则的传统 OMR 引擎，对高对比度印刷乐谱和 PDF 效果最佳\n'
-            '  • [cyan]Oemer[/cyan]     — 手动指定，强制用于所有格式\n'
-            '    基于深度学习的端到端引擎，对手机拍摄或光线不均匀图像更友好\n'
-
-            '    使用前请确认已安装：pip install oemer\n\n'
+            '  • [cyan]Homr[/cyan]      — 实验性，基于深度学习\n'
+            '    对手机拍摄或光线不均匀图像效果更好，使用前请确认 homr 运行环境安装完成\n\n'
             '[bold]简谱编辑器说明[/bold]\n'
             '  • 每次转换后，工具自动保留 OMR 识别的中间文件到 [cyan]editor-workspace[/cyan] 目录\n'
             '  • 在编辑器中选择乐谱，记事本将自动打开供您修改简谱文本\n'
@@ -628,7 +620,7 @@ class TUI:
             '  • 没有输出     →  确认 Input 文件夹中有支持的文件\n'
             '  • 程序缓慢     →  多页 PDF 识别需要数分钟，请耐心等待\n'
             '  • Audiveris 失败  →  检查 audiveris-runtime 目录是否存在\n'
-            '  • Oemer 失败      →  执行 pip install oemer 安装引擎',
+            '  • Homr 失败      →  检查 omr_engine/homr 运行环境',
             title='[bold cyan]简谱转换工具  帮助[/bold cyan]',
             padding=(1, 2),
         ))

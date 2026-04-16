@@ -7,8 +7,7 @@
 #
 # 依赖：
 #   pip install -r requirements.txt
-#   或者直接安装所需依赖：flet pymupdf music21 pillow opencv-python onnxruntime-directml oemer
-#   （推荐使用 requirements.txt 统一安装）
+
 
 import sys
 import os
@@ -45,7 +44,7 @@ if getattr(sys, 'frozen', False):
             sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
 
 # ─── ONNX / OpenMP 线程限制：为 asyncio 事件循环保留 CPU 资源 ────────────────
-# homr / oemer 使用 ONNX Runtime 进行神经网络推理，默认会占满所有 CPU 核心。
+# homr 使用 ONNX Runtime 进行神经网络推理，默认会占满所有 CPU 核心。
 # 在打包版中，CPU 满载导致 asyncio 事件循环长时间得不到调度，
 # Flet WebSocket 心跳超时，Flutter 端显示 "Working..." 重连画面。
 # 在首次 import onnxruntime / 初始化 OpenMP 线程池之前设置，保留 1 个核心给 asyncio。
@@ -76,7 +75,7 @@ def _bootstrap_venv() -> None:
     print(
         '\n[错误] 未找到虚拟环境或 flet 未安装。\n'
         '  pip install -r requirements.txt\n'
-        '  或 pip install flet pymupdf music21 pillow opencv-python onnxruntime-directml oemer\n',
+        '  pip install flet pymupdf music21 pillow opencv-python onnxruntime-directml\n',
         file=sys.stderr,
     )
     sys.exit(1)
@@ -309,11 +308,129 @@ async def main(page: ft.Page) -> None:
         )
     )
 
+    # ── 窗口关闭：终止进行中的 Worker 子进程 ────────────────────────────────
+    # 不设置 prevent_close，让 Flutter 在用户点 X 后立即自然关闭窗口（无延迟、
+    # 无 "Working..." 重连画面）。
+    # page.on_close 在 Flutter 断开 WebSocket 后由 session.close() 异步触发，
+    # 此时窗口已关闭，用户感知不到任何延迟，Python 在后台完成清理再退出。
+    async def _on_app_close(e) -> None:
+        import threading
+        threading.Thread(target=landing_page.terminate_worker, daemon=True).start()
+        if sys.platform == 'win32':
+            import ctypes
+            # TerminateProcess 跳过 DLL_PROCESS_DETACH，比 os._exit 更快
+            ctypes.windll.kernel32.TerminateProcess(-1, 0)
+        else:
+            _os._exit(0)
+
+    page.on_close = _on_app_close
+
     # ── 初始化完成 ────────────────────────────────────────────────────────────
     _show_page('landing')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 【开发模式 & 分发版】让任务管理器显示 "ConvertTool" 而非 "flet"
+# ─────────────────────────────────────────────────────────────────────────────
+# flet_desktop 通过 open_flet_view_async 启动 Flutter 窗口进程。
+# 此函数确保使用重命名后的 ConvertTool.exe 作为 Flutter 运行时，
+# 并 monkey-patch open_flet_view_async 直接指定该 exe，
+# 不依赖 os.getcwd()/build/windows/ 发现机制。
+#
+# 开发模式：从 ~/.flet/client/flet-desktop-full-X.Y.Z/flet/ 复制并重命名
+# 打包版  ：从 _MEIPASS/flet_desktop/app/flet-windows.zip 解压并重命名
+#           目标目录均为 ~/.flet/ConvertTool/<version>/，首次运行后缓存，不重复操作。
+def _setup_flet_view_name() -> None:
+    if sys.platform != 'win32':
+        return
+    try:
+        import shutil as _shutil
+        import zipfile as _zipfile
+        from pathlib import Path as _Path
+        import flet_desktop as _fd
+        import flet_desktop.version as _fdv
+        from flet.utils.strings import random_string as _rstr
+
+        _EXE   = 'ConvertTool.exe'
+        _ver   = _fdv.version
+        _dir   = _Path.home() / '.flet' / 'ConvertTool' / _ver
+        _exe   = _dir / _EXE
+        _stamp = _dir / '.stamp'
+
+        if not (_stamp.exists() and _exe.exists()):
+            _dir.mkdir(parents=True, exist_ok=True)
+            # 清理旧文件（flet 版本升级时重新解压）
+            for _f in list(_dir.iterdir()):
+                if _f.name != '.stamp':
+                    _shutil.rmtree(_f) if _f.is_dir() else _f.unlink(missing_ok=True)
+
+            if getattr(sys, 'frozen', False):
+                # 打包版：从随包附带的 flet-windows.zip 解压
+                _zip = _Path(sys._MEIPASS) / 'flet_desktop' / 'app' / 'flet-windows.zip'
+                if not _zip.exists():
+                    return
+                with _zipfile.ZipFile(_zip) as _zf:
+                    # zip 内结构为 flet/flet.exe, flet/*.dll, flet/data/...
+                    # 解压时去掉顶层 flet/ 目录，直接平铺到 _dir
+                    for _m in _zf.namelist():
+                        _parts = _m.split('/', 1)
+                        if len(_parts) == 2 and _parts[0] == 'flet' and _parts[1]:
+                            _dst = _dir / _parts[1]
+                            if _m.endswith('/'):
+                                _dst.mkdir(parents=True, exist_ok=True)
+                            else:
+                                _dst.parent.mkdir(parents=True, exist_ok=True)
+                                _dst.write_bytes(_zf.read(_m))
+            else:
+                # 开发模式：从用户 flet 缓存复制
+                _cache = (_Path.home() / '.flet' / 'client'
+                          / f'flet-desktop-full-{_ver}' / 'flet')
+                if not _cache.exists():
+                    return
+                for _item in _cache.iterdir():
+                    _dst = _dir / _item.name
+                    if _item.is_dir():
+                        if _dst.exists():
+                            _shutil.rmtree(_dst)
+                        _shutil.copytree(_item, _dst)
+                    else:
+                        _shutil.copy2(_item, _dst)
+
+            # flet.exe → ConvertTool.exe（两种来源均适用）
+            _flet_exe = _dir / 'flet.exe'
+            if _flet_exe.exists():
+                _flet_exe.rename(_exe)
+            _stamp.touch()
+
+        if not _exe.exists():
+            return  # 设置失败，回退到默认 flet.exe
+
+        # ── monkey-patch open_flet_view_async ────────────────────────────────
+        # 直接指定 ConvertTool.exe，跳过 flet_desktop 内部的路径发现逻辑，
+        # 避免对 os.getcwd() / build/windows/ 的依赖
+        _exe_str = str(_exe)
+
+        async def _patched_open(page_url, assets_dir, hidden):
+            import asyncio as _aio
+            import tempfile as _tmp
+            import os as _o
+            _pid  = str(_Path(_tmp.gettempdir()) / _rstr(20))
+            _args = [_exe_str, page_url, _pid]
+            if assets_dir:
+                _args.append(assets_dir)
+            _env = {**_o.environ}
+            if hidden:
+                _env['FLET_HIDE_WINDOW_ON_START'] = 'true'
+            return (await _aio.create_subprocess_exec(_args[0], *_args[1:], env=_env), _pid)
+
+        _fd.open_flet_view_async = _patched_open
+
+    except Exception:
+        pass  # 设置失败不影响应用启动，回退到默认 flet.exe
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    _setup_flet_view_name()
     ft.run(main)

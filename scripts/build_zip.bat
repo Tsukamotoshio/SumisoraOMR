@@ -31,12 +31,11 @@ set "OUTPUT_ZIP=%BASE_DIR%installer-dist\%ZIP_NAME%.zip"
 
 :: ---- Step 1: package-assets (skip if already prepared) ----
 
-:: Requires: lilypond-runtime, audiveris-runtime, oemer-runtime, waifu2x-runtime (if local source exists)
+:: Requires: lilypond-runtime, audiveris-runtime, waifu2x-runtime (if local source exists)
 set "ASSETS_READY=1"
 
 if not exist "%BASE_DIR%package-assets\lilypond-runtime\bin" set "ASSETS_READY=0"
 if not exist "%BASE_DIR%package-assets\audiveris-runtime\bin\Audiveris.bat" set "ASSETS_READY=0"
-if not exist "%BASE_DIR%package-assets\oemer-runtime\checkpoints\unet_big\model.onnx" set "ASSETS_READY=0"
 
 if exist "%BASE_DIR%waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
 
@@ -81,8 +80,6 @@ echo [1/3] Preparing runtime assets...
 
     mkdir "!PACKAGE_ASSETS!\lilypond-runtime"
 
-    mkdir "!PACKAGE_ASSETS!\oemer-runtime"
-
     robocopy "!AUDIVERIS_RUNTIME_SRC!" "!PACKAGE_ASSETS!\audiveris-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
     for %%D in (bin etc lib libexec licenses share) do (
@@ -114,43 +111,7 @@ echo [WARN] waifu2x-ncnn-vulkan not found, skipping super-resolution module.
 
 :: ---- Step 2: PyInstaller ----
 
-    echo [2/3] Preparing oemer model weights...
-
-
-
-    set "PYTHON_CMD=%BASE_DIR%.venv\Scripts\python.exe"
-
-    if not exist "%PYTHON_CMD%" (
-
-        set "PYTHON_CMD=py -3"
-
-        where py >nul 2>nul
-
-        if errorlevel 1 set "PYTHON_CMD=python"
-
-    )
-
-    if exist "%BASE_DIR%package-assets\oemer-runtime\checkpoints\unet_big\model.onnx" (
-
-    echo [INFO] Using local oemer models, no download needed.
-        %PYTHON_CMD% "%BASE_DIR%scripts\_sync_oemer_to_venv.py" "%BASE_DIR%package-assets\oemer-runtime"
-
-    ) else (
-
-        echo [INFO] Syncing oemer model cache via script...
-
-        %PYTHON_CMD% "%BASE_DIR%scripts\download_oemer_models.py"
-
-    )
-
-    if exist "%BASE_DIR%scripts\_sync_oemer_package_assets.py" (
-        %PYTHON_CMD% "%BASE_DIR%scripts\_sync_oemer_package_assets.py"
-    if errorlevel 1 ( echo [ERROR] oemer runtime sync failed. ^& exit /b 1 )
-    )
-
     echo [2/3] Building executable...
-
-
 
     "%BASE_DIR%.venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean ConvertTool.spec
 
@@ -180,9 +141,6 @@ robocopy "%BASE_DIR%package-assets\audiveris-runtime" "%STAGE_DIR%\audiveris-run
 
 if exist "%BASE_DIR%package-assets\tessdata"        robocopy "%BASE_DIR%package-assets\tessdata"        "%STAGE_DIR%\tessdata"        /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
-REM oemer-runtime is NOT copied to zip stage: models are bundled by collect_all('oemer') into
-REM _internal/, loaded from Python package path at runtime. Avoids ~240 MB duplicate packaging.
-
 if exist "%BASE_DIR%package-assets\waifu2x-runtime" robocopy "%BASE_DIR%package-assets\waifu2x-runtime" "%STAGE_DIR%\waifu2x-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
 if exist "%BASE_DIR%jdk" (
@@ -197,7 +155,6 @@ if exist "%BASE_DIR%omr_engine\homr" (
 ) else (
     echo [WARN] omr_engine\homr not found, skipping homr config.
 )
-REM oemer models already bundled by PyInstaller collect_all; do not copy large files again.
 if exist "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       copy /y "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       "%STAGE_DIR%\Input\" >nul
 
 if exist "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" copy /y "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" "%STAGE_DIR%\Input\" >nul

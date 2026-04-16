@@ -18,6 +18,13 @@ A tool to batch-convert Western staff notation PDFs into Jianpu (numbered musica
 - Already-converted files are skipped automatically / 已转换过的文件自动跳过，避免重复转换
 - Compatible with Chinese, Japanese, and other non-ASCII filenames / 支持中文、日文等文件名场景的兼容处理
 
+### Supported OMR Engines / 支持的 OMR 引擎
+
+| Engine | Input | Notes |
+|--------|-------|-------|
+| **Audiveris** | PDF, PNG, JPG | Default engine; reliable accuracy / 默认引擎，识别稳定 |
+| **Homr** *(experimental)* | PNG, JPG | Deep-learning model; GPU-accelerated on Windows / 深度学习引擎，Windows 下支持 GPU 加速 |
+
 ### Supported Input Formats / 支持的输入格式
 
 | Format | Description |
@@ -52,7 +59,7 @@ Or install the required packages manually:
 或者手动安装以下 Python 包：
 
 ```bash
-pip install flet music21 pillow opencv-python reportlab df onnxruntime-directml oemer
+pip install flet music21 pillow opencv-python reportlab rich onnxruntime-directml
 ```
 
 Notes:
@@ -73,7 +80,6 @@ You will also need the following local engine source/runtime directories:
 - `lilypond-2.24.4/` — LilyPond engraving engine
 - `jdk/` — Java runtime required by Audiveris
 - Optional: `omr_engine/homr/` — Homr source engine for Homr support
-- Optional: `omr_engine/oemer/` — Oemer source engine if using the local Oemer repository
 
 Then run:
 

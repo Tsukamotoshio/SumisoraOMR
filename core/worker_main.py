@@ -87,14 +87,25 @@ def _patch_log_message() -> None:
         if _utils.LOGGER.handlers:
             _utils.LOGGER.log(level, message)
 
+    _original_log_message = _utils.log_message  # capture BEFORE replacing
     _utils.log_message = _log_ipc
 
-    # 同步修补 pipeline.py 中已经通过 from ... import 绑定的引用
+    # 同步修补所有已加载模块中通过 from ... import 绑定的 log_message 引用。
+    # 触发 core.pipeline 及其依赖（audiveris_runner、homr_runner、renderer 等）的导入，
+    # 确保它们在下面的扫描前都已加载。
     try:
-        import core.pipeline as _pipeline
-        _pipeline.log_message = _log_ipc  # type: ignore[attr-defined]
+        import importlib as _importlib
+        _importlib.import_module('core.pipeline')
     except Exception:
         pass
+
+    import sys as _sys_patch
+    for _mod in list(_sys_patch.modules.values()):
+        try:
+            if getattr(_mod, 'log_message', None) is _original_log_message:
+                _mod.log_message = _log_ipc  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
 
 def _restore_stdio_fds() -> None:
@@ -175,7 +186,6 @@ def run_worker() -> None:
         engine_map = {
             'auto': OMREngine.AUTO,
             'audiveris': OMREngine.AUDIVERIS,
-            'oemer': OMREngine.OEMER,
             'homr': OMREngine.HOMR,
         }
         engine = engine_map.get(engine_str, OMREngine.AUTO)
@@ -232,8 +242,6 @@ def run_worker() -> None:
                 for candidate_name in (
                     src.stem + '.musicxml',
                     src.stem + '.mxl',
-                    src.stem + '.oemer.musicxml',
-                    src.stem + '.oemer.mxl',
                     src.stem + '.audiveris.musicxml',
                     src.stem + '.audiveris.mxl',
                 ):

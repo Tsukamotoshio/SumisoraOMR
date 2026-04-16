@@ -59,7 +59,6 @@ if not exist "%AUDIVERIS_RUNTIME_SRC%\bin\Audiveris.bat" (
 if exist "%PACKAGE_ASSETS%" rmdir /s /q "%PACKAGE_ASSETS%"
 mkdir "%PACKAGE_ASSETS%\audiveris-runtime"
 mkdir "%PACKAGE_ASSETS%\lilypond-runtime"
-mkdir "%PACKAGE_ASSETS%\oemer-runtime"
 robocopy "%AUDIVERIS_RUNTIME_SRC%" "%PACKAGE_ASSETS%\audiveris-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
 for %%D in (bin etc lib libexec licenses share) do (
     if exist "%BASE_DIR%lilypond-2.24.4\%%D" robocopy "%BASE_DIR%lilypond-2.24.4\%%D" "%PACKAGE_ASSETS%\lilypond-runtime\%%D" /E /NFL /NDL /NJH /NJS /NC /NS >nul
@@ -89,27 +88,6 @@ if not exist "%PYTHON_CMD%" (
     if errorlevel 1 set "PYTHON_CMD=python"
 )
 echo [TRACE] PYTHON_CMD final=%PYTHON_CMD%
-
-:: Sync oemer models from package-assets\oemer-runtime to venv for PyInstaller collect_all.
-if exist "%BASE_DIR%package-assets\oemer-runtime\checkpoints\unet_big\model.onnx" (
-    echo [INFO] Using local oemer models, no download needed.
-    %PYTHON_CMD% "%BASE_DIR%scripts\_sync_oemer_to_venv.py" "%BASE_DIR%package-assets\oemer-runtime"
-) else (
-    echo [2/3] Pre-downloading oemer model cache ^(skip if already downloaded^)...
-    call %PYTHON_CMD% "%BASE_DIR%scripts\download_oemer_models.py"
-    if errorlevel 1 (
-        echo [ERROR] oemer model download failed, please check network and retry.
-        exit /b 1
-    )
-)
-
-if exist "%BASE_DIR%scripts\_sync_oemer_package_assets.py" (
-    call %PYTHON_CMD% "%BASE_DIR%scripts\_sync_oemer_package_assets.py"
-    if errorlevel 1 (
-        echo [ERROR] oemer runtime sync to package-assets failed.
-        exit /b 1
-    )
-)
 
 echo [2/3] Building executable...
 call %PYTHON_CMD% -m PyInstaller --noconfirm --clean ConvertTool.spec

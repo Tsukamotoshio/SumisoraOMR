@@ -21,9 +21,6 @@ What's New
     accidentals follow the key's natural tendency (sharps for sharp keys,
     flats for flat keys).
   - Brand-new Rich TUI menu interface, replacing the old command-line prompts.
-  - Added Oemer deep-learning OMR engine (better for phone photos or
-    uneven-lighting images).
-  - Automatic engine routing: PDF input → Audiveris; image input → Oemer.
   - Built-in Jianpu editor workspace: intermediate files are preserved after
     conversion so you can proofread and regenerate the PDF with one click.
   - Improved editor reference image: white-border crop + rotation correction,

@@ -30,12 +30,7 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('rich')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-# ── oemer 深度学习 OMR 引擎（含 ONNX 模型权重、sklearn 分类器等数据文件）────────
-# 需在构建前运行 download_oemer_models.py 预下载权重，才会被打包进分发包。
-tmp_ret = collect_all('oemer')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
-# ── ONNX Runtime（oemer 推理引擎 —— DLL + 数据文件）────────────────────────────
+# ── ONNX Runtime（Homr 推理引擎 —— DLL + 数据文件）────────────────────────
 # 仅保留 CPU/DirectML 推理所需文件，排除所有 CUDA/TensorRT 相关 DLL 以减小体积。
 import re as _re
 _cuda_pat = _re.compile(
@@ -58,7 +53,7 @@ onnx_datas    = [item for item in onnx_datas    if not _is_cuda_item(item)]
 onnx_binaries = [item for item in onnx_binaries if not _is_cuda_item(item)]
 datas += onnx_datas; binaries += onnx_binaries; hiddenimports += onnx_hidden
 
-# ── PyMuPDF（PDF → 图片转换，oemer 处理 PDF 输入时使用）────────────────────────
+# ── PyMuPDF（PDF → 图片转换，图片输入预处理使用）────────────────────────
 tmp_ret = collect_all('fitz')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
@@ -82,15 +77,9 @@ if os.path.isdir(r'omr_engine\homr'):
     tmp_ret = collect_all('musicxml')
     datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-# ── OpenCV（oemer 图像处理依赖）──────────────────────────────────────────────
+# ── OpenCV（图像处理依赖）────────────────────────────────────────────
 tmp_ret = collect_all('cv2')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-
-# ── scikit-learn（oemer 符号分类器依赖）──────────────────────────────────────
-hiddenimports += collect_submodules('sklearn')
-
-# ── scipy（oemer 数值计算依赖）───────────────────────────────────────────────
-hiddenimports += collect_submodules('scipy')
 
 # ── Flet GUI 框架（桌面运行时 + 所有子模块）─────────────────────────────────────
 tmp_ret = collect_all('flet')

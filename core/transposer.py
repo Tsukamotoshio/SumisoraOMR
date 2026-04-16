@@ -137,6 +137,44 @@ def detect_key_from_musicxml(mxl_path: Path) -> str:
         return 'C'
 
 
+def _strip_music21_creator(dst: Path) -> None:
+    """移除 music21 在写出 MusicXML 时自动注入的 ``Music21`` 作曲者标记。
+
+    music21 在原乐谱没有作曲者信息时会写出
+    ``<creator type="composer">Music21</creator>``，这会出现在渲染后的 PDF 中。
+    本函数对写出的文件（.musicxml 或 .mxl）做 XML 后处理，将其删除。
+    """
+    import zipfile
+
+    def _clean_xml_bytes(raw: bytes) -> bytes:
+        # 去掉 Music21 creator 标记（大小写不敏感匹配文本内容）
+        return re.sub(
+            rb'<creator[^>]*>\s*[Mm]usic21\s*</creator>\s*',
+            b'',
+            raw,
+        )
+
+    suffix = dst.suffix.lower()
+    if suffix in ('.musicxml', '.xml'):
+        raw = dst.read_bytes()
+        cleaned = _clean_xml_bytes(raw)
+        if cleaned != raw:
+            dst.write_bytes(cleaned)
+            LOGGER.debug('已移除 music21 creator 标记: %s', dst.name)
+    elif suffix == '.mxl':
+        # .mxl 是 ZIP 包，需要重建
+        import io
+        buf = io.BytesIO()
+        with zipfile.ZipFile(dst, 'r') as zin, zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.lower().endswith('.xml'):
+                    data = _clean_xml_bytes(data)
+                zout.writestr(item, data)
+        dst.write_bytes(buf.getvalue())
+        LOGGER.debug('已移除 music21 creator 标记 (mxl): %s', dst.name)
+
+
 def transpose_musicxml(
     src: Path,
     dst: Path,
@@ -187,6 +225,9 @@ def transpose_musicxml(
     dst.parent.mkdir(parents=True, exist_ok=True)
     format_ = 'musicxml' if dst.suffix.lower() in ('.musicxml', '.xml') else 'mxl'
     transposed.write(format_, fp=str(dst))
+
+    # 去掉 music21 自动注入的 "Music21" 作曲者标记，避免出现在 PDF 中
+    _strip_music21_creator(dst)
 
     if progress_callback:
         progress_callback(1.0)

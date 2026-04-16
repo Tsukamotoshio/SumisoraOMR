@@ -32,10 +32,7 @@ audiveris_job_*/
 
 # Install and helper scripts moved into scripts/
 scripts/install_audiveris_local.bat
-scripts/download_oemer_models.py
 scripts/jianpu-ly.py
-scripts/_sync_oemer_package_assets.py
-scripts/_sync_oemer_to_venv.py
 
 # Generated conversion artifacts
 /Input/

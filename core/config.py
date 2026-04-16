@@ -42,7 +42,6 @@ ALLOWED_JIANPU_DURATIONS = [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1
 SUPPORTED_INPUT_SUFFIXES = {'.pdf', '.png', '.jpg', '.jpeg'}
 ENABLE_LYRICS_OUTPUT = True
 MAX_AUDIVERIS_SECONDS = 1800
-MAX_OEMER_SECONDS = 600
 MAX_HOMR_SECONDS = 900
 DEFAULT_AUDIVERIS_MIN_JAVA_VERSION = 25
 RUNTIME_ASSETS_DIR_NAME = 'package-assets'
@@ -52,7 +51,6 @@ WAIFU2X_RUNTIME_DIR_NAME = 'waifu2x-runtime'
 OMR_ENGINE_DIR_NAME = 'omr_engine'
 AUDIVERIS_INSTALL_DIR_NAME = 'Audiveris'
 AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris', 'audiveris-5.10.2')
-OEMER_SOURCE_DIR_NAME = 'oemer'
 HOMR_SOURCE_DIR_NAME = 'homr'
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 7
@@ -71,18 +69,14 @@ class OMREngine(Enum):
     """可选的光学乐谱识别 (OMR) 引擎。
 
     AUTO:      自动按格式选择引擎（推荐）。
-               PDF 输入 → Audiveris；图片（PNG/JPG）输入 → Oemer。
+               PDF + 图片输入均使用 Audiveris。
     AUDIVERIS: 基于 Java 的传统 OMR 引擎，支持 PDF/图片输入，
                输出 MusicXML (.mxl)。需要本地 JDK + Audiveris 安装。
-    OEMER:     基于深度学习的端到端 OMR 引擎（pip install oemer），
-               仅支持图片输入，输出 .musicxml。
-               不依赖 Java，但需要 Python 环境中安装 oemer。
     HOMR:      基于 homr 的端到端 OMR 引擎，支持图片输入和 PDF 首页，
                输出 .musicxml。可直接使用本地 omr_engine/homr 仓库。
     """
     AUTO = 'auto'
     AUDIVERIS = 'audiveris'
-    OEMER = 'oemer'
     HOMR = 'homr'
 
 # ──────────────────────────────────────────────

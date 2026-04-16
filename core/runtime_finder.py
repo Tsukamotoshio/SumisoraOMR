@@ -16,6 +16,76 @@ from typing import Optional
 # 在 Windows 上，作为 GUI 程序运行时防止子进程弹出新控制台窗口
 _WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
+
+def _win_assign_kill_on_close_job(proc: 'subprocess.Popen') -> None:
+    """
+    (Windows-only) 将 *proc* 加入一个设置了 KillOnJobClose 的 Job Object。
+    当前进程（Worker）退出时，OS 自动关闭 Job 句柄，从而递归终止
+    proc 及其所有子进程（如 Audiveris.bat 启动的 java.exe）。
+    对非 Windows 或任何异常静默跳过。
+    """
+    if os.name != 'nt':
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+        JobObjectExtendedLimitInformation = 9
+
+        class _BasicLimit(ctypes.Structure):
+            _fields_ = [
+                ('PerProcessUserTimeLimit', ctypes.c_int64),
+                ('PerJobUserTimeLimit',     ctypes.c_int64),
+                ('LimitFlags',             wintypes.DWORD),
+                ('MinimumWorkingSetSize',   ctypes.c_size_t),
+                ('MaximumWorkingSetSize',   ctypes.c_size_t),
+                ('ActiveProcessLimit',      wintypes.DWORD),
+                ('Affinity',               ctypes.c_void_p),
+                ('PriorityClass',          wintypes.DWORD),
+                ('SchedulingClass',        wintypes.DWORD),
+            ]
+
+        class _IOCounters(ctypes.Structure):
+            _fields_ = [
+                ('ReadOperationCount',  ctypes.c_uint64),
+                ('WriteOperationCount', ctypes.c_uint64),
+                ('OtherOperationCount', ctypes.c_uint64),
+                ('ReadTransferCount',   ctypes.c_uint64),
+                ('WriteTransferCount',  ctypes.c_uint64),
+                ('OtherTransferCount',  ctypes.c_uint64),
+            ]
+
+        class _ExtLimit(ctypes.Structure):
+            _fields_ = [
+                ('BasicLimitInformation', _BasicLimit),
+                ('IoInfo',                _IOCounters),
+                ('ProcessMemoryLimit',    ctypes.c_size_t),
+                ('JobMemoryLimit',        ctypes.c_size_t),
+                ('PeakProcessMemoryUsed', ctypes.c_size_t),
+                ('PeakJobMemoryUsed',     ctypes.c_size_t),
+            ]
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return
+        info = _ExtLimit()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        kernel32.SetInformationJobObject(
+            job, JobObjectExtendedLimitInformation,
+            ctypes.byref(info), ctypes.sizeof(info),
+        )
+        PROCESS_ALL_ACCESS = 0x1FFFFF
+        handle = kernel32.OpenProcess(PROCESS_ALL_ACCESS, False, proc.pid)
+        if handle:
+            kernel32.AssignProcessToJobObject(job, handle)
+            kernel32.CloseHandle(handle)
+        # 故意不 CloseHandle(job)：保持 Job 句柄开放直到本进程退出，
+        # 届时 OS 自动关闭所有句柄并触发 KillOnJobClose。
+    except Exception:
+        pass
+
 from .config import (
     AUDIVERIS_INSTALL_DIR_NAME,
     AUDIVERIS_MSI_NAMES,
@@ -339,6 +409,7 @@ def run_subprocess_with_spinner(
             env=env,
             creationflags=_WIN_NO_WINDOW,
         ) as proc:
+            _win_assign_kill_on_close_job(proc)
             while proc.poll() is None:
                 elapsed = time.time() - start_time
                 if elapsed > timeout:

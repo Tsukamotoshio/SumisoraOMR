@@ -6,7 +6,6 @@ reportlab>=4.4.10
 rich>=14.3.3
 pyinstaller>=6.19.0
 pymupdf>=1.24.0
-oemer>=0.1.8
 
 # ── ONNX Runtime 后端 ────────────────────────────────────────────────────────
 # 三种包互斥，仅能安装其一：
@@ -18,13 +17,3 @@ oemer>=0.1.8
 #   onnxruntime-gpu 分发：NVIDIA 用户走 CUDA，其余走 CPU
 #   onnxruntime-directml 分发：AMD/Intel 用户走 DirectML，其余走 CPU
 onnxruntime-gpu>=1.20.0
-
-# ── oemer 引擎运行时说明 ────────────────────────────────────────────────────
-# oemer 是基于深度学习的端到端 OMR 引擎，仅支持图片输入（非 PDF）。
-# 默认使用 ONNX Runtime（onnxruntime-directml）推理，支持 DirectML GPU 加速。
-# PDF → 图片转换由 pymupdf（已在上方列出）负责，无需额外依赖。
-#
-# 首次使用 oemer 引擎时，程序会自动从 GitHub 下载约 500MB 的神经网络模型权重：
-#   https://github.com/BreezeWhite/oemer/releases/tag/checkpoints
-# 打包分发前请先运行 scripts/download_oemer_models.py 预下载，以便将权重文件一并打包：
-#   python scripts/download_oemer_models.py

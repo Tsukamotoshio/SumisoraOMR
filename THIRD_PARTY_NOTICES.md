@@ -42,13 +42,7 @@ This file provides license and attribution notices for third-party components di
 - Version: `1.20.0`
 - License: MIT
 - Upstream: <https://github.com/microsoft/onnxruntime>
-- Note: Windows DirectML backend for GPU-accelerated inference used by the Oemer engine.
-
-## Oemer
-- Version: `0.1.8`
-- License: MIT
-- Upstream: <https://github.com/BreezeWhite/oemer>
-- Note: Deep-learning end-to-end OMR engine invoked for image-based score recognition.
+- Note: Windows DirectML backend for GPU-accelerated inference used by the Homr engine.
 
 ## Homr
 - Version: `0.1.0` (fork)
@@ -61,22 +55,22 @@ This file provides license and attribution notices for third-party components di
 ## scikit-learn
 - License: BSD-3-Clause
 - Upstream: <https://github.com/scikit-learn/scikit-learn>
-- Note: A bundled dependency of `oemer` for symbol classification and runtime inference.
+- Note: A transitive dependency of `homr` for runtime inference.
 
 ## SciPy
 - License: BSD-3-Clause
 - Upstream: <https://github.com/scipy/scipy>
-- Note: A bundled dependency of `oemer` used for numerical computation and matrix operations.
+- Note: A transitive dependency of `homr` for numerical computation and matrix operations.
 
 ## NumPy
 - License: BSD-3-Clause
 - Upstream: <https://github.com/numpy/numpy>
-- Note: Core numerical array library required by `homr` and `oemer` for image tensor operations and model inference.
+- Note: Core numerical array library required by `homr` for image tensor operations and model inference.
 
 ## tqdm
 - License: MPL-2.0 AND MIT
 - Upstream: <https://github.com/tqdm/tqdm>
-- Note: Progress-bar library; a transitive dependency of `oemer` and `homr`. Only `oemer`/`homr` internals use it directly; no tqdm source is modified by this project, so MPL-2.0 file-level copyleft is not triggered.
+- Note: Progress-bar library; a transitive dependency of `homr`. Only `homr` internals use it directly; no tqdm source is modified by this project, so MPL-2.0 file-level copyleft is not triggered.
 
 ## jianpu-ly
 - Version: `1.866`

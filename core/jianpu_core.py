@@ -416,7 +416,7 @@ def clone_monophonic_element(element, duration: float):
     return new_element
 
 
-# 安全上限：超过此数量的小节被认为是 MusicXML 解析异常（如 Oemer 输出内部偏移错误）
+# 安全上限：超过此数量的小节被认为是 MusicXML 解析异常（内部偏移错误）
 # 将在日志中发出警告并截断。600 小节 ≈ 150 拍 4/4 = 已足够容纳给小篇音乐。
 MAX_SANE_BARS = 600
 
@@ -522,11 +522,22 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
 
             next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else measure_length
             next_offset = min(next_offset, measure_length)
+            element_end = offset
             for element in by_offset[offset]:
                 if isinstance(element, JianpuNote):
                     measure_notes.append(element)
+                    element_end = max(element_end, offset + element.duration)
                 else:
-                    measure_notes.append(note_to_jianpu(element, key_tonic_semitone))
+                    jn = note_to_jianpu(element, key_tonic_semitone)
+                    measure_notes.append(jn)
+                    element_end = max(element_end, offset + jn.duration)
+            # 填充音符实际结束位置到下一个音符开始位置之间的空白（OMR 漏标休止符的常见情形）
+            if element_end < next_offset - tol:
+                gap = min(next_offset - element_end, measure_length - element_end)
+                for piece in split_duration_chunks(gap):
+                    rest_piece = m21note.Rest()
+                    rest_piece.duration.quarterLength = piece
+                    measure_notes.append(note_to_jianpu(rest_piece, key_tonic_semitone))
             current_offset = next_offset
 
         if current_offset < measure_length - tol:
@@ -628,7 +639,7 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
                 append_element_chunks(rest, gap)
 
         next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else offset + float(by_offset[offset].duration.quarterLength or 0.25)
-        # 单个音符时寄不得超过 MAX_SANE_BARS 个小节（防止 Oemer 输出中的超长音符）
+        # 单个音符时寄不得超过 MAX_SANE_BARS 个小节（防止 OMR 输出中的超长音符）
         duration = max(min(next_offset - offset, bar_length * MAX_SANE_BARS), 0.125)
         append_element_chunks(by_offset[offset], duration)
 
