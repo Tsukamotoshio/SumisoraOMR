@@ -307,11 +307,9 @@ def process_single_input_to_jianpu(
     else:
         effective_source = source_file
 
-    if xml_scores_dir is not None:
-        _archive_mxl_to_xml_scores(mxl_file, source_file.stem, xml_scores_dir)
-
     # ── Homr 后处理：重建延音线 ────────────────────────────────────────────────
     # homr 当前不输出 tie 符号，需在 MusicXML 后处理阶段补全。
+    # 注意：必须在归档到 xml-scores 之前执行，使归档文件包含完整 tie 信息。
     if effective_engine is OMREngine.HOMR:
         try:
             from .tie_reconstruction import reconstruct_ties_in_mxl, reconstruct_ties_in_musicxml
@@ -323,6 +321,9 @@ def process_single_input_to_jianpu(
                 log_message(f'  [Homr 后处理] 重建了 {_n_ties} 对延音线。')
         except Exception as _tie_exc:
             log_message(f'  [Homr 后处理] 延音线重建失败（不影响输出）：{_tie_exc}')
+
+    if xml_scores_dir is not None:
+        _archive_mxl_to_xml_scores(mxl_file, source_file.stem, xml_scores_dir)
 
     return generate_jianpu_pdf_from_mxl(
         mxl_file,
