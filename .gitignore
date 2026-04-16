@@ -71,3 +71,8 @@ tmp_*
 # Workspace / generated dirs
 /editor-workspace/
 /xml-scores/
+
+# Chinese-language draft docs (not for distribution)
+/docs/Architecture_ZH.md
+/docs/ROADMAP_EN.md
+/docs/SRS_ZH.md
