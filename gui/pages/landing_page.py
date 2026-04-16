@@ -391,8 +391,7 @@ class LandingPage(ft.Row):
                 proc.stdin.flush()
                 proc.stdin.close()
 
-                # ── 逐行读取 Worker 响应 ──────────────────────────────────────────
-                for raw_line in proc.stdout:
+                # ── 逐行读取 Worker 响应 ──────────────────────────────────────────                _files_done_this_run = 0  # 本次 worker 运行中已完成（收到 result）的文件数                for raw_line in proc.stdout:
                     # 用户关闭了进度浮层：终止子进程，退出读取循环
                     if not self._state.is_processing:
                         try:
@@ -430,6 +429,7 @@ class LandingPage(ft.Row):
                             continue
                         self._state.append_log(text)
                     elif mtype == 'result':
+                        _files_done_this_run += 1
                         if msg.get('success'):
                             self._state.output_pdf = Path(msg['output_pdf'])
                             if msg.get('archived_mxl'):
@@ -452,6 +452,8 @@ class LandingPage(ft.Row):
                         gpu_access_violation_codes = {-1073741819, 3221225477}
                         if engine_val == 'homr' and task.get('use_gpu') and proc.returncode in gpu_access_violation_codes:
                             # 0xC0000005 访问冲突，GPU 模式崩溃
+                            # 裁掉已处理完的文件，从崩溃位置继续重试
+                            files = files[_files_done_this_run:]
                             _gpu_crash_count += 1
                             if _gpu_crash_count < 2:
                                 self._state.append_log('[homr] GPU 模式发生崩溃，正在以 GPU 模式重试…')
