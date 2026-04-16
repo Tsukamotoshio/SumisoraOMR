@@ -334,7 +334,7 @@ class LandingPage(ft.Row):
             engine_val = self._engine_dd.value or 'auto'
             gen_midi = getattr(self, '_gen_midi', True)
             files = list(self._state.pinned_files)
-            retry_cpu = False
+            _gpu_crash_count = 0
 
             while True:
                 task = {
@@ -345,7 +345,7 @@ class LandingPage(ft.Row):
                     'skip_dup': getattr(self, '_skip_dup', False),
                     'dup_files': list(getattr(self, '_dup_files', set())),
                     'base_dir': str(base_dir),
-                    'use_gpu': engine_val == 'homr' and not retry_cpu,
+                    'use_gpu': engine_val == 'homr' and _gpu_crash_count < 2,
                 }
 
                 # ── 确定 Worker 命令 ──────────────────────────────────────────────
@@ -451,9 +451,12 @@ class LandingPage(ft.Row):
                     if proc.returncode != 0:
                         gpu_access_violation_codes = {-1073741819, 3221225477}
                         if engine_val == 'homr' and task.get('use_gpu') and proc.returncode in gpu_access_violation_codes:
-                            # 0xC0000005 访问冲突，GPU 模式崩溃，尝试回退到 CPU
-                            self._state.append_log('[homr] GPU 模式发生崩溃，正在回退到 CPU 模式重试…')
-                            retry_cpu = True
+                            # 0xC0000005 访问冲突，GPU 模式崩溃
+                            _gpu_crash_count += 1
+                            if _gpu_crash_count < 2:
+                                self._state.append_log('[homr] GPU 模式发生崩溃，正在以 GPU 模式重试…')
+                            else:
+                                self._state.append_log('[homr] GPU 模式再次崩溃，已回退到 CPU 模式重试…')
                             _done_or_error_received = False
                             continue
                         self._state.set_error(
