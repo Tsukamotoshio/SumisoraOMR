@@ -206,9 +206,6 @@ def run_worker() -> None:
                     engine=engine,
                     editor_workspace_dir=base_dir / 'editor-workspace',
                     xml_scores_dir=base_dir / 'xml-scores',
-                    llm_api_key=None,
-                    llm_provider=None,
-                    llm_model=None,
                     use_gpu_inference=task.get('use_gpu') if isinstance(task.get('use_gpu'), bool) else None,
                 )
             except Exception as exc:

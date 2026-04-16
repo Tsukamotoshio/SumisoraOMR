@@ -72,9 +72,6 @@ def process_single_input_to_jianpu(
     engine: Optional[OMREngine] = None,
     editor_workspace_dir: Optional[Path] = None,
     xml_scores_dir: Optional[Path] = None,
-    llm_api_key: Optional[str] = None,
-    llm_provider: Optional[str] = None,
-    llm_model: Optional[str] = None,
     use_gpu_inference: Optional[bool] = None,
 ) -> bool:
     """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
@@ -105,10 +102,7 @@ def process_single_input_to_jianpu(
 
     _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO
-    _use_image_dual = _IS_IMAGE and (_is_auto or bool(llm_api_key))
-
-    # ── 图片输入：仅当用户选择 AUTO，或提供了 LLM key 时，才同时运行 Audiveris + Oemer进行融合识别。
-    # 选择显式单引擎（Oemer/Audiveris/Homr）时，应只运行对应单引擎。 ─────────────────────────────
+    _use_image_dual = _IS_IMAGE and _is_auto
     if _use_image_dual:
         oemer_dir     = file_temp_dir / 'oemer'
         audiveris_dir = file_temp_dir / 'audiveris'
@@ -334,18 +328,12 @@ def process_single_pdf_to_jianpu(
     engine: OMREngine = OMREngine.AUDIVERIS,
     editor_workspace_dir: Optional[Path] = None,
     xml_scores_dir: Optional[Path] = None,
-    llm_api_key: Optional[str] = None,
-    llm_provider: Optional[str] = None,
-    llm_model: Optional[str] = None,
 ) -> bool:
     """Backward-compatible alias for process_single_input_to_jianpu."""
     return process_single_input_to_jianpu(
         pdf_file, file_temp_dir, output_pdf, output_midi, engine,
         editor_workspace_dir=editor_workspace_dir,
         xml_scores_dir=xml_scores_dir,
-        llm_api_key=llm_api_key,
-        llm_provider=llm_provider,
-        llm_model=llm_model,
     )
 
 
