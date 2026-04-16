@@ -455,9 +455,40 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
         measure_length = nominal_measure_length or float(getattr(measure.barDuration, 'quarterLength', 4.0) or 4.0)
         by_offset: dict[float, list[object]] = {}
 
-        for element in measure.flatten().notesAndRests:
+        # 合并同小节延音线（cross-measure tie-stop 音符在本小节内无对应 start，
+        # stripTies 会保留其时值不变；仅合并同小节内的 start→stop 对）
+        try:
+            measure_src = measure.stripTies(retainContainers=True)
+        except Exception:
+            measure_src = measure
+
+        for element in measure_src.flatten().notesAndRests:
             offset = float(element.offset)
             if offset >= measure_length - tol:
+                continue
+            # 跨小节 tie-stop/continue：上一小节 tie-start 音符在本小节内的延续。
+            # 渲染为延音 dash（'-'），而非独立音符或休止符。
+            _tie = getattr(element, 'tie', None)
+            if _tie is not None and _tie.type in ('stop', 'continue'):
+                available = max(measure_length - offset, 0.125)
+                cont_dur = normalize_jianpu_duration(
+                    min(float(element.duration.quarterLength or 1.0), available)
+                )
+                cont = JianpuNote(
+                    symbol='-',
+                    accidental='',
+                    upper_dots=0,
+                    lower_dots=0,
+                    duration=cont_dur,
+                    duration_dots=infer_duration_dots(cont_dur),
+                    midi=None,
+                    is_rest=False,
+                )
+                existing = by_offset.get(offset)
+                if existing is None:
+                    by_offset[offset] = [cont]
+                else:
+                    existing.append(cont)
                 continue
             available = max(measure_length - offset, 0.125)
             candidate = clone_monophonic_element(element, min(float(element.duration.quarterLength or 0.25), available))
@@ -492,7 +523,10 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
             next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else measure_length
             next_offset = min(next_offset, measure_length)
             for element in by_offset[offset]:
-                measure_notes.append(note_to_jianpu(element, key_tonic_semitone))
+                if isinstance(element, JianpuNote):
+                    measure_notes.append(element)
+                else:
+                    measure_notes.append(note_to_jianpu(element, key_tonic_semitone))
             current_offset = next_offset
 
         if current_offset < measure_length - tol:
@@ -513,6 +547,12 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
     from .utils import log_message
     import logging as _logging
     part = score.parts[0] if score.parts else score.flatten()
+    # 合并延音线：同小节 start→stop 对合并为单音符；跨小节 tie 的合并音符由
+    # append_element_chunks 正确跨 bar 拆分，因此用 retainContainers=True 即可。
+    try:
+        part = part.stripTies(retainContainers=True)
+    except Exception:
+        pass
     time_signature = '4/4'
     bar_length = 4.0
     time_sig = part.recurse().getElementsByClass(meter.TimeSignature)
