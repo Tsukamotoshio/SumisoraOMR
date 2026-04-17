@@ -1,17 +1,18 @@
 #define MyAppName "简谱转换工具"
-#define MyAppVersion "0.2.2-homr-experimental"
+#define MyAppVersion "0.2.3"
 
-#define MyAppVersionNumeric "0.2.2.0"
+#define MyAppVersionNumeric "0.2.3.0"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "ConvertTool.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
-#define MyAppURL "https://github.com"
+#define MyAppURL "https://github.com/Tsukamotoshio/OMR-to-Jianpu-Conversion-Tool"
 
 [Setup]
 AppId={{D5D0D1C4-0E83-4A2E-BE8E-3D5A0A93F101}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
 DefaultDirName={autopf}\ConvertTool-{#MyAppVersion}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
@@ -213,7 +214,7 @@ begin
   // 迁移转换历史记录（如目标不存在则复制）
   if FileExists(FromDir + '\conversion_history.json') then
     if not FileExists(ToDir + '\conversion_history.json') then
-      FileCopy(FromDir + '\conversion_history.json',
+      CopyFile(FromDir + '\conversion_history.json',
                ToDir + '\conversion_history.json', False);
 end;
 

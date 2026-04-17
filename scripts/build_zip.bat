@@ -15,7 +15,7 @@ echo [DEBUG] BASE_DIR=%BASE_DIR%
 
 
 
-set "APP_VERSION=0.2.2-homr-experimental"
+set "APP_VERSION=0.2.3"
 
 
 

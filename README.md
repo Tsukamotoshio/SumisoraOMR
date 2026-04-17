@@ -1,6 +1,6 @@
 # OMR-to-Jianpu Conversion Tool / 简谱转换工具
 
-Version: v0.2.2-homr-experimental
+Version: v0.2.3
 
 **Author / 作者：Tsukamotoshio**
 

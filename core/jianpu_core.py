@@ -462,7 +462,17 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
         except Exception:
             measure_src = measure
 
-        for element in measure_src.flatten().notesAndRests:
+        # 简谱为单声部格式：若小节包含多声部（homr 有时输出 voice 2），
+        # 只取 voice 1（主旋律），完全忽略 voice 2+ 的内容，
+        # 避免次要音符或占位休止符干扰 repair_jianpu_measure 的预算计算。
+        _voices = list(measure_src.voices)
+        if _voices:
+            _v1 = next((v for v in _voices if str(v.id) == '1'), _voices[0])
+            _flat_all = list(_v1.flatten().notesAndRests)
+        else:
+            _flat_all = list(measure_src.flatten().notesAndRests)
+
+        for element in _flat_all:
             offset = float(element.offset)
             if offset >= measure_length - tol:
                 continue
@@ -729,125 +739,3 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> 
     return '\n'.join(header)
 
 
-# ─── 延音线重建（music21 对象接口，供测试与管线使用）────────────────────────────
-
-def reconstruct_ties_in_score(score) -> int:
-    """对 music21 Score 对象原地重建延音线，返回新增的 tie 对数。
-
-    使用与 tie_reconstruction 模块相同的规则逻辑（基于 music21 属性）。
-    适用于内存中的 Score；如需操作文件请使用 reconstruct_ties_in_file。
-    """
-    from collections import defaultdict
-    from music21 import note as m21note, tie as m21tie, articulations as m21art
-
-    added = 0
-
-    for part in score.parts:
-        groups: dict[tuple[str, int], list[tuple]] = defaultdict(list)
-
-        for meas_idx, measure in enumerate(part.getElementsByClass('Measure')):
-            meas_offset = float(measure.offset)
-
-            def _collect(iterable, voice_id: str) -> None:
-                for el in iterable:
-                    if not isinstance(el, m21note.Note):
-                        continue
-                    abs_off  = meas_offset + float(el.offset)
-                    dur_ql   = float(el.duration.quarterLength)
-                    has_tie_start = el.tie is not None and el.tie.type in ('start', 'continue')
-                    has_stacc = any(isinstance(a, m21art.Staccato) for a in el.articulations)
-                    has_acc   = any(isinstance(a, m21art.Accent)   for a in el.articulations)
-                    has_lyr   = bool(el.lyrics)
-                    try:
-                        has_slur = bool(el.getSpannerSites('Slur'))
-                    except Exception:
-                        has_slur = False
-                    beam_begin = beam_end = False
-                    if hasattr(el, 'beams') and el.beams:
-                        types = [b.type for b in el.beams]
-                        beam_begin = 'start' in types
-                        beam_end   = 'stop'  in types
-                    groups[(voice_id, el.pitch.midi)].append((
-                        el, abs_off, dur_ql, meas_idx,
-                        has_tie_start, has_stacc, has_acc,
-                        has_lyr, has_slur, beam_begin, beam_end,
-                    ))
-
-            voices = list(measure.voices)
-            if voices:
-                for voice in voices:
-                    _collect(voice.notesAndRests, str(voice.id))
-            else:
-                _collect(measure.notesAndRests, '1')
-
-        for items in groups.values():
-            items.sort(key=lambda x: x[1])
-            for i in range(len(items) - 1):
-                (a_el, a_off, a_dur, a_meas,
-                 a_ts, a_st, a_ac, a_ly, a_sl, a_bb, a_be) = items[i]
-                (b_el, b_off, b_dur, b_meas,
-                 b_ts, b_st, b_ac, b_ly, b_sl, b_bb, b_be) = items[i + 1]
-
-                if abs((a_off + a_dur) - b_off) > 1e-6:
-                    continue
-                if abs(a_off - b_off) < 1e-9:
-                    continue
-
-                # ── 确定性规则 ──────────────────────────────────────────────
-                if a_ts:
-                    continue   # 规则 A：已有 tie
-                if b_st or b_ac:
-                    continue   # 规则 C：第二音符断音
-                if b_ly:
-                    continue   # 规则 D：第二音符歌词
-
-                # ── 启发式评分 ──────────────────────────────────────────────
-                sc = 0.0
-                if a_meas != b_meas:
-                    sc += 3   # 跨小节
-                combined_ql = a_dur + b_dur
-                if combined_ql % 2.0 < 1e-9 or combined_ql % 2.0 > (2.0 - 1e-9):
-                    sc += 2   # 合并时值对齐半音符
-                if not (a_st or a_ac or b_st or b_ac):
-                    sc += 1   # 无装饰
-                if a_be and b_bb:
-                    sc -= 2   # beam 边界
-                if a_sl:
-                    sc -= 2   # slur 存在
-
-                if sc < 2:
-                    continue
-
-                # ── 写入 tie ────────────────────────────────────────────────
-                if a_el.tie is None:
-                    a_el.tie = m21tie.Tie('start')
-                elif a_el.tie.type == 'stop':
-                    a_el.tie = m21tie.Tie('continue')
-                if b_el.tie is None:
-                    b_el.tie = m21tie.Tie('stop')
-                elif b_el.tie.type == 'start':
-                    b_el.tie = m21tie.Tie('continue')
-                added += 1
-
-    return added
-
-
-def reconstruct_ties_in_file(src_path, dst_path=None) -> int:
-    """从文件重建延音线，写出到 dst_path（默认覆盖原文件）。
-
-    内部使用 tie_reconstruction 模块的 XML 级别实现以保证精确性。
-    返回新增的 tie 对数。
-    """
-    from pathlib import Path as _Path
-    import shutil as _shutil
-    from .tie_reconstruction import reconstruct_ties_in_musicxml, reconstruct_ties_in_mxl
-
-    src = _Path(src_path)
-    dst = _Path(dst_path) if dst_path is not None else src
-
-    if dst != src:
-        _shutil.copy2(src, dst)
-
-    if dst.suffix.lower() == '.mxl':
-        return reconstruct_ties_in_mxl(dst)
-    return reconstruct_ties_in_musicxml(dst)

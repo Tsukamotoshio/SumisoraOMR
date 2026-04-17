@@ -35,7 +35,8 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 import re as _re
 _cuda_pat = _re.compile(
     r'(?:cublas|cufft|cudart|cudnn|nvrtc|nvblas|curand|cusparseLt|'
-    r'onnxruntime_providers_cuda|onnxruntime_providers_tensorrt|directml)',
+    r'onnxruntime_providers_cuda|onnxruntime_providers_tensorrt|directml|'
+    r'nvinfer|nvonnxparser)',
     _re.IGNORECASE
 )
 def _is_cuda_item(item):

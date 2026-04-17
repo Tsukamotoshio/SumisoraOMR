@@ -1,25 +1,44 @@
 简谱转换工具
 ============
 
-版本：v0.2.2-homr-experimental
+版本：v0.2.3
 
 author：Tsukamotoshio
 
 将五线谱 PDF 批量转换为简谱 PDF，并可按需生成 MIDI 文件。
 
-提示：运行时输入 H 或 ? 可查看操作指引；输入 Q 可随时退出。
-
 
 版本更新
 --------
 
-0.2.2（当前版本）
+0.2.3（当前版本）
+  - 许可证由 MIT 更改为 GNU Affero 通用公共许可证第 3 版（AGPL-3.0）
+  - 暂时移除 Oemer 引擎：改用 Homr（更轻量，无需 GPU 驱动依赖）；
+    Oemer 可能在未来版本回归
+  - Homr 弱机适配：自动根据可用内存调整 SegNet 批处理大小，避免低内存
+    机器运行 Homr 时出现内存不足（OOM）错误
+  - Homr 处理进度：增加心跳与进度回调，避免 Homr 识别时 GUI 长时间无响应
+  - 简谱多声部休止符修复：修复多声部乐谱中全小节休止符（附属声部）错误
+    占用拍值导致旋律音符被截断的问题
+  - GUI 已知问题修复：修正 Rich TUI 界面中若干已知的显示与交互问题
+  - 移调引擎已知问题修复：修正调号移调流程中若干边界情况的错误
+
+0.2.2-homr-experimental
+  - 新增 GitHub Releases 版本更新检测：可在应用内直接打开下载页面
   - 权限错误修复：安装在 C:\Program Files 下以普通用户身份运行时
     不再闪退，改为显示友好提示，指引用户以管理员身份重新运行
   - MIDI 与 PDF 内容一致性修复：生成的 MIDI 现在与简谱 PDF 完全
     对应，均基于同一声部（首调旋律线），不再包含多声部或和弦
 
-0.2.0-experimental
+0.2.1
+  - 稳定版发布，整合 v0.2.0-preview 与 v0.2.0-oemer-experimental；
+    安装脚本、版本显示等小幅更新
+
+0.2.0-oemer-experimental
+  - 新增 Oemer 深度学习 OMR 引擎（适合手机拍摄或光线不均匀的图片）
+  - 自动引擎路由：PDF 输入 → Audiveris；图片输入 → Oemer
+
+0.2.0-preview
   - 首调唱名法（Movable-Do）：音符编号现在根据调号自动映射，1=do 始终对应
     当前调的主音，升降号也按调性倾向自动选择（升号调用 #，降号调用 b）
   - 全新 Rich TUI 菜单界面，取代原命令行交互方式
@@ -49,15 +68,18 @@ author：Tsukamotoshio
 使用方法
 --------
 
-1. 将五线谱文件（PDF / PNG / JPG）放入 Input 文件夹
+1. 将五线谱文件（PDF / PNG / JPG）放入 Input 文件夹，或直接拖入左侧文件侧边栏
 2. 双击桌面快捷方式"简谱转换工具"，或运行安装目录下的 ConvertTool.exe
-3. 按提示确认是否开始转换、是否生成 MIDI
-4. 转换结果保存到 Output 文件夹
+3. 在文件侧边栏中选中要转换的文件
+4. 选择 OMR 引擎（推荐 Audiveris；Homr 为实验性引擎）
+5. 可选：指定输出目录，然后点击"开始转换"
+6. 在弹出对话框中确认选项（是否生成 MIDI、是否跳过重复文件），
+   点击"开始转换"启动转换
+7. 转换结果保存到 Output 文件夹
 
-运行过程中可在提示符处输入：
-  Y / N   — 确认或拒绝操作
-  H 或 ?  — 显示帮助与使用说明
-  Q       — 退出程序
+应用还包含以下功能页：
+  移调引擎  — 将 MusicXML 乐谱移调至指定调性，支持实时对比预览
+  编辑器    — 打开并编辑 .jianpu.txt 文件，左侧可参照二值化图像
 
 
 目录说明
@@ -65,6 +87,8 @@ author：Tsukamotoshio
 
   Input\                    放入待转换的原始乐谱文件
   Output\                   保存转换后的简谱 PDF / MIDI
+  editor-workspace\         转换后保留的中间文件
+                            （供简谱编辑器检视与重新导出）
   logs\                     运行日志（自动生成）
   THIRD_PARTY_NOTICES.md    第三方组件许可证说明
 
@@ -77,8 +101,8 @@ author：Tsukamotoshio
   .jpg / .jpeg  五线谱图片
 
 
-简谱 txt 编辑器（新功能）
--------------------------
+简谱 txt 编辑器
+-----------
 
 可使用纯文本文件（*.jianpu.txt）手动编写或编辑简谱：
 
@@ -109,11 +133,15 @@ author：Tsukamotoshio
 - 不支持歌词输出：仅输出音符，不含歌词
 - 处理速度较慢：Audiveris/Homr 启动耗时较长，识别速度取决于机器性能
 - 调号 / 拍号边缘情况：少数非常规调号或变拍子乐谱可能不准确
+- OMR 引擎自动路由暂时不可用：需手动选择引擎（Audiveris 或 Homr）
+- Homr 为实验性引擎：对印刷五线谱的识别质量可能低于 Audiveris
+- Homr 仅识别高音 / 低音谱表上的音高与节奏，忽略强弱记号、演奏法、
+  重升号 / 重降号以及其他音乐记号
 
 
 许可证
 ------
 
-本项目采用 MIT License 授权，详见 LICENSE 文件。
+本项目采用 GNU Affero 通用公共许可证第 3 版（AGPL-3.0）授权，详见 LICENSE 文件。
 本工具包含第三方组件（Audiveris、LilyPond、music21、waifu2x-ncnn-vulkan 等），
 其版权与许可证信息请参见 THIRD_PARTY_NOTICES.md。

@@ -136,6 +136,7 @@ def process_single_input_to_jianpu(
             return False
         if not check_homr_available():
             return False
+        _report_subprogress(0.05, '[homr] 启动 OMR 识别…')
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
         with ThreadPoolExecutor(max_workers=1) as _homr_ex:
             _homr_future = _homr_ex.submit(
@@ -143,6 +144,7 @@ def process_single_input_to_jianpu(
                 source_file,
                 file_temp_dir,
                 use_gpu_inference=use_gpu_inference,
+                progress_fn=_report_subprogress,
             )
             try:
                 omr_out = _homr_future.result(timeout=MAX_HOMR_SECONDS)
@@ -202,21 +204,6 @@ def process_single_input_to_jianpu(
         effective_source = source_file
 
     # ── Homr 后处理：结构清洗（安全操作，不修改时值）──────────────────────────
-    # homr 当前不输出 tie 符号，需在 MusicXML 后处理阶段补全。
-    # 注意：必须在归档到 xml-scores 之前执行，使归档文件包含完整 tie 信息。
-    # TODO: 重新启用，待 tie 重建算法经过充分验证后取消注释。
-    # if effective_engine is OMREngine.HOMR:
-    #     try:
-    #         from .tie_reconstruction import reconstruct_ties_in_mxl, reconstruct_ties_in_musicxml
-    #         if mxl_file.suffix.lower() == '.mxl':
-    #             _n_ties = reconstruct_ties_in_mxl(mxl_file)
-    #         else:
-    #             _n_ties = reconstruct_ties_in_musicxml(mxl_file)
-    #         if _n_ties:
-    #             log_message(f'  [Homr 后处理] 重建了 {_n_ties} 对延音线。')
-    #     except Exception as _tie_exc:
-    #         log_message(f'  [Homr 后处理] 延音线重建失败（不影响输出）：{_tie_exc}')
-
     if effective_engine is OMREngine.HOMR:
         try:
             from .dl_fix import fix_homr_output
