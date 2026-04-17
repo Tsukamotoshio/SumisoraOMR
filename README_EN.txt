@@ -2,20 +2,51 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: v0.2.2-homr-experimental
+Version: v0.2.3
 
 Batch-convert Western staff notation PDFs into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
-
-Tip: Type H or ? at the prompt for in-app help. Type Q to quit at any time.
 
 
 What's New
 ----------
 
-0.2.2 (current)
-  - Added GitHub Releases update checking so users can conveniently open the
-    download page from within the app.
+0.2.3 (current)
+  - License changed from MIT to GNU Affero General Public License v3
+    (AGPL-3.0).
+  - Oemer engine temporarily removed: replaced by Homr (lighter weight,
+    no GPU driver dependency); Oemer may return in a future release.
+  - Homr low-memory adaptation: SegNet batch size is now automatically
+    scaled based on available RAM to prevent OOM errors on low-spec machines.
+  - Homr processing progress: heartbeat and progress callbacks keep the
+    GUI responsive during long Homr recognition runs.
+  - Jianpu phantom rest fix: full-measure rests from secondary voices no
+    longer consume the bar budget, preventing melody note truncation in
+    multi-voice scores.
+  - GUI fixes: resolved several known display and interaction issues in the
+    Rich TUI interface.
+  - Transposition engine fixes: corrected known edge-case errors in the
+    key-transposition pipeline.
+
+0.2.2-homr-experimental
+  - Added GitHub Releases update checking; users can open the download page
+    directly from within the app.
+  - Permission error fix: no longer crashes when running as a standard user
+    under C:\Program Files; shows a friendly prompt to re-run as administrator.
+  - MIDI/PDF consistency fix: generated MIDI now matches the Jianpu PDF
+    exactly, both derived from the same melody voice (Movable-Do line);
+    multi-voice mixing and chords are excluded.
+
+0.2.1
+  - Stable release consolidating v0.2.0-preview and v0.2.0-oemer-experimental;
+    minor packaging, installer, and version-display updates.
+
+0.2.0-oemer-experimental
+  - Added Oemer deep-learning OMR engine (better for phone photos or
+    uneven-lighting images).
+  - Automatic engine routing: PDF input → Audiveris; image input → Oemer.
+
+0.2.0-preview
   - Movable-Do (首调唱名法): note numbers are now mapped relative to the key
     signature — '1' always represents the tonic of the current key, and
     accidentals follow the key's natural tendency (sharps for sharp keys,
@@ -44,22 +75,34 @@ What's New
   - Added Jianpu TXT editor foundation: author or edit scores using
     plain .jianpu.txt files.
 
-0.1.2: Image pre-processing (noise reduction, sharpening, waifu2x upscale).
-0.1.1: PNG/JPG input support; auto-open Output folder after conversion.
+0.1.2
+  - Image pre-processing: noise reduction, sharpening, waifu2x super-resolution
+    upscale.
+  - Optimized handling of low-resolution scans.
+
+0.1.1
+  - Auto-open Output folder after conversion completes.
+  - PNG / JPG / JPEG input support added.
+  - Fixed: LilyPond watermark text appearing at the end of output PDFs.
 
 
 Usage
 -----
 
-1. Place sheet music files (PDF / PNG / JPG) into the Input folder.
+1. Place sheet music files (PDF / PNG / JPG) into the Input folder, or drag
+   them directly into the file sidebar.
 2. Double-click the "Jianpu Conversion Tool" desktop shortcut, or run
    ConvertTool.exe in the installation directory.
-3. Follow the prompts to confirm conversion and optional MIDI output.
-4. Results are saved to the Output folder.
+3. In the file sidebar, select the files you want to convert.
+4. Choose the OMR engine (Audiveris recommended; Homr is experimental).
+5. Optionally set a custom output directory, then click "Start Conversion".
+6. Confirm options in the dialog (MIDI generation, skip duplicates), then
+   click "Start Conversion" to begin.
+7. Results are saved to the Output folder.
 
-At any prompt you may also type:
-  H or ?   — show in-app help and usage guide
-  Q        — quit the program
+The app also includes:
+  Transposer  — transpose a MusicXML score to a different key with live preview
+  Editor      — open and edit .jianpu.txt files with a binarized image reference
 
 
 Directory Layout
@@ -67,6 +110,8 @@ Directory Layout
 
   Input\                    Place source sheet music files here
   Output\                   Converted Jianpu PDFs and MIDIs are saved here
+  editor-workspace\         Intermediate files preserved after conversion
+                            (for Jianpu editor inspection and re-export)
   logs\                     Runtime logs (auto-generated)
   THIRD_PARTY_NOTICES.md    Third-party component licenses
 
@@ -79,8 +124,8 @@ Supported Input Formats
   .jpg / .jpeg  Sheet music image
 
 
-Jianpu TXT Editor (New Feature)
---------------------------------
+Jianpu TXT Editor
+-----------------
 
 You can write or edit scores as plain-text .jianpu.txt files:
 
@@ -113,16 +158,23 @@ Known Limitations
 - Limited polyphony support. Scores with many voices or chords may only
   retain the main melody; some notes may be lost.
 - No lyrics output. Only notes are exported; lyrics are not included.
-- Slow processing. Audiveris startup takes time; multi-page PDFs may
+- Slow processing. Audiveris/Homr startup takes time; multi-page PDFs may
   take several minutes to convert.
 - Edge cases in key/time signatures. Uncommon time signatures or
   key changes may yield inaccurate results.
+- Automatic OMR engine routing is temporarily unavailable. The engine must
+  be selected manually (Audiveris or Homr).
+- Homr is experimental. Recognition quality may be lower than Audiveris
+  for printed scores.
+- Homr only captures pitch and rhythm on treble/bass clef. Dynamics,
+  articulation, double sharps/flats, and other musical symbols are ignored.
 
 
 License
 -------
 
-Licensed under the MIT License. See the LICENSE file for details.
+Licensed under the GNU Affero General Public License v3 (AGPL-3.0).
+See the LICENSE file for details.
 This tool bundles third-party components (Audiveris, LilyPond, music21,
 waifu2x-ncnn-vulkan, etc.). Their copyrights and licenses are listed in
 THIRD_PARTY_NOTICES.md.

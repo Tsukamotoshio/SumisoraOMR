@@ -12,9 +12,54 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import HOMR_SOURCE_DIR_NAME, OMR_ENGINE_DIR_NAME
+from .config import HOMR_SOURCE_DIR_NAME, MAX_HOMR_SECONDS, OMR_ENGINE_DIR_NAME
 from .image_preprocess import preprocess_image_for_omr
 from .utils import find_first_musicxml_file, get_app_base_dir, log_message
+
+
+def _get_available_memory_mb() -> Optional[int]:
+    """返回当前可用物理内存（MB）。仅 Windows 有效，其他平台返回 None。"""
+    if os.name != 'nt':
+        return None
+    try:
+        import ctypes
+
+        class _MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ('dwLength', ctypes.c_ulong),
+                ('dwMemoryLoad', ctypes.c_ulong),
+                ('ullTotalPhys', ctypes.c_uint64),
+                ('ullAvailPhys', ctypes.c_uint64),
+                ('ullTotalPageFile', ctypes.c_uint64),
+                ('ullAvailPageFile', ctypes.c_uint64),
+                ('ullTotalVirtual', ctypes.c_uint64),
+                ('ullAvailVirtual', ctypes.c_uint64),
+                ('ullAvailExtendedVirtual', ctypes.c_uint64),
+            ]
+
+        stat = _MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(stat)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))  # type: ignore[attr-defined]
+        return int(stat.ullAvailPhys // (1024 * 1024))
+    except Exception:
+        return None
+
+
+def _compute_segnet_batch_size(avail_mb: Optional[int]) -> int:
+    """根据可用内存确定 SegNet 推理批大小。
+
+    内存越少，每批处理的 patch 越少，降低内存峰值。
+    阈值经验来自：模型权重 ~150 MB + ONNX 运行时开销 ~200 MB + 批量 numpy 缓冲。
+    """
+    if avail_mb is None:
+        return 8  # 无法检测，使用默认值
+    if avail_mb >= 3000:
+        return 8
+    if avail_mb >= 2000:
+        return 4
+    if avail_mb >= 1200:
+        return 2
+    return 1
 
 
 @contextmanager
@@ -112,10 +157,12 @@ def _run_with_heartbeat(
     fn,
     label: str,
     heartbeat_interval: int = 30,
+    on_heartbeat=None,
 ) -> None:
     """在子线程中执行 fn()，主线程每隔 heartbeat_interval 秒输出一条进度日志。
 
     若 fn 抛出异常，异常会在主线程重新抛出。
+    on_heartbeat: 可选回调，签名 on_heartbeat(elapsed_seconds: int)，每次心跳触发一次。
     """
     exc_holder: list[BaseException] = []
 
@@ -134,6 +181,11 @@ def _run_with_heartbeat(
         if t.is_alive():
             elapsed = int(time.monotonic() - start)
             log_message(f'  {label}仍在识别中…已耗时 {elapsed} 秒，请耐心等待。')
+            if on_heartbeat is not None:
+                try:
+                    on_heartbeat(elapsed)
+                except Exception:
+                    pass
     if exc_holder:
         raise exc_holder[0]
 
@@ -260,10 +312,12 @@ def run_homr_batch(
     source_image: Path,
     output_dir: Path,
     use_gpu_inference: Optional[bool] = None,
+    progress_fn=None,
 ) -> Optional[Path]:
     """Run homr on a single image file or a PDF's first page, returning the output directory.
 
     Homr should receive the whole page after preprocessing, not per-line slices.
+    progress_fn: 可选进度回调，签名 progress_fn(value: float 0.0-1.0, message: str)。
     """
     if source_image.suffix.lower() == '.pdf':
         image_path = _pdf_first_page_to_png(source_image, output_dir, engine_label='homr')
@@ -296,6 +350,31 @@ def run_homr_batch(
     image_path = safe_image_path
     log_message(f'[homr] 输入文件已准备: {safe_image_path.name}')
 
+    # ── 内存检测与 batch_size 自适应 ──────────────────────────────────────────
+    _avail_mb = _get_available_memory_mb()
+    _batch_size = _compute_segnet_batch_size(_avail_mb)
+    if _avail_mb is not None:
+        if _avail_mb < 1500:
+            log_message(
+                f'[homr] 警告：可用内存仅 {_avail_mb} MB，低于建议的 1.5 GB。'
+                f' SegNet 批大小已自动降至 {_batch_size}，识别可能较慢或失败。',
+                logging.WARNING,
+            )
+        else:
+            log_message(f'[homr] 可用内存 {_avail_mb} MB，SegNet 批大小: {_batch_size}。')
+
+    # ── 心跳进度回调（在识别等待期间推进 GUI 进度条）────────────────────────────
+    # 将识别阶段进度从 0.10 线性推进到 0.60，基于 MAX_HOMR_SECONDS 做归一化。
+    def _on_heartbeat(elapsed: int) -> None:
+        if progress_fn is None:
+            return
+        frac = min(elapsed / MAX_HOMR_SECONDS, 1.0)
+        value = 0.10 + frac * 0.50  # 0.10 → 0.60
+        try:
+            progress_fn(value, f'[homr] 识别中…已耗时 {elapsed}s')
+        except Exception:
+            pass
+
     source_dir = _ensure_homr_import_path()
     _add_nvidia_cuda_dll_dirs()
     try:
@@ -323,6 +402,7 @@ def run_homr_batch(
             read_staff_positions=False,
             selected_staff=-1,
             use_gpu_inference=use_gpu_inference,
+            segnet_batch_size=_batch_size,
         )
         xml_args = homr_main.XmlGeneratorArguments(False, None, None)
         mode_label = 'GPU' if use_gpu_inference else 'CPU'
@@ -330,6 +410,7 @@ def run_homr_batch(
         _run_with_heartbeat(
             lambda: homr_main.process_image(str(image_path), config, xml_args),
             label='[homr] ',
+            on_heartbeat=_on_heartbeat,
         )
         log_message('[homr] 识别完成。')
     except Exception as exc:
@@ -350,11 +431,13 @@ def run_homr_batch(
                     read_staff_positions=False,
                     selected_staff=-1,
                     use_gpu_inference=False,
+                    segnet_batch_size=_batch_size,
                 )
                 log_message('[homr] 回退到 CPU 模式重试…')
                 _run_with_heartbeat(
                     lambda: homr_main.process_image(str(image_path), _cpu_config, xml_args),
                     label='[homr] ',
+                    on_heartbeat=_on_heartbeat,
                 )
                 log_message('[homr] 识别完成（CPU 模式）。')
             except Exception as _cpu_exc:

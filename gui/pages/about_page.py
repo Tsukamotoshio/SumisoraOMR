@@ -35,7 +35,7 @@ class AboutPage(ft.Column):
     """关于页面：作者、项目地址、许可证。"""
 
     _GITHUB_URL = 'https://github.com/Tsukamotoshio/OMR-to-Jianpu-Conversion-Tool'
-    VERSION = 'v0.2.2-homr-experimental'
+    VERSION = 'v0.2.3'
 
     def __init__(self):
         self._opening = False
