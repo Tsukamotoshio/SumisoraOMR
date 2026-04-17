@@ -201,7 +201,7 @@ def process_single_input_to_jianpu(
     else:
         effective_source = source_file
 
-    # ── Homr 后处理：重建延音线（暂时禁用，算法有待修复）────────────────────────
+    # ── Homr 后处理：结构清洗（安全操作，不修改时值）──────────────────────────
     # homr 当前不输出 tie 符号，需在 MusicXML 后处理阶段补全。
     # 注意：必须在归档到 xml-scores 之前执行，使归档文件包含完整 tie 信息。
     # TODO: 重新启用，待 tie 重建算法经过充分验证后取消注释。
@@ -216,6 +216,15 @@ def process_single_input_to_jianpu(
     #             log_message(f'  [Homr 后处理] 重建了 {_n_ties} 对延音线。')
     #     except Exception as _tie_exc:
     #         log_message(f'  [Homr 后处理] 延音线重建失败（不影响输出）：{_tie_exc}')
+
+    if effective_engine is OMREngine.HOMR:
+        try:
+            from .dl_fix import fix_homr_output
+            _cleaned = fix_homr_output(mxl_file, file_temp_dir)
+            if _cleaned is not None:
+                mxl_file = _cleaned
+        except Exception as _fix_exc:
+            log_message(f'  [Homr 后处理] 结构清洗异常（不影响输出）：{_fix_exc}', logging.WARNING)
 
     _report_subprogress(0.70, '正在生成简谱 PDF…')
 
