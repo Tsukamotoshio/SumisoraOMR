@@ -38,8 +38,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from .config import LOGGER
-from .utils import get_app_base_dir, log_message
+from ..config import LOGGER
+from ..utils import get_app_base_dir, log_message
 
 try:
     from music21 import converter, note, stream

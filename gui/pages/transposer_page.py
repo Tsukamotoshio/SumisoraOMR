@@ -13,7 +13,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from core.backend import xml_scores_dir, output_dir, build_dir, open_directory
+from core.app.backend import xml_scores_dir, output_dir, build_dir, open_directory
 from ..components.pdf_viewer import PdfViewer
 from ..theme import Palette, section_title
 
@@ -291,7 +291,7 @@ class TransposerPage(ft.Column):
             self._on_auto_detect(None)
 
     def _on_key_change(self, _e=None) -> None:
-        from core.transposer import get_transposition_semitones
+        from core.music.transposer import get_transposition_semitones
         try:
             semitones = get_transposition_semitones(
                 self._from_key_dd.value or 'C',
@@ -320,7 +320,7 @@ class TransposerPage(ft.Column):
         try:
             if token != self._auto_detect_token:
                 return
-            from core.transposer import detect_key_from_musicxml
+            from core.music.transposer import detect_key_from_musicxml
             key = detect_key_from_musicxml(self._orig_mxl)
             if token != self._auto_detect_token:
                 return
@@ -353,7 +353,7 @@ class TransposerPage(ft.Column):
             return
         self._set_busy(True)
         try:
-            from core.transposer import transpose_musicxml
+            from core.music.transposer import transpose_musicxml
             import tempfile
 
             base = build_dir()
@@ -407,7 +407,7 @@ class TransposerPage(ft.Column):
             return
         self._set_busy(True)
         try:
-            from core.runtime_finder import render_musicxml_staff_pdf
+            from core.render.lilypond_runner import render_musicxml_staff_pdf
 
             base = output_dir(None)
             out_pdf = base / f'{self._transposed_mxl.stem}_staff.pdf'
@@ -478,7 +478,7 @@ class TransposerPage(ft.Column):
             out  = base / f'{mxl_path.stem}{suffix}.pdf'
 
             # 只渲染五线谱预览，不再回退到简谱。
-            from core.runtime_finder import render_musicxml_staff_pdf
+            from core.render.lilypond_runner import render_musicxml_staff_pdf
             pdf = render_musicxml_staff_pdf(mxl_path, tmp)
             if pdf and pdf.exists():
                 import shutil

@@ -87,7 +87,7 @@ _bootstrap_venv()
 if __name__ == '__main__' and '--worker' in sys.argv:
     import multiprocessing
     multiprocessing.freeze_support()
-    from core.worker_main import run_worker
+    from core.omr.worker_main import run_worker
     run_worker()
     import os as _os
     _os._exit(0)   # 强制退出：绕过 onnxruntime 等库遗留的非 daemon 线程

@@ -192,7 +192,7 @@ class JianpuEditor(ft.Column):
 
     def _export_pdf_thread(self) -> None:
         try:
-            from core.runtime_finder import render_jianpu_ly, render_lilypond_pdf
+            from core.render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
             txt_path = self._path
             ly_path  = txt_path.with_suffix('.ly')
             self._state.append_log(f'正在生成 LilyPond 中间文件: {ly_path.name}')

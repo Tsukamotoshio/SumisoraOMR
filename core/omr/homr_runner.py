@@ -12,9 +12,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import HOMR_SOURCE_DIR_NAME, MAX_HOMR_SECONDS, OMR_ENGINE_DIR_NAME
-from .image_preprocess import preprocess_image_for_omr
-from .utils import find_first_musicxml_file, get_app_base_dir, log_message
+from ..config import HOMR_SOURCE_DIR_NAME, MAX_HOMR_SECONDS, OMR_ENGINE_DIR_NAME
+from ..image.image_preprocess import preprocess_image_for_omr
+from ..utils import find_first_musicxml_file, get_app_base_dir, log_message
 
 
 def _get_available_memory_mb() -> Optional[int]:

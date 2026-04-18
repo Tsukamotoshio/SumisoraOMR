@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..app_state import AppState, Event
-from core.backend import app_base_dir
+from core.app.backend import app_base_dir
 from ..theme import Palette, section_title
 
 

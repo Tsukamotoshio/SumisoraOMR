@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 
-from core.utils import get_app_base_dir
+from ..utils import get_app_base_dir
 
 
 def app_base_dir() -> Path:

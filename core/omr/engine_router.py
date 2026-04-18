@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .quality_score import QualityResult
+    from ..image.quality_score import QualityResult
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 公共常量

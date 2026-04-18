@@ -53,7 +53,7 @@ def _bootstrap_venv() -> None:
 _bootstrap_venv()
 # ---------------------------------------------------------------------------
 
-from core.pipeline import main
+from core.app.pipeline import main
 
 if __name__ == '__main__':
     main()

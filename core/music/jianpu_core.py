@@ -4,7 +4,7 @@ from typing import Optional
 
 from music21 import chord as m21chord, meter, note as m21note, stream
 
-from .config import (
+from ..config import (
     ALLOWED_JIANPU_DURATIONS,
     JianpuNote,
 )

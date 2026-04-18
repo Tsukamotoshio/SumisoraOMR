@@ -36,7 +36,7 @@ import logging
 from collections import defaultdict
 from typing import Any
 
-from .utils import log_message
+from ..utils import log_message
 
 
 # ──────────────────────────────────────────────────────────────────────────────

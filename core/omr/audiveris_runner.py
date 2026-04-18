@@ -7,23 +7,23 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from .config import (
+from ..config import (
     LOGGER,
     MAX_AUDIVERIS_SECONDS,
 )
-from .image_preprocess import (
+from ..image.image_preprocess import (
     HAS_PILLOW,
     _measure_laplacian_stddev,
     fit_image_within_pixel_limit,
     preprocess_image_for_omr,
 )
-from .runtime_finder import (
+from ..app.runtime_finder import (
     ensure_audiveris_executable,
     find_java_executable,
     get_audiveris_required_java_version,
     run_subprocess_with_spinner,
 )
-from .utils import (
+from ..utils import (
     build_safe_ascii_name,
     find_first_musicxml_file,
     get_app_base_dir,
@@ -322,7 +322,7 @@ def run_audiveris_batch(
                     logging.WARNING,
                 )
                 try:
-                    from .transposer import strip_slurs_ties_from_mxl
+                    from ..music.transposer import strip_slurs_ties_from_mxl
                     strip_slurs_ties_from_mxl(_partial_mxl, backup=True)
                     log_message('  [CURVES 救援] 连音线已删除，继续后续处理。')
                     _maybe_merge_mvt_files(safe_output_dir)
@@ -495,9 +495,11 @@ def run_audiveris_sliced_batch(
         output_dir = tmp_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    from .image_preprocess import (
+    from ..image.image_preprocess import (
         preprocess_image_for_omr,
         preprocess_geometry_for_omr,
+    )
+    from ..image.staff_slicer import (
         slice_staff_rows,
         correct_slice_rotation,
     )

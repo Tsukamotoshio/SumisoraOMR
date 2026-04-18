@@ -14,7 +14,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from core.backend import app_base_dir, output_dir, open_directory
+from core.app.backend import app_base_dir, output_dir, open_directory
 from ..components.file_sidebar import FileSidebar
 from ..components.pdf_viewer import PdfViewer
 from ..components.progress_overlay import ProgressOverlay
@@ -214,6 +214,13 @@ class LandingPage(ft.Row):
             except Exception:
                 pass
 
+    def _show_snack(self, msg: str, color: str = Palette.INFO) -> None:
+        self.page.show_dialog(ft.SnackBar(
+            content=ft.Text(msg, color='#FFFFFF'),
+            bgcolor=color,
+            duration=3500,
+        ))
+
     def _on_open_output_dir(self, _e) -> None:
         try:
             output_dir_path = output_dir(self._output_dir_text.value)
@@ -275,9 +282,9 @@ class LandingPage(ft.Row):
 
         def _do_confirm(_ev) -> None:
             self.page.pop_dialog()
-            skip = (self._skip_dup_cb.value if self._skip_dup_cb is not None else False)
+            skip = bool(self._skip_dup_cb.value) if self._skip_dup_cb is not None else False
             self._start_conversion(
-                gen_midi=self._midi_cb.value,
+                gen_midi=bool(self._midi_cb.value),
                 skip_duplicates=skip,
                 duplicate_files=set(existing),
             )

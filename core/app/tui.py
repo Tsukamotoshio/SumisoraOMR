@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 
-from .config import APP_VERSION, AppConfig
-from .utils import get_app_base_dir, log_message, setup_logging
+from ..config import APP_VERSION, AppConfig
+from ..utils import get_app_base_dir, log_message, setup_logging
 
 # ──────────────────────────────────────────────────────────────────────────────
 EDITOR_WORKSPACE_DIR_NAME = 'editor-workspace'
@@ -274,8 +274,8 @@ class TUI:
 
     def _screen_convert(self) -> None:
         import dataclasses
-        from .config import AppConfig, OMREngine
-        from .homr_runner import _homr_gpu_available
+        from ..config import AppConfig, OMREngine
+        from ..omr.homr_runner import _homr_gpu_available
 
         from .pipeline import process_bulk_input_to_jianpu
 
@@ -527,9 +527,9 @@ class TUI:
         passing it to ``render_jianpu_ly``.
         """
         import tempfile
-        from .renderer import sanitize_generated_lilypond_file
-        from .runtime_finder import render_jianpu_ly, render_lilypond_pdf
-        from .utils import safe_remove_file
+        from ..render.renderer import sanitize_generated_lilypond_file
+        from ..render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
+        from ..utils import safe_remove_file
 
         self._header('简谱编辑器 — 生成中 ...')
         self.console.print()

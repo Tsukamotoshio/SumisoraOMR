@@ -13,11 +13,11 @@ from music21 import converter, metadata as m21metadata
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-from .config import (
+from ..config import (
     LOGGER,
     JianpuNote,
 )
-from .jianpu_core import (
+from ..music.jianpu_core import (
     build_jianpu_ly_text,
     build_jianpu_ly_text_from_measures,
     choose_measures_per_line,
@@ -27,11 +27,11 @@ from .jianpu_core import (
     jianpu_note_token,
     parse_score_to_jianpu,
 )
-from .runtime_finder import (
+from .lilypond_runner import (
     render_jianpu_ly,
     render_lilypond_pdf,
 )
-from .utils import (
+from ..utils import (
     collect_preserved_lyrics_lines,
     log_message,
     register_pdf_font,

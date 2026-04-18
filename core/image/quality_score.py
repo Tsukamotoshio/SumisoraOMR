@@ -20,9 +20,9 @@ import logging
 from pathlib import Path
 from typing import TypedDict
 
-from .config import LOGGER
+from ..config import LOGGER
 from .image_preprocess import _measure_laplacian_stddev
-from .utils import log_message
+from ..utils import log_message
 
 try:
     from PIL import Image

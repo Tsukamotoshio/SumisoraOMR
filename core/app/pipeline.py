@@ -4,11 +4,12 @@ import hashlib
 import logging
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional
 
-from .audiveris_runner import run_audiveris_batch, run_audiveris_sliced_batch
-from .config import (
+from ..omr.audiveris_runner import run_audiveris_batch, run_audiveris_sliced_batch
+from ..config import (
     APP_VERSION,
     LOGGER,
     AppConfig,
@@ -17,9 +18,9 @@ from .config import (
     MAX_HOMR_SECONDS,
     OMREngine,
 )
-from .homr_runner import check_homr_available, run_homr_batch
-from .renderer import generate_jianpu_pdf_from_mxl
-from .utils import (
+from ..omr.homr_runner import check_homr_available, run_homr_batch
+from ..render.renderer import generate_jianpu_pdf_from_mxl
+from ..utils import (
     build_runtime_paths,
     cleanup_old_temporary_paths,
     cleanup_output_directory,
@@ -198,7 +199,7 @@ def process_single_input_to_jianpu(
         if omr_ref.exists():
             effective_source = omr_ref
         else:
-            from .image_preprocess import create_display_reference
+            from ..image.image_preprocess import create_display_reference
             effective_source = create_display_reference(source_file, file_temp_dir) or source_file
     else:
         effective_source = source_file
@@ -206,7 +207,7 @@ def process_single_input_to_jianpu(
     # ── Homr 后处理：结构清洗（安全操作，不修改时值）──────────────────────────
     if effective_engine is OMREngine.HOMR:
         try:
-            from .dl_fix import fix_homr_output
+            from ..omr.dl_fix import fix_homr_output
             _cleaned = fix_homr_output(mxl_file, file_temp_dir)
             if _cleaned is not None:
                 mxl_file = _cleaned
@@ -444,7 +445,6 @@ def wait_for_exit_key(prompt: str = '按任意键退出...') -> None:
 
 
 def main() -> None:
-    """Entry point: launch the Rich TUI state machine."""
-    from .tui import main_tui
-    setup_logging(get_app_base_dir())
-    main_tui(AppConfig())
+    """命令行入口（已废弃）。请使用 GUI：python app.py"""
+    print('此命令行入口已停用，请运行 python app.py 启动 GUI。')
+    sys.exit(0)

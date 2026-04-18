@@ -95,7 +95,7 @@ def _patch_log_message() -> None:
     # 确保它们在下面的扫描前都已加载。
     try:
         import importlib as _importlib
-        _importlib.import_module('core.pipeline')
+        _importlib.import_module('core.app.pipeline')
     except Exception:
         pass
 
@@ -177,8 +177,8 @@ def run_worker() -> None:
 
         # ── 导入（延迟，避免在修补前触发 import-time 副作用）──────────────────
         from core.config import OMREngine  # noqa: PLC0415
-        from core.pipeline import process_single_input_to_jianpu  # noqa: PLC0415
-        import core.pipeline as _pipeline
+        from core.app.pipeline import process_single_input_to_jianpu  # noqa: PLC0415
+        import core.app.pipeline as _pipeline
 
         # ── 注入子进度回调——pipeline 内部调用时发送 IPC sub_progress 消息 ───────
         _pipeline._subprogress_fn = lambda v, m: _send({'type': 'sub_progress', 'value': v, 'message': m})

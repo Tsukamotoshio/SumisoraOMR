@@ -13,7 +13,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from core.backend import editor_workspace_dir, open_directory
+from core.app.backend import editor_workspace_dir, open_directory
 from ..components.jianpu_editor import JianpuEditor
 from ..theme import Palette
 
