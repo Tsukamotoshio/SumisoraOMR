@@ -16,6 +16,7 @@ from typing import Any, Callable, Optional
 
 class Event:
     FILES_CHANGED       = 'files_changed'       # 钉选文件列表发生变化
+    FILES_CHECK_CHANGED = 'files_check_changed' # 文件勾选状态变化 (checked: set[Path])
     FILE_SELECTED       = 'file_selected'       # 用户选中某文件
     PAGE_CHANGED        = 'page_changed'        # 导航页切换
     PROGRESS_UPDATE     = 'progress_update'     # 进度更新 (value: float 0-1)
@@ -44,6 +45,7 @@ class AppState:
 
     # 文件管理
     pinned_files: list[Path]        = field(default_factory=list)
+    checked_files: set[Path]        = field(default_factory=set)   # 勾选用于转换的文件
     current_file: Optional[Path]    = None
 
     # 中间产物路径
@@ -111,14 +113,35 @@ class AppState:
         path = path.resolve()
         if path not in self.pinned_files:
             self.pinned_files.append(path)
+            self.checked_files.add(path)
             self.emit(Event.FILES_CHANGED, files=list(self.pinned_files))
 
     def remove_file(self, path: Path) -> None:
         path = path.resolve()
         self.pinned_files = [f for f in self.pinned_files if f != path]
+        self.checked_files.discard(path)
         if self.current_file == path:
             self.current_file = self.pinned_files[0] if self.pinned_files else None
         self.emit(Event.FILES_CHANGED, files=list(self.pinned_files))
+
+    def toggle_check(self, path: Path) -> None:
+        """切换单个文件的勾选状态。"""
+        path = path.resolve()
+        if path in self.checked_files:
+            self.checked_files.discard(path)
+        else:
+            self.checked_files.add(path)
+        self.emit(Event.FILES_CHECK_CHANGED, checked=set(self.checked_files))
+
+    def check_all(self) -> None:
+        """勾选所有已加载的文件。"""
+        self.checked_files = set(self.pinned_files)
+        self.emit(Event.FILES_CHECK_CHANGED, checked=set(self.checked_files))
+
+    def uncheck_all(self) -> None:
+        """取消勾选所有文件。"""
+        self.checked_files = set()
+        self.emit(Event.FILES_CHECK_CHANGED, checked=set(self.checked_files))
 
     def select_file(self, path: Path) -> None:
         self.current_file = path.resolve()

@@ -31,15 +31,33 @@ class FileSidebar(ft.Column):
         self._state = state
         self._file_list_col: ft.Column = ft.Column(spacing=2, scroll=ft.ScrollMode.AUTO, expand=True)
         self._build_ui()
-        state.on(Event.FILES_CHANGED, self._on_files_changed)
-        state.on(Event.FILE_SELECTED, self._on_file_selected)
+        state.on(Event.FILES_CHANGED,       self._on_files_changed)
+        state.on(Event.FILE_SELECTED,       self._on_file_selected)
+        state.on(Event.FILES_CHECK_CHANGED, self._on_check_changed)
 
     # ── 构建静态 UI ──────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        # 全选/全不选 按钮（图标随状态变化）
+        self._select_all_btn = ft.IconButton(
+            icon=ft.Icons.CHECK_BOX_OUTLINE_BLANK,
+            icon_size=17,
+            icon_color=Palette.TEXT_SECONDARY,
+            tooltip='全选 / 全不选',
+            on_click=self._on_select_all_click,
+            width=28,
+            height=28,
+        )
+
         title_row = ft.Row(
             [
-                section_title('文件列表', self._state.dark_mode),
+                ft.Row(
+                    [
+                        self._select_all_btn,
+                        section_title('文件列表', self._state.dark_mode),
+                    ],
+                    spacing=0,
+                ),
                 ft.Row(
                     [
                         ft.IconButton(
@@ -97,6 +115,7 @@ class FileSidebar(ft.Column):
 
     def _make_file_row(self, path: Path) -> ft.Container:
         is_selected = (path == self._state.current_file)
+        is_checked  = path in self._state.checked_files
         bg = Palette.PRIMARY + '33' if is_selected else 'transparent'
         icon = ft.Icons.PICTURE_AS_PDF if path.suffix.lower() == '.pdf' else ft.Icons.IMAGE_OUTLINED
 
@@ -106,9 +125,19 @@ class FileSidebar(ft.Column):
         def _on_remove(_e, p=path):
             self._state.remove_file(p)
 
+        def _on_check_change(_e, p=path):
+            self._state.toggle_check(p)
+
         return ft.Container(
             content=ft.Row(
                 [
+                    ft.Checkbox(
+                        value=is_checked,
+                        on_change=_on_check_change,
+                        active_color=Palette.PRIMARY,
+                        width=28,
+                        height=28,
+                    ),
                     ft.Icon(icon, size=14, color=Palette.PRIMARY_LIGHT),
                     ft.Text(
                         path.name,
@@ -122,21 +151,35 @@ class FileSidebar(ft.Column):
                         icon=ft.Icons.CLOSE_ROUNDED,
                         icon_size=12,
                         icon_color=Palette.TEXT_DISABLED,
-                        tooltip='移除',
+                        tooltip='从列表移除',
                         on_click=_on_remove,
                         width=24,
                         height=24,
                     ),
                 ],
-                spacing=6,
+                spacing=4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor=bg,
             border_radius=ft.BorderRadius.all(6),
-            padding=ft.Padding.only(left=6, right=12, top=5, bottom=5),
+            padding=ft.Padding.only(left=2, right=4, top=3, bottom=3),
             on_click=_on_click,
             ink=True,
         )
+
+    def _update_select_all_icon(self) -> None:
+        """根据勾选状态更新全选按钮图标。"""
+        n_pinned  = len(self._state.pinned_files)
+        n_checked = len(self._state.checked_files)
+        if n_pinned == 0 or n_checked == 0:
+            self._select_all_btn.icon       = ft.Icons.CHECK_BOX_OUTLINE_BLANK
+            self._select_all_btn.icon_color = Palette.TEXT_DISABLED
+        elif n_checked >= n_pinned:
+            self._select_all_btn.icon       = ft.Icons.CHECK_BOX
+            self._select_all_btn.icon_color = Palette.PRIMARY
+        else:
+            self._select_all_btn.icon       = ft.Icons.INDETERMINATE_CHECK_BOX
+            self._select_all_btn.icon_color = Palette.PRIMARY
 
     # ── 事件处理 ─────────────────────────────────────────────────────────────
 
@@ -186,15 +229,28 @@ class FileSidebar(ft.Column):
     def _on_file_selected(self, path, **_kw) -> None:
         self._refresh_list()
 
+    def _on_check_changed(self, **_kw) -> None:
+        self._refresh_list()
+
+    def _on_select_all_click(self, _e) -> None:
+        n_pinned  = len(self._state.pinned_files)
+        n_checked = len(self._state.checked_files)
+        if n_checked < n_pinned:
+            self._state.check_all()
+        else:
+            self._state.uncheck_all()
+
     def _refresh_list(self) -> None:
         self._file_list_col.controls = [
             self._make_file_row(p) for p in self._state.pinned_files
         ]
+        self._update_select_all_icon()
         p = self.page
         if p is not None:
             async def _do():
                 try:
                     self._file_list_col.update()
+                    self._select_all_btn.update()
                 except Exception:
                     pass
             p.run_task(_do)

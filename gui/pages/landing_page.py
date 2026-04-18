@@ -156,6 +156,7 @@ class LandingPage(ft.Row):
                     resolved = f.resolve()
                     if resolved not in self._state.pinned_files:
                         self._state.pinned_files.append(resolved)
+                        self._state.checked_files.add(resolved)
                         newly_added.append(resolved)
             if not newly_added:
                 return
@@ -230,8 +231,9 @@ class LandingPage(ft.Row):
 
 
     def _on_convert(self, _e) -> None:
-        if not self._state.pinned_files:
-            self._show_snack('请先添加至少一个乐谱文件。', Palette.WARNING)
+        checked = [f for f in self._state.pinned_files if f in self._state.checked_files]
+        if not checked:
+            self._show_snack('请先勾选至少一个乐谱文件。', Palette.WARNING)
             return
         if self._state.is_processing:
             return
@@ -240,7 +242,7 @@ class LandingPage(ft.Row):
         out_dir_text = self._output_dir_text.value
         output_path = output_dir(out_dir_text)
         existing = [
-            src.name for src in self._state.pinned_files
+            src.name for src in checked
             if (output_path / (src.stem + '_jianpu.pdf')).exists()
         ]
 
@@ -284,6 +286,7 @@ class LandingPage(ft.Row):
             self.page.pop_dialog()
             skip = bool(self._skip_dup_cb.value) if self._skip_dup_cb is not None else False
             self._start_conversion(
+                files=checked,
                 gen_midi=bool(self._midi_cb.value),
                 skip_duplicates=skip,
                 duplicate_files=set(existing),
@@ -292,7 +295,7 @@ class LandingPage(ft.Row):
         self._confirm_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text(
-                f'转换 {len(self._state.pinned_files)} 个文件',
+                f'转换 {len(checked)} 个文件',
                 size=15, weight=ft.FontWeight.W_600,
             ),
             content=ft.Container(
@@ -320,10 +323,12 @@ class LandingPage(ft.Row):
 
     def _start_conversion(
         self,
+        files: list[Path] | None = None,
         gen_midi: bool = True,
         skip_duplicates: bool = False,
         duplicate_files: set | None = None,
     ) -> None:
+        self._conversion_files: list[Path] = files if files is not None else list(self._state.checked_files)
         self._gen_midi = gen_midi
         self._skip_dup = skip_duplicates
         self._dup_files: set = duplicate_files or set()
@@ -340,7 +345,7 @@ class LandingPage(ft.Row):
 
             engine_val = self._engine_dd.value or 'auto'
             gen_midi = getattr(self, '_gen_midi', True)
-            files = list(self._state.pinned_files)
+            files = list(getattr(self, '_conversion_files', self._state.pinned_files))
             _gpu_crash_count = 0
             _total_files_orig = len(files)   # GPU 崩溃重试时保持总数不变
             _files_done_total = 0             # 跨次 worker 运行累计完成数
