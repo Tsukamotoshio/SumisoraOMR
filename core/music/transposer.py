@@ -34,6 +34,36 @@ def _parse_key_name(key_str: str) -> str:
     return normalized
 
 
+# 内置音名 → 音级映射，不依赖 music21，用于快速半音计算
+_PITCH_CLASS: dict[str, int] = {
+    'C': 0, 'B#': 0,
+    'C#': 1, 'Db': 1,
+    'D': 2,
+    'D#': 3, 'Eb': 3,
+    'E': 4, 'Fb': 4,
+    'F': 5, 'E#': 5,
+    'F#': 6, 'Gb': 6,
+    'G': 7,
+    'G#': 8, 'Ab': 8,
+    'A': 9,
+    'A#': 10, 'Bb': 10,
+    'B': 11, 'Cb': 11,
+}
+
+
+def _key_to_pitch_class(key_str: str) -> int:
+    """将调名字符串转为音级（0-11），不依赖 music21。"""
+    k = key_str.strip()
+    if k in _PITCH_CLASS:
+        return _PITCH_CLASS[k]
+    # 尝试 music21 作为回退
+    try:
+        from music21 import pitch as m21pitch
+        return m21pitch.Pitch(_parse_key_name(k)).pitchClass
+    except Exception:
+        return 0
+
+
 def _semitone_diff(from_pitch_class: int, to_pitch_class: int) -> int:
     """返回从 from 到 to 的最短上行半音数（0-11）。"""
     diff = (to_pitch_class - from_pitch_class) % 12
@@ -44,13 +74,53 @@ def _semitone_diff(from_pitch_class: int, to_pitch_class: int) -> int:
 # 公开 API
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_transposition_semitones(from_key: str, to_key: str) -> int:
-    """计算从 from_key 到 to_key 的移调半音数（向上，0-11）。"""
+# 按五度圈排列的标准调名（与 MuseScore 一致，-7 到 +7）
+KEYS_BY_CIRCLE_OF_FIFTHS = [
+    'Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F',
+    'C',
+    'G', 'D', 'A', 'E', 'B', 'F#', 'C#',
+]
+
+
+def get_transposition_semitones(
+    from_key: str,
+    to_key: str,
+    direction: str = 'closest',
+) -> int:
+    """计算从 from_key 到 to_key 的移调半音数。
+
+    Parameters
+    ----------
+    from_key  : 原调音名（如 'C', 'Bb', 'F#'）
+    to_key    : 目标调音名
+    direction : 'up'     — 始终向上移调（0..+11），同调时 +12
+                'down'   — 始终向下移调（0..-11），同调时 -12
+                'closest'— 选择距离最近方向（-6..+6），半音差 >6 时向下；
+                            同调时返回 0（不动），与 MuseScore 行为一致
+
+    Returns
+    -------
+    带符号的半音数（正=向上，负=向下，0=不动）
+    """
     try:
-        from music21 import pitch as m21pitch
-        p_from = m21pitch.Pitch(_parse_key_name(from_key))
-        p_to   = m21pitch.Pitch(_parse_key_name(to_key))
-        return _semitone_diff(p_from.pitchClass, p_to.pitchClass)
+        pc_from = _key_to_pitch_class(from_key)
+        pc_to   = _key_to_pitch_class(to_key)
+        chromatic = _semitone_diff(pc_from, pc_to)  # 0-11 上行
+
+        if direction == 'up':
+            # 同调 + UP：升一个八度
+            return chromatic if chromatic != 0 else 12
+        elif direction == 'down':
+            # 向下：变为负数；同调 + DOWN：降一个八度
+            return (chromatic - 12) if chromatic != 0 else -12
+        else:  # 'closest'（MuseScore 默认）
+            # 同调：保持不动
+            if chromatic == 0:
+                return 0
+            # chromatic > 6 时向下更近
+            if chromatic > 6:
+                return chromatic - 12
+            return chromatic
     except Exception as exc:
         LOGGER.warning('get_transposition_semitones: 无法解析音名 %s → %s: %s', from_key, to_key, exc)
         return 0
@@ -182,6 +252,7 @@ def transpose_musicxml(
     semitones: Optional[int] = None,
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
+    direction: str = 'closest',
     progress_callback=None,
 ) -> Path:
     """将 MusicXML（.mxl / .musicxml）移调并写出到 dst。
@@ -194,6 +265,7 @@ def transpose_musicxml(
     dst              : 输出路径（建议 .musicxml 后缀）
     semitones        : 直接指定半音偏移（正数向上移调，负数向下）
     from_key / to_key: 从哪个调移到哪个调，例如 from_key='C', to_key='F'
+    direction        : 'up' | 'down' | 'closest'（仅在由 from_key/to_key 推算时生效）
     progress_callback: 若提供，接受 (float 0.0-1.0) 的回调，用于进度更新
 
     Returns
@@ -205,7 +277,7 @@ def transpose_musicxml(
     if semitones is None:
         if from_key is None or to_key is None:
             raise ValueError('transpose_musicxml: 须提供 semitones 或 (from_key, to_key)')
-        semitones = get_transposition_semitones(from_key, to_key)
+        semitones = get_transposition_semitones(from_key, to_key, direction=direction)
 
     if progress_callback:
         progress_callback(0.1)

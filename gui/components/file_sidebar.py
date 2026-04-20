@@ -241,21 +241,26 @@ class FileSidebar(ft.Column):
             self._state.uncheck_all()
 
     def _refresh_list(self) -> None:
-        self._file_list_col.controls = [
-            self._make_file_row(p) for p in self._state.pinned_files
-        ]
-        self._update_select_all_icon()
+        # 在调用线程中先快照，避免竞态
+        pinned = list(self._state.pinned_files)
         p = self.page
         if p is not None:
             async def _do():
+                # 所有 Flet 控件写操作必须在事件循环线程中执行，
+                # 否则脏标记不会被触发，update() 不会发现变化。
                 try:
+                    self._file_list_col.controls = [
+                        self._make_file_row(fp) for fp in pinned
+                    ]
+                    self._update_select_all_icon()
                     self._file_list_col.update()
                     self._select_all_btn.update()
                 except Exception:
                     pass
             p.run_task(_do)
         else:
-            try:
-                self._file_list_col.update()
-            except Exception:
-                pass
+            # 尚未挂载；先写入数据，did_mount 后会再次触发刷新
+            self._file_list_col.controls = [
+                self._make_file_row(fp) for fp in pinned
+            ]
+            self._update_select_all_icon()
