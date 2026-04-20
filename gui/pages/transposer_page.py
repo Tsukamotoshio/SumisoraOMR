@@ -18,8 +18,17 @@ from ..components.pdf_viewer import PdfViewer
 from ..theme import Palette, section_title
 
 
-# 常用调名列表
-_KEYS = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb']
+# 按五度圈排列的调名列表（与 MuseScore 一致：-7 Cb 到 +7 C#）
+# key = 机读值（传给 transposer），text = 带音乐符号的显示文字
+_KEYS = ['Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#']
+_KEY_DISPLAY = {k: k.replace('#', '♯').replace('b', '♭') for k in _KEYS}
+
+# 移调方向选项
+_DIRECTIONS = [
+    ('closest', '最近'),  # MuseScore 默认
+    ('up',      '向上'),
+    ('down',    '向下'),
+]
 
 
 class TransposerPage(ft.Column):
@@ -36,6 +45,7 @@ class TransposerPage(ft.Column):
         self._auto_detect_token: int = 0
         self._transpose_token: int = 0
         self._export_token: int = 0
+        self._export_orig_token: int = 0
         self._file_picker = ft.FilePicker()
         self._xml_dir = self._ensure_xml_dir()
         self._build_ui()
@@ -49,6 +59,7 @@ class TransposerPage(ft.Column):
 
     def did_mount(self):
         self.page._services.register_service(self._file_picker)
+        self._trigger_key_change()  # 页面挂载后初始化半音标签（后台线程）
 
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
@@ -57,7 +68,7 @@ class TransposerPage(ft.Column):
         self._from_key_dd = ft.Dropdown(
             label='原调',
             value='C',
-            options=[ft.dropdown.Option(k) for k in _KEYS],
+            options=[ft.dropdown.Option(key=k, text=_KEY_DISPLAY[k]) for k in _KEYS],
             width=110,
             bgcolor=Palette.BG_INPUT,
             color=Palette.TEXT_PRIMARY,
@@ -66,13 +77,23 @@ class TransposerPage(ft.Column):
         self._to_key_dd = ft.Dropdown(
             label='目标调',
             value='G',
-            options=[ft.dropdown.Option(k) for k in _KEYS],
+            options=[ft.dropdown.Option(key=k, text=_KEY_DISPLAY[k]) for k in _KEYS],
             width=110,
             bgcolor=Palette.BG_INPUT,
             color=Palette.TEXT_PRIMARY,
             text_size=13,
         )
-        self._semitone_label = ft.Text('↑ 7 个半音', size=12, color=Palette.TEXT_SECONDARY)
+        self._direction_dd = ft.Dropdown(
+            label='方向',
+            value='closest',
+            options=[ft.dropdown.Option(key=v, text=label) for v, label in _DIRECTIONS],
+            width=100,
+            bgcolor=Palette.BG_INPUT,
+            color=Palette.TEXT_PRIMARY,
+            text_size=13,
+            tooltip='最近：自动选择半音距离更近的上/下行（同调时不动）',
+        )
+        self._semitone_label = ft.Text('', size=12, color=Palette.TEXT_SECONDARY)
 
         transpose_btn = ft.Button(
             content=ft.Row(
@@ -96,15 +117,34 @@ class TransposerPage(ft.Column):
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
-        self._auto_detect_btn = ft.TextButton(
-            '自动检测原调',
-            icon=ft.Icons.AUTO_FIX_HIGH_ROUNDED,
+        self._detect_key_btn = ft.Button(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.SEARCH_ROUNDED, size=16), ft.Text('检测调号')],
+                tight=True, spacing=6,
+            ),
             on_click=self._on_auto_detect,
-            style=ft.ButtonStyle(color=Palette.TEXT_SECONDARY),
+            style=ft.ButtonStyle(
+                color=Palette.TEXT_SECONDARY,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.DIVIDER_DARK)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+        )
+        export_orig_btn = ft.Button(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, size=16), ft.Text('导出原谱')],
+                tight=True, spacing=6,
+            ),
+            on_click=self._on_export_orig,
+            style=ft.ButtonStyle(
+                color=Palette.TEXT_SECONDARY,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.DIVIDER_DARK)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
         )
 
-        self._from_key_dd.on_change = self._on_key_change
-        self._to_key_dd.on_change   = self._on_key_change
+        self._from_key_dd.on_select  = self._trigger_key_change
+        self._to_key_dd.on_select    = self._trigger_key_change
+        self._direction_dd.on_select = self._trigger_key_change
 
         open_btn = ft.Button(
             content=ft.Row(
@@ -133,17 +173,39 @@ class TransposerPage(ft.Column):
         )
 
         top_bar = ft.Container(
-            content=ft.Row(
+            content=ft.Column(
                 [
-                    section_title('移调引擎', self._state.dark_mode),
-                    ft.Row([self._from_key_dd, ft.Text('→', color=Palette.TEXT_SECONDARY), self._to_key_dd], spacing=8),
-                    self._semitone_label,
-                    self._auto_detect_btn,
-                    ft.Container(expand=True),
-                    ft.Row([open_btn, transpose_btn, export_btn, open_output_btn], spacing=8),
+                    # 第一行：标题 + 文件操作
+                    ft.Row(
+                        [
+                            section_title('移调引擎', self._state.dark_mode),
+                            ft.Container(expand=True),
+                            ft.Row([open_btn, open_output_btn], spacing=8),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    # 第二行：调号选择 + 动作按钮
+                    ft.Row(
+                        [
+                            # 左侧：调号控件 + 半音标签
+                            ft.Row(
+                                [self._from_key_dd, ft.Text('→', color=Palette.TEXT_SECONDARY), self._to_key_dd, self._direction_dd, self._semitone_label],
+                                spacing=6,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            ft.Container(expand=True),
+                            # 右侧：全部动作按钮，统一高度
+                            ft.Row(
+                                [self._detect_key_btn, transpose_btn, export_orig_btn, export_btn],
+                                spacing=8,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=10,
+                    ),
                 ],
-                spacing=12,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=6,
             ),
             bgcolor=Palette.BG_SURFACE,
             padding=ft.Padding.symmetric(horizontal=16, vertical=10),
@@ -242,16 +304,7 @@ class TransposerPage(ft.Column):
             current_token = self._orig_render_token
             self._set_status(f'已加载: {path.name}')
             threading.Thread(target=self._render_orig, args=(current_token,), daemon=True).start()
-            try:
-                self._orig_viewer.update()
-                self.update()
-                if hasattr(self, 'page') and self.page is not None:
-                    try:
-                        self.page.update()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            self.page.update(self._orig_viewer)
             self._on_auto_detect(None)
         elif suffix in ('.pdf', '.png', '.jpg'):
             # 直接预览图像 / PDF
@@ -259,16 +312,7 @@ class TransposerPage(ft.Column):
             self._orig_render_token += 1
             self._orig_viewer.load(path)
             self._set_status(f'预览: {path.name}（仅预览，移调需 MXL 格式）')
-            try:
-                self._orig_viewer.update()
-                self.update()
-                if hasattr(self, 'page') and self.page is not None:
-                    try:
-                        self.page.update()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            self.page.update(self._orig_viewer)
 
     def _on_mxl_ready(self, path: Path, **_kw) -> None:
         self._clear_transposed_preview()
@@ -290,28 +334,40 @@ class TransposerPage(ft.Column):
             threading.Thread(target=self._render_orig, args=(current_token,), daemon=True).start()
             self._on_auto_detect(None)
 
-    def _on_key_change(self, _e=None) -> None:
+    async def _trigger_key_change(self, _e=None) -> None:
+        """on_select 异步处理器：在 asyncio 事件循环内运行，page.update() 安全有效。"""
+        self._compute_semitone_label()
+        self.page.update(self._semitone_label)
+
+    def _compute_semitone_label(self) -> None:
+        """计算半音数并设置标签值（纯数据，不触发 UI 更新）。线程安全。"""
         from core.music.transposer import get_transposition_semitones
         try:
             semitones = get_transposition_semitones(
                 self._from_key_dd.value or 'C',
                 self._to_key_dd.value   or 'C',
+                direction=self._direction_dd.value or 'closest',
             )
-            direction = '↑' if semitones >= 0 else '↓'
-            self._semitone_label.value = f'{direction} {abs(semitones)} 个半音'
+            if semitones == 0:
+                label = '不动（同调）'
+            elif semitones > 0:
+                label = f'↑ {semitones} 个半音'
+            else:
+                label = f'↓ {abs(semitones)} 个半音'
             self._state.transpose_from_key = self._from_key_dd.value or 'C'
             self._state.transpose_to_key   = self._to_key_dd.value   or 'C'
-            try:
-                self._semitone_label.update()
-            except Exception:
-                pass
         except Exception:
-            pass
+            label = ''
+        self._semitone_label.value = label
+
+    def _on_key_change(self) -> None:
+        """后台线程调用：计算标签并通过 call_soon_threadsafe 安全通知事件循环刷新 UI。"""
+        self._compute_semitone_label()
+        p = self.page
+        if p is not None:
+            p.loop.call_soon_threadsafe(p.update, self._semitone_label)
 
     def _on_auto_detect(self, _e) -> None:
-        if self._orig_mxl is None:
-            self._set_status('请先在首页转换文件。')
-            return
         self._auto_detect_token += 1
         current_token = self._auto_detect_token
         threading.Thread(target=self._auto_detect_async, args=(current_token,), daemon=True).start()
@@ -320,25 +376,30 @@ class TransposerPage(ft.Column):
         try:
             if token != self._auto_detect_token:
                 return
-            from core.music.transposer import detect_key_from_musicxml
-            key = detect_key_from_musicxml(self._orig_mxl)
-            if token != self._auto_detect_token:
-                return
-            self._from_key_dd.value = key
-            try:
-                self._from_key_dd.update()
-            except Exception:
-                pass
-            if token != self._auto_detect_token:
-                return
-            self._on_key_change()
-            if token != self._auto_detect_token:
-                return
-            self._set_status(f'自动检测到调号: {key}')
+            # 有文件时先检测调号，再计算偏移；无文件时直接计算偏移
+            if self._orig_mxl is not None:
+                from core.music.transposer import detect_key_from_musicxml
+                key = detect_key_from_musicxml(self._orig_mxl)
+                if token != self._auto_detect_token:
+                    return
+                self._from_key_dd.value = key
+                self._compute_semitone_label()
+                p = self.page
+                if p is not None:
+                    # 同时刷新 from_key 下拉框和半音标签
+                    p.loop.call_soon_threadsafe(p.update, self._from_key_dd, self._semitone_label)
+                if token != self._auto_detect_token:
+                    return
+                self._set_status(f'检测到原调: {key}，已计算偏移')
+            else:
+                self._on_key_change()
+                if token != self._auto_detect_token:
+                    return
+                self._set_status('已计算半音偏移')
         except Exception as exc:
             if token != self._auto_detect_token:
                 return
-            self._set_status(f'调号检测失败: {exc}')
+            self._set_status(f'计算失败: {exc}')
 
     def _on_transpose(self, _e) -> None:
         if self._orig_mxl is None:
@@ -363,15 +424,15 @@ class TransposerPage(ft.Column):
                 if token != self._transpose_token:
                     return
                 self._progress.value = v
-                try:
-                    self._progress.update()
-                except Exception:
-                    pass
+                pp = self.page
+                if pp is not None:
+                    pp.loop.call_soon_threadsafe(pp.update, self._progress)
 
             transposed = transpose_musicxml(
                 self._orig_mxl, dst,
-                from_key=self._from_key_dd.value or 'C',
-                to_key=self._to_key_dd.value     or 'C',
+                from_key=self._from_key_dd.value  or 'C',
+                to_key=self._to_key_dd.value      or 'C',
+                direction=self._direction_dd.value or 'closest',
                 progress_callback=_progress,
             )
             if token != self._transpose_token:
@@ -432,6 +493,44 @@ class TransposerPage(ft.Column):
             if token == self._export_token:
                 self._set_busy(False)
 
+    def _on_export_orig(self, _e) -> None:
+        if self._orig_mxl is None:
+            self._set_status('请先打开乐谱文件。')
+            return
+        self._export_orig_token += 1
+        current_token = self._export_orig_token
+        threading.Thread(target=self._export_orig_async, args=(current_token,), daemon=True).start()
+
+    def _export_orig_async(self, token: int) -> None:
+        if token != self._export_orig_token:
+            return
+        self._set_busy(True)
+        try:
+            from core.render.lilypond_runner import render_musicxml_staff_pdf
+
+            base = output_dir(None)
+            out_pdf = base / f'{self._orig_mxl.stem}_staff.pdf'
+            tmp = build_dir() / f'_orig_export_{self._orig_mxl.stem}'
+            tmp.mkdir(exist_ok=True)
+
+            pdf = render_musicxml_staff_pdf(self._orig_mxl, tmp)
+            if token != self._export_orig_token:
+                return
+            if pdf and pdf.exists():
+                import shutil
+                shutil.copy2(str(pdf), str(out_pdf))
+                self._set_status(f'原谱导出完成 → {out_pdf.name}')
+                self._state.output_pdf = out_pdf
+            else:
+                self._set_status('导出失败：无法生成五线谱 PDF，请检查 LilyPond / musicxml2ly 是否可用。')
+        except Exception as exc:
+            if token != self._export_orig_token:
+                return
+            self._set_status(f'原谱导出失败: {exc}')
+        finally:
+            if token == self._export_orig_token:
+                self._set_busy(False)
+
     # ── 渲染预览 ─────────────────────────────────────────────────────────────
 
     def _render_orig(self, token: int) -> None:
@@ -463,10 +562,9 @@ class TransposerPage(ft.Column):
         self._trans_viewer._image.src = None
         self._trans_viewer._image.visible = False
         self._trans_viewer._placeholder.visible = True
-        try:
-            self._trans_viewer.update()
-        except Exception:
-            pass
+        p = self.page
+        if p is not None:
+            p.loop.call_soon_threadsafe(p.update, self._trans_viewer)
 
     def _mxl_to_preview_pdf(self, mxl_path: Path, suffix: str) -> Optional[Path]:
         """将 MusicXML 渲染为五线谱 PDF（用于预览）。优先用 musicxml2ly 渲染标准五线谱，
@@ -499,12 +597,11 @@ class TransposerPage(ft.Column):
         self._trans_viewer._image.visible = False
         self._trans_viewer._placeholder.visible = True
         self._status.value = '请先打开乐谱文件。'
-        try:
-            self._orig_viewer.update()
-            self._trans_viewer.update()
-            self._status.update()
-        except Exception:
-            pass
+        p = self.page
+        if p is not None:
+            p.loop.call_soon_threadsafe(
+                p.update, self._orig_viewer, self._trans_viewer, self._status
+            )
 
     # ── 辅助 ─────────────────────────────────────────────────────────────────
 
@@ -512,31 +609,11 @@ class TransposerPage(ft.Column):
         self._status.value = msg
         p = self.page
         if p is not None:
-            async def _do():
-                try:
-                    self._status.update()
-                except Exception:
-                    pass
-            p.run_task(_do)
-        else:
-            try:
-                self._status.update()
-            except Exception:
-                pass
+            p.loop.call_soon_threadsafe(p.update, self._status)
 
     def _set_busy(self, busy: bool) -> None:
         self._progress.visible = busy
         self._progress.value   = None if busy else 0
         p = self.page
         if p is not None:
-            async def _do():
-                try:
-                    self._progress.update()
-                except Exception:
-                    pass
-            p.run_task(_do)
-        else:
-            try:
-                self._progress.update()
-            except Exception:
-                pass
+            p.loop.call_soon_threadsafe(p.update, self._progress)
