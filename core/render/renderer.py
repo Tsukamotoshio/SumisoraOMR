@@ -639,6 +639,14 @@ def _save_editor_files(
         # Copy the original source file as a reference image
         if source_path is not None and source_path.exists():
             dest_src = editor_workspace_dir / f'{safe_title}.source{source_path.suffix.lower()}'
+            # 删除同名但后缀不同的旧 source 文件（例如重新识别时 .jpg → .png），
+            # 防止旧版本残留在工作区中误导用户。
+            for old_src in editor_workspace_dir.glob(f'{safe_title}.source.*'):
+                if old_src != dest_src:
+                    try:
+                        old_src.unlink()
+                    except OSError:
+                        pass
             shutil.copy2(str(source_path), str(dest_src))
     except OSError as exc:
         log_message(f'保存编辑器工作区文件失败: {exc}', logging.WARNING)

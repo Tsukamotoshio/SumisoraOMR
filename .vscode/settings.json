@@ -3,5 +3,14 @@
   "git.path": "D:\\Program Files\\Git\\cmd\\git.exe",
   "git.useEditorAsCommitInput": false,
   "git.ignoreLimitWarning": true,
-  "java.compile.nullAnalysis.mode": "automatic"
+  "java.compile.nullAnalysis.mode": "automatic",
+  "python.testing.unittestArgs": [
+    "-v",
+    "-s",
+    "./core",
+    "-p",
+    "*test.py"
+  ],
+  "python.testing.pytestEnabled": false,
+  "python.testing.unittestEnabled": true
 }

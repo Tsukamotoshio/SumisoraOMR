@@ -370,27 +370,86 @@ class EnhanceResult:
 
 
 def crop_white_border(img: 'Image.Image') -> tuple['Image.Image', float]:
-    """移除图像四边的白色空白边距，返回 (裁剪后图像, 白边像素占比)。
+    """移除图像四边的白色/近白色空白边距，返回 (裁剪后图像, 白边像素占比)。
 
-    检测逻辑：将亮度 >= 240 的像素视为白色背景，反转后取内容边界框。
-    在内容边界外各加约 1% 的安全边距，防止裁掉边缘符号。
+    检测逻辑：
+    - 检查四角亮度：若四角均值 < 80（深色背景照片），则改为寻找"亮区"（纸张）
+      的边界框，以去除相机/手机拍摄时的深色桌面/背景边缘。
+    - 普通扫描件（白色/近白色背景）：取灰度第 92 百分位数 - 15 作为背景阈值
+      （兼容纯白 255 和轻微泛黄/灰 200-230 的纸张）。
+    在内容边界框外各加约 1% 的安全边距，防止裁掉边缘符号。
     """
     try:
         gray = img.convert('L')
-        content_mask = gray.point(lambda px: 0 if px >= 240 else 255, '1')
-        bbox = content_mask.getbbox()
-        if bbox is None:
-            return img, 1.0  # 全白图，跳过裁剪
         w, h = img.size
-        x0, y0, x1, y1 = bbox
-        content_area = (x1 - x0) * (y1 - y0)
-        border_ratio = max(0.0, 1.0 - content_area / (w * h))
+
+        if _HAS_NUMPY:
+            import numpy as _np
+            gray_arr = _np.array(gray)
+
+            # 采样四角 5% 区域判断背景类型
+            cy = max(1, h // 20)
+            cx = max(1, w // 20)
+            corner_vals = _np.concatenate([
+                gray_arr[:cy, :cx].ravel(),
+                gray_arr[:cy, -cx:].ravel(),
+                gray_arr[-cy:, :cx].ravel(),
+                gray_arr[-cy:, -cx:].ravel(),
+            ])
+            corner_mean = float(_np.mean(corner_vals))
+
+            if corner_mean < 180:
+                # 非近白色背景（深色、木纹、桌面等照片背景）：
+                # 用行/列均值的中点阈值找纸张范围。
+                # - 行方向：每行均值，纸张行明显亮于背景行
+                # - 列方向：用图像中间 80% 行（排除上下背景稀释列均值）找左右边界
+                row_means = gray_arr.mean(axis=1)
+                row_thresh = (float(row_means.min()) + float(row_means.max())) * 0.5
+                rows_ok = row_means > row_thresh
+                if not rows_ok.any():
+                    return img, 0.0
+                rmin = int(_np.where(rows_ok)[0][0])
+                rmax = int(_np.where(rows_ok)[0][-1])
+
+                # 用已找到的行范围内的列均值确定左右边界
+                mid_top    = max(0,   rmin + (rmax - rmin) // 10)
+                mid_bottom = min(h,   rmax - (rmax - rmin) // 10)
+                col_region = gray_arr[mid_top:mid_bottom, :]
+                if col_region.shape[0] > 0:
+                    col_means = col_region.mean(axis=0)
+                    col_thresh = (float(col_means.min()) + float(col_means.max())) * 0.5
+                    cols_ok = col_means > col_thresh
+                    cmin = int(_np.where(cols_ok)[0][0])  if cols_ok.any() else 0
+                    cmax = int(_np.where(cols_ok)[0][-1]) if cols_ok.any() else w - 1
+                else:
+                    cmin, cmax = 0, w - 1
+            else:
+                # 普通扫描件：白色/近白色边框
+                p92 = float(_np.percentile(gray_arr, 92))
+                bg_thresh = max(200, int(p92) - 15)
+                content_mask = _np.array(gray.point(lambda px: 0 if px >= bg_thresh else 255, '1'))
+                rows = content_mask.any(axis=1)
+                cols = content_mask.any(axis=0)
+                if not rows.any() or not cols.any():
+                    return img, 1.0
+                rmin, rmax = int(_np.where(rows)[0][0]),  int(_np.where(rows)[0][-1])
+                cmin, cmax = int(_np.where(cols)[0][0]),  int(_np.where(cols)[0][-1])
+        else:
+            # 无 numpy：固定阈值裁白边
+            content_mask = gray.point(lambda px: 0 if px >= 225 else 255, '1')
+            bbox = content_mask.getbbox()
+            if bbox is None:
+                return img, 1.0
+            cmin, rmin, cmax, rmax = bbox
+
+        content_area = (cmax - cmin) * (rmax - rmin)
+        border_ratio = max(0.0, 1.0 - content_area / max(w * h, 1))
         margin_x = max(4, int(w * 0.01))
         margin_y = max(4, int(h * 0.01))
-        cx0 = max(0, x0 - margin_x)
-        cy0 = max(0, y0 - margin_y)
-        cx1 = min(w, x1 + margin_x)
-        cy1 = min(h, y1 + margin_y)
+        cx0 = max(0, cmin - margin_x)
+        cy0 = max(0, rmin - margin_y)
+        cx1 = min(w, cmax + margin_x)
+        cy1 = min(h, rmax + margin_y)
         return img.crop((cx0, cy0, cx1, cy1)), border_ratio
     except Exception:
         return img, 0.0

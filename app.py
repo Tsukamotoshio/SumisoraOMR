@@ -98,6 +98,7 @@ from gui.app_state import AppState, Event
 from gui.theme import Palette, make_dark_theme, make_light_theme
 from gui.pages.landing_page import LandingPage
 from gui.pages.editor_page import EditorPage
+from gui.pages.tie_reconstruction_page import TieReconstructionPage
 from gui.pages.transposer_page import TransposerPage
 from gui.pages.about_page import AboutPage
 from gui.components.progress_overlay import ProgressOverlay
@@ -109,6 +110,7 @@ from gui.components.progress_overlay import ProgressOverlay
 
 _NAV_ITEMS = [
     ('landing',    ft.Icons.ARROW_CIRCLE_RIGHT_ROUNDED,  ft.Icons.ARROW_CIRCLE_RIGHT_OUTLINED,  '乐谱识别'),
+    ('tiefix',     ft.Icons.LINK_ROUNDED,               ft.Icons.LINK_OUTLINED,                '延音线重建'),
     ('editor',     ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,            '简谱编辑'),
     ('transposer', ft.Icons.MUSIC_NOTE_ROUNDED,          ft.Icons.MUSIC_NOTE_OUTLINED,           '移调引擎'),
     ('about',      ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,          '关于'),
@@ -162,14 +164,16 @@ async def main(page: ft.Page) -> None:
     # ── 进度浮层（全局共享）──────────────────────────────────────────────────
     overlay = ProgressOverlay(state)
 
-    # ── 四页面 ────────────────────────────────────────────────────────────────
+    # ── 五页面 ────────────────────────────────────────────────────────────────
     landing_page    = LandingPage(state, overlay)
+    tiefix_page     = TieReconstructionPage(state)
     editor_page     = EditorPage(state)
     transposer_page = TransposerPage(state)
     about_page      = AboutPage()
 
     _pages: dict[str, ft.Control] = {
         'landing':    landing_page,
+        'tiefix':     tiefix_page,
         'editor':     editor_page,
         'transposer': transposer_page,
         'about':      about_page,
@@ -179,6 +183,7 @@ async def main(page: ft.Page) -> None:
     content_stack = ft.Stack(
         [
             ft.Container(content=landing_page,    expand=True, visible=True),
+            ft.Container(content=tiefix_page,     expand=True, visible=False),
             ft.Container(content=editor_page,     expand=True, visible=False),
             ft.Container(content=transposer_page, expand=True, visible=False),
             ft.Container(content=about_page,      expand=True, visible=False),
@@ -186,7 +191,7 @@ async def main(page: ft.Page) -> None:
         ],
         expand=True,
     )
-    _content_containers: list[ft.Container] = content_stack.controls[:4]  # type: ignore[index]
+    _content_containers: list[ft.Container] = content_stack.controls[:5]  # type: ignore[index]
 
     def _show_page(name: str) -> None:
         for i, (page_name, *_) in enumerate(_NAV_ITEMS):
