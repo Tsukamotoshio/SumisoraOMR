@@ -162,10 +162,12 @@ class TieReconstructionPage(ft.Column):
         )
 
         # ── 日志区 ───────────────────────────────────────────────────────────
+        self._log_auto_scroll: bool = True   # smart scroll 状态
         self._log_view = ft.ListView(
             spacing=2,
             expand=True,
             auto_scroll=True,
+            on_scroll=self._on_log_scroll,
         )
 
         log_container = ft.Container(
@@ -290,6 +292,18 @@ class TieReconstructionPage(ft.Column):
             self._start_btn.update()
         except Exception:
             pass
+
+    async def _on_log_scroll(self, e: ft.OnScrollEvent) -> None:
+        """Smart auto-scroll：用户向上滚时暂停，滚回底部时恢复。"""
+        _THRESHOLD = 40  # 距底部 ≤40px 视为「在底部」
+        at_bottom = e.extent_after <= _THRESHOLD
+        if at_bottom != self._log_auto_scroll:
+            self._log_auto_scroll = at_bottom
+            self._log_view.auto_scroll = at_bottom
+            try:
+                self._log_view.update()
+            except Exception:
+                pass
 
     def _append_log(self, msg: str) -> None:
         self._log_view.controls.append(
@@ -468,6 +482,8 @@ class TieReconstructionPage(ft.Column):
         self._review_list.controls.clear()
         self._stats_text.value = ''
         self._log_view.controls.clear()
+        self._log_auto_scroll = True
+        self._log_view.auto_scroll = True
         self._set_progress(visible=True, value=None, text='正在分析…')
         try:
             self._start_btn.update()
@@ -489,57 +505,10 @@ class TieReconstructionPage(ft.Column):
         ).start()
 
     def _run_reconstruction(self, token: int) -> None:
-        import tempfile, shutil
         from core.music.oemer_tie_reconstruction import run_oemer_tie_reconstruction
 
         mxl_path   = self._mxl_path
         image_path = self._image_path
-
-        # ── 图像预处理（超分辨率 + 增强）────────────────────────────────────
-        # 仅对光栅图像做预处理；PDF 由 _load_image_bgr 内部通过 PyMuPDF 读取。
-        _preproc_tmp: Optional[str] = None
-        if image_path is not None and image_path.suffix.lower() in ('.png', '.jpg', '.jpeg'):
-            try:
-                from core.image.image_preprocess import preprocess_image_for_omr
-                async def _log_preproc():
-                    self._append_log('[预处理] 正在执行超分辨率 + 图像增强…')
-                    self._set_progress(True, None, '正在预处理图像…')
-                try:
-                    if self.page:
-                        self.page.run_task(_log_preproc)
-                except Exception:
-                    pass
-                _preproc_tmp = tempfile.mkdtemp(prefix='_tie_preproc_')
-                enhanced = preprocess_image_for_omr(
-                    image_path=image_path,
-                    work_dir=Path(_preproc_tmp),
-                    keep_color=True,
-                )
-                if enhanced is not None:
-                    image_path = enhanced
-                    async def _log_ok():
-                        self._append_log(f'[预处理] 完成 → {enhanced.name}')
-                    try:
-                        if self.page:
-                            self.page.run_task(_log_ok)
-                    except Exception:
-                        pass
-                else:
-                    async def _log_skip():
-                        self._append_log('[预处理] 跳过（Pillow 不可用或格式不支持），使用原始图像')
-                    try:
-                        if self.page:
-                            self.page.run_task(_log_skip)
-                    except Exception:
-                        pass
-            except Exception as _exc:
-                async def _log_err(_e=_exc):
-                    self._append_log(f'[预处理] 失败（{_e}），使用原始图像')
-                try:
-                    if self.page:
-                        self.page.run_task(_log_err)
-                except Exception:
-                    pass
 
         def _progress_cb(done: int, total: int) -> None:
             if token != self._run_token:
@@ -573,15 +542,7 @@ class TieReconstructionPage(ft.Column):
                     self.page.run_task(_show_error)
             except Exception:
                 pass
-            finally:
-                if _preproc_tmp:
-                    shutil.rmtree(_preproc_tmp, ignore_errors=True)
             return
-
-        # 清理预处理临时目录
-        if _preproc_tmp:
-            shutil.rmtree(_preproc_tmp, ignore_errors=True)
-            _preproc_tmp = None
 
         if token != self._run_token:
             return

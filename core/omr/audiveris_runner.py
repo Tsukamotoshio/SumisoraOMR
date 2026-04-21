@@ -457,28 +457,26 @@ def run_audiveris_sliced_batch(
     input_path: Path,
     output_dir: Optional[Path] = None,
 ) -> Optional[Path]:
-    """切片增强版 Audiveris 批处理：双路预处理 → 切片 → 逐行旋转校正 → 逐行识别 → 合并。
+    """切片增强版 Audiveris 批处理：几何预处理 → 切片 → 逐行旋转校正 → 逐行识别 → 合并。
 
-    双路设计
-    --------
-    • **编辑器参考图路径**（重视可读性）：
-      完整预处理（梯度修正 → 旋转校正 → 白边裁剪 → 去噪锐化 → SR → 降采样），
+    设计原则：几何操作（白边裁剪→旋转校正→梯度修正）只对整张图做一次
+    -----------------------------------------------------------------
+    • **几何预处理**（Step A）：
+      白边裁剪 → 旋转校正 → 梯度修正，输出 RGB ``geo_*.png``。
+      同时作为切片和 Audiveris 输入。
+
+    • **编辑器参考图**（Step B）：
+      在几何图上追加去噪/锐化（不重复几何步骤），保留 RGB 彩色，
       结果保存为 ``_omr_reference.png``，供 editor-workspace 展示。
 
-    • **Audiveris 输入路径**（重视识别率）：
-      几何轻量预处理（梯度修正 → 旋转校正 → 白边裁剪，保留 RGB，不做去噪/锐化），
-      让 Audiveris 自带的内部二值化器处理高质量原始信号。
-      在此图像上做切片，每片再做旋转校正后送入 Audiveris。
-
-    7 步流程
+    6 步流程
     --------
-    1. 完整预处理 → ``_omr_reference.png``（编辑器参考）。
-    2. 几何轻量预处理 → ``_geo_input.png``（Audiveris 用，RGB）。
-    3. 在 **几何轻量图** 上切片（保持 cv2 线检测准确）。
-    4. 若切片不足 2 行，对几何轻量图整张识别。
-    5. 逐切片旋转校正。
-    6. 对每片调用 ``run_audiveris_batch(..., skip_preprocessing=True)``。
-    7. 收集 MXL → 合并；全部失败 → 回退整图识别。
+    1. 几何预处理 → ``geo_{stem}.png``（RGB，唯一几何校正点）。
+    2. 在几何图上去噪/锐化 → ``_omr_reference.png``（编辑器参考，RGB）。
+    3. 在几何图上切片。
+    4. 若切片不足 2 行，回退对原图整张识别（内部含完整预处理）。
+    5. 逐切片旋转校正 + 调用 ``run_audiveris_batch(..., skip_preprocessing=True)``。
+    6. 收集 MXL → 合并；全部失败 → 回退整图识别。
 
     对 PDF 输入及非 PNG/JPG 输入，直接回退 ``run_audiveris_batch()``。
     """
@@ -496,7 +494,7 @@ def run_audiveris_sliced_batch(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     from ..image.image_preprocess import (
-        preprocess_image_for_omr,
+        enhance_image,
         preprocess_geometry_for_omr,
     )
     from ..image.staff_slicer import (
@@ -504,21 +502,44 @@ def run_audiveris_sliced_batch(
         correct_slice_rotation,
     )
 
-    # ── Step A: 完整预处理 → 编辑器参考图 ────────────────────────────────
-    full_preprocessed = preprocess_image_for_omr(input_path, output_dir)
-    ref_dest = output_dir / '_omr_reference.png'
-    if full_preprocessed is not None:
-        try:
-            shutil.copy2(str(full_preprocessed), str(ref_dest))
-        except OSError:
-            pass
-    log_message('  [切片OMR] 编辑器参考图已生成（完整预处理）。')
-
-    # ── Step B: 几何预处理 → Audiveris 输入 ──────────────────────────────
+    # ── Step A: 几何预处理（白边裁剪→旋转→梯度修正，只做一次）────────────
     geo_path = preprocess_geometry_for_omr(input_path, output_dir)
     if geo_path is None:
         log_message('  [切片OMR] 几何预处理失败，使用原图作为 Audiveris 输入。', logging.WARNING)
         geo_path = input_path
+
+    # ── Step B: 在几何图上增强 → 编辑器参考图 ────────────────────────────
+    # keep_color=True：保留 RGB 彩色，参考图仅供人工查阅，不送入 Audiveris。
+    # 若 Step A 成功（geo_path != input_path），几何已处理，跳过以避免重复计算；
+    # 若 Step A 失败（geo_path == input_path），此处必须自行完成几何（含白边裁剪）。
+    _geo_was_applied = (geo_path != input_path)
+    ref_dest = output_dir / '_omr_reference.png'
+    _ref_result = enhance_image(
+        geo_path, output_dir,
+        apply_geometry=not _geo_was_applied,
+        keep_color=True,
+    )
+    if _ref_result is not None:
+        try:
+            shutil.copy2(str(_ref_result.enhanced_path), str(ref_dest))
+        except OSError:
+            pass
+    log_message('  [切片OMR] 编辑器参考图已生成。')
+
+    # ── Step B.5: DPI 归一化（谱线间距过小时放大整图，提升 Audiveris 识别率）────
+    # 对编辑器参考图不做 DPI 归一化（保持原始比例方便人工查阅），
+    # 仅对送入切片→Audiveris 的图像路径 geo_path 做归一化。
+    try:
+        from ..image.staff_slicer import normalize_dpi_by_interline
+        import cv2 as _dpi_cv2
+        _dpi_arr = normalize_dpi_by_interline(geo_path)
+        if _dpi_arr is not None:
+            _dpi_norm_path = output_dir / f'dpi_{image_path.stem}.png'
+            _dpi_cv2.imwrite(str(_dpi_norm_path), _dpi_arr)
+            geo_path = _dpi_norm_path
+            log_message('  [切片OMR] DPI 归一化完成：谱线间距已调整至目标范围（18–24 px）。')
+    except Exception as _dpi_exc:
+        log_message(f'  [切片OMR] DPI 归一化失败（已跳过）: {_dpi_exc}', logging.WARNING)
 
     # ── Step C: 在几何图上切片 ────────────────────────────────────────────
     slice_dir = output_dir / '_slices'

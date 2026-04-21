@@ -246,7 +246,7 @@ def preprocess_image_for_omr(
     """对栅格图像执行完整的 OMR 预处理管道，委托给 :func:`enhance_image`。
 
     新流程顺序（步骤由 enhance_image 统一执行）：
-      梯度修正 → 旋转校正 → 白边裁剪 → 去噪锐化 → SR（低分辨率时）→ 降采样
+      白边裁剪 → 旋转校正 → 梯度修正 → 去噪锐化 → SR（低分辨率时）→ 降采样
 
     Parameters
     ----------
@@ -311,18 +311,18 @@ def preprocess_geometry_for_omr(
         with Image.open(image_path) as img:
             working = img.convert('RGB')
 
-        # 步骤 1: 梯度/光照修正
-        working = correct_gradient(working)
+        # 步骤 1: 白边裁剪
+        working, border_ratio = crop_white_border(working)
+        if border_ratio > 0.02:
+            log_message(f'  [几何预处理] 白边裁剪 {border_ratio:.1%}')
 
         # 步骤 2: 旋转校正
         working, angle = detect_and_correct_rotation(working)
         if abs(angle) >= 0.5:
             log_message(f'  [几何预处理] 旋转校正 {angle:+.1f}°')
 
-        # 步骤 3: 白边裁剪
-        working, border_ratio = crop_white_border(working)
-        if border_ratio > 0.02:
-            log_message(f'  [几何预处理] 白边裁剪 {border_ratio:.1%}')
+        # 步骤 3: 梯度/光照修正
+        working = correct_gradient(working)
 
         out_path = work_dir / f'geo_{image_path.stem}.png'
         working.save(out_path)
@@ -399,30 +399,59 @@ def crop_white_border(img: 'Image.Image') -> tuple['Image.Image', float]:
             corner_mean = float(_np.mean(corner_vals))
 
             if corner_mean < 180:
-                # 非近白色背景（深色、木纹、桌面等照片背景）：
-                # 用行/列均值的中点阈值找纸张范围。
-                # - 行方向：每行均值，纸张行明显亮于背景行
-                # - 列方向：用图像中间 80% 行（排除上下背景稀释列均值）找左右边界
-                row_means = gray_arr.mean(axis=1)
-                row_thresh = (float(row_means.min()) + float(row_means.max())) * 0.5
-                rows_ok = row_means > row_thresh
+                # 非近白色背景（深色、木纹、桌面等照片背景）
+                # 策略参照文档扫描仪方案的核心思路（找图像中文档区域的边界），但由于
+                # 乐谱内部音符/谱线产生的边缘信号远强于纸张-背景界面，Canny/轮廓法
+                # 对本场景效果较差。改用「明亮像素占比」作为区分依据：
+                #   - 纸张行：含大量白色/近白色像素（谱线间空白），占比通常 ≥ 14%
+                #   - 背景行：几乎无此类像素（木纹/桌面 JPEG 噪点最高约 7%）
+                #
+                # 步骤1: 用图像中央 50% 行确定列边界（避免上下背景污染列均值）
+                mid_h_start = h // 4
+                mid_h_end   = max(mid_h_start + 1, h - h // 4)
+                col_region_init = gray_arr[mid_h_start:mid_h_end, :]
+                col_means_init  = col_region_init.mean(axis=0)
+                col_thresh_init = (float(col_means_init.min()) + float(col_means_init.max())) * 0.5
+                cols_ok_init    = col_means_init > col_thresh_init
+                cmin = int(_np.where(cols_ok_init)[0][0])  if cols_ok_init.any() else 0
+                cmax = int(_np.where(cols_ok_init)[0][-1]) if cols_ok_init.any() else w - 1
+
+                # 步骤2: 用内侧 80% 列条带计算每行"明亮像素占比"定行边界
+                # 参考文档扫描仪思路：用「纸张有明显亮白区域，背景无」这一特征区分边界。
+                # 阈值 190 是经过实验标定的安全值：
+                #   - 木纹/桌面背景的 JPEG 噪点最高使 bright_frac ≤ 7.5%
+                #   - 纸张行（谱线间留白）的 bright_frac ≥ 14.9%
+                inner_left  = cmin + (cmax - cmin) // 10
+                inner_right = max(inner_left + 1, cmax - (cmax - cmin) // 10)
+                row_strip   = gray_arr[:, inner_left:inner_right]
+                _BRIGHT_THRESH    = 190
+                _BRIGHT_FRAC_MIN  = 0.10   # ≥10% 明亮像素 → 纸张行
+                row_bright  = (row_strip > _BRIGHT_THRESH).mean(axis=1)
+                rows_ok     = row_bright >= _BRIGHT_FRAC_MIN
+
+                # 回退：若无足够明亮行（极端低曝光/泛黄纸张），或检测到的纸张跨度
+                # < 50% 图像高度（说明仅检测到部分纸张），改用行均值阈值
+                # 注：50% 是对"摄影输入中纸张至少占帧高一半"的保守假设
+                _detected_span = (
+                    int(_np.where(rows_ok)[0][-1]) - int(_np.where(rows_ok)[0][0])
+                    if rows_ok.any() else 0
+                )
+                if not rows_ok.any() or _detected_span < h * 0.50:
+                    row_means  = row_strip.mean(axis=1)
+                    row_thresh = (float(row_means.min()) + float(row_means.max())) * 0.5
+                    rows_ok    = row_means > row_thresh
+                    # 修剪：均值阈值可能将背景行纳入，用四角背景均值对结果做进一步过滤
+                    # （30% 动态范围偏移，比 midpoint 更保守地排除背景行）
+                    _fg_max = float(row_means.max())
+                    if _fg_max > corner_mean + 20:
+                        _trim_thresh = corner_mean + (_fg_max - corner_mean) * 0.30
+                        _rows_trimmed = rows_ok & (row_means > _trim_thresh)
+                        if _rows_trimmed.sum() >= h * 0.15:   # 至少 15% 行通过修剪才采用
+                            rows_ok = _rows_trimmed
                 if not rows_ok.any():
                     return img, 0.0
                 rmin = int(_np.where(rows_ok)[0][0])
                 rmax = int(_np.where(rows_ok)[0][-1])
-
-                # 用已找到的行范围内的列均值确定左右边界
-                mid_top    = max(0,   rmin + (rmax - rmin) // 10)
-                mid_bottom = min(h,   rmax - (rmax - rmin) // 10)
-                col_region = gray_arr[mid_top:mid_bottom, :]
-                if col_region.shape[0] > 0:
-                    col_means = col_region.mean(axis=0)
-                    col_thresh = (float(col_means.min()) + float(col_means.max())) * 0.5
-                    cols_ok = col_means > col_thresh
-                    cmin = int(_np.where(cols_ok)[0][0])  if cols_ok.any() else 0
-                    cmax = int(_np.where(cols_ok)[0][-1]) if cols_ok.any() else w - 1
-                else:
-                    cmin, cmax = 0, w - 1
             else:
                 # 普通扫描件：白色/近白色边框
                 p92 = float(_np.percentile(gray_arr, 92))
@@ -576,20 +605,22 @@ def enhance_image(
     work_dir: Path,
     max_pixels: int = AUDIVERIS_MAX_PIXELS,
     keep_color: bool = False,
+    apply_geometry: bool = True,
 ) -> Optional[EnhanceResult]:
-    """对乐谱图像执行完整的六步增强管道。
+    """对乐谱图像执行完整的增强管道。
 
     步骤顺序
     --------
-    梯度修正 → 旋转校正 → 白边裁剪 → 去噪锐化 →
-
+    白边裁剪 → 旋转校正 → 梯度修正 → 去噪锐化 →
     超分辨率（低分辨率时）→ 像素上限降采样（过大时）
 
     Parameters
     ----------
-    image_path : 原始输入图像（PNG / JPG / JPEG）。
-    work_dir   : 中间文件输出目录（函数自动创建）。
-    max_pixels : 输出图像像素上限（默认 20 M px，即 Audiveris 上限）。
+    image_path     : 原始输入图像（PNG / JPG / JPEG）。
+    work_dir       : 中间文件输出目录（函数自动创建）。
+    max_pixels     : 输出图像像素上限（默认 20 M px，即 Audiveris 上限）。
+    apply_geometry : 是否执行前三步几何校正（白边裁剪、旋转校正、梯度修正）。
+                     设为 False 可跳过，适用于调用方已完成几何预处理的情况。
 
     Returns
     -------
@@ -610,25 +641,25 @@ def enhance_image(
         with Image.open(image_path) as img:
             working = img.convert('RGB')
 
-        # ── 步骤 1：梯度 / 光照修正 ──────────────────────────────
-        working = correct_gradient(working)
-        steps.append('梯度修正')
+        # ── 步骤 1-3：几何校正（apply_geometry=False 时跳过）────────────────
+        if apply_geometry:
+            # ── 步骤 1：白边裁剪 ─────────────────────────────────────
+            working, border_ratio = crop_white_border(working)
+            meta.border_ratio = border_ratio
+            if border_ratio > 0.02:
+                steps.append('白边裁剪')
+                log_message(f'  [增强] 自动白边裁剪，移除 {border_ratio:.1%} 白边。')
 
+            # ── 步骤 2：旋转校正 ─────────────────────────────────────
+            working, angle = detect_and_correct_rotation(working)
+            meta.tilt_angle = angle
+            if abs(angle) >= 0.5:
+                steps.append(f'旋转校正 {angle:+.1f}°')
+                log_message(f'  [增强] 旋转校正：检测到倾斜 {angle:+.1f}°，已纠偏。')
 
-        # ── 步骤 2：旋转校正 ─────────────────────────────────────
-        working, angle = detect_and_correct_rotation(working)
-        meta.tilt_angle = angle
-        if abs(angle) >= 0.5:
-            steps.append(f'旋转校正 {angle:+.1f}°')
-            log_message(f'  [增强] 旋转校正：检测到倾斜 {angle:+.1f}°，已纠偏。')
-
-        # ── 步骤 3：自动白边裁剪 ──────────────────────────────────
-        working, border_ratio = crop_white_border(working)
-        meta.border_ratio = border_ratio
-        if border_ratio > 0.02:
-            steps.append('白边裁剪')
-            log_message(f'  [增强] 自动白边裁剪，移除 {border_ratio:.1%} 白边。')
-
+            # ── 步骤 3：梯度 / 光照修正 ──────────────────────────────
+            working = correct_gradient(working)
+            steps.append('梯度修正')
 
         # ── 步骤 4：去噪 + 锐化────────────────────
         working = denoise_and_sharpen(working, keep_color=keep_color)

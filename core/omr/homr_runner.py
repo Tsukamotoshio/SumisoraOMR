@@ -350,6 +350,12 @@ def run_homr_batch(
     image_path = safe_image_path
     log_message(f'[homr] 输入文件已准备: {safe_image_path.name}')
 
+    # 写入编辑器参考图（与 homr 实际输入保持一致，每次覆盖）
+    try:
+        shutil.copy2(str(safe_image_path), str(output_dir / '_omr_reference.png'))
+    except OSError:
+        pass
+
     # ── 内存检测与 batch_size 自适应 ──────────────────────────────────────────
     _avail_mb = _get_available_memory_mb()
     _batch_size = _compute_segnet_batch_size(_avail_mb)
