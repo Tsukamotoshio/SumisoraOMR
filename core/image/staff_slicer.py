@@ -346,6 +346,26 @@ def slice_staff_rows(
             current_group.append(c)
     system_groups.append(current_group)
 
+    # 大谱表拆分：10-12 线的组 = 两个相邻 5-6 线谱系统间距过小被合并
+    # 在最大相邻质心间距处切分，若两半各为 5-6 线则展开为两个子组
+    split_groups: list[list[float]] = []
+    for _grp in system_groups:
+        if 10 <= len(_grp) <= 12:
+            _diffs_in = [_grp[i + 1] - _grp[i] for i in range(len(_grp) - 1)]
+            _split_idx = int(np.argmax(_diffs_in))
+            _sub1, _sub2 = _grp[:_split_idx + 1], _grp[_split_idx + 1:]
+            if 5 <= len(_sub1) <= 6 and 5 <= len(_sub2) <= 6:
+                split_groups.append(_sub1)
+                split_groups.append(_sub2)
+                print(
+                    '[切片] 大谱表拆分：%d线组 y=%.0f-%.0f → %d+%d线子组' % (
+                        len(_grp), _grp[0], _grp[-1], len(_sub1), len(_sub2)
+                    )
+                )
+                continue
+        split_groups.append(_grp)
+    system_groups = split_groups
+
     if len(system_groups) <= 1:
         print('[切片] 仅检测到 1 个谱系统，不切片。')
         return [image_path]
@@ -359,6 +379,46 @@ def slice_staff_rows(
         )
         return [image_path]
     system_groups = valid_groups
+
+    # 内容密度过滤：去除无音符内容的背景噪声组
+    # 原理：真正的五线谱行除谱线外还有音符头、符干、连线等内容；
+    # 背景纹理被误识别为谱线的区域几乎没有附加墨水内容。
+    if len(system_groups) >= 2:
+        try:
+            h_img, w_img = img.shape[:2]
+            gray_for_density = _cv2.cvtColor(img, _cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img.copy()
+            _, binary_for_density = _cv2.threshold(
+                gray_for_density, 0, 255, _cv2.THRESH_BINARY_INV + _cv2.THRESH_OTSU
+            )
+            # 与 _detect_staff_line_centroids 相同的水平核，用于从区域中减去谱线
+            _dens_kern_len = max(3, int(w_img * 0.40))
+            _dens_h_kern = _cv2.getStructuringElement(_cv2.MORPH_RECT, (_dens_kern_len, 1))
+            density_valid: list[list[float]] = []
+            for _grp in system_groups:
+                _top_c, _bot_c = _grp[0], _grp[-1]
+                _yr0 = max(0, int(_top_c - spacing * 2))
+                _yr1 = min(h_img, int(_bot_c + spacing * 2))
+                _region = binary_for_density[_yr0:_yr1, :]
+                _staff_mask = _cv2.morphologyEx(_region, _cv2.MORPH_OPEN, _dens_h_kern)
+                _notes_only = _cv2.subtract(_region, _staff_mask)
+                _total_px = _notes_only.shape[0] * _notes_only.shape[1]
+                _note_px = int(_notes_only.sum() / 255)
+                _density = _note_px / _total_px if _total_px > 0 else 0.0
+                if _density >= 0.010:  # ≥1% 音符内容才视为真正谱行
+                    density_valid.append(_grp)
+                else:
+                    print(
+                        f'[切片] 内容密度过滤：跳过低密度组 y={_top_c:.0f}–{_bot_c:.0f}'
+                        f'（音符密度={_density:.4f} < 0.010）'
+                    )
+            if len(density_valid) >= 2:
+                system_groups = density_valid
+            elif len(density_valid) == 1:
+                print('[切片] 内容密度过滤后仅剩 1 个有效组，不切片。')
+                return [image_path]
+            # len==0: 异常情况，保留原 system_groups 继续处理
+        except Exception as _dens_exc:
+            print(f'[切片] 内容密度过滤失败（已跳过）: {_dens_exc}')
 
     work_dir.mkdir(parents=True, exist_ok=True)
     h, w = img.shape[:2]

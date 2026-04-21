@@ -304,14 +304,34 @@ _ALLOWED_UNITS_DESC: list[tuple[int, float]] = sorted(
     ((u, d) for d, u in _DURATION_TO_UNITS.items()), reverse=True
 )  # [(64, 4.0), (48, 3.0), ..., (2, 0.125)]
 
+# Jianpu-ly anacrusis (弱起) duration code mapping — matches jianpu-ly.py line 1170.
+# Key: pickup duration in quarter lengths; Value: duration code written after ',' in time sig.
+_QL_TO_ANACRUSIS_CODE: dict[float, str] = {
+    0.5: '16', 0.75: '16.', 1.0: '8', 1.5: '8.',
+    2.0: '4', 3.0: '4.', 4.0: '2', 6.0: '2.', 8.0: '1', 12.0: '1.',
+}
+# Anacrusis code → 64th-note units (1 quarter = 16 units)
+_ANACRUSIS_CODE_TO_UNITS: dict[str, int] = {
+    code: round(ql * 16) for ql, code in _QL_TO_ANACRUSIS_CODE.items()
+}
+
 
 def _parse_bar_units(time_signature: str) -> int:
-    """Convert a 'num/denom' time signature string to jianpu-ly barLength (integer 64th-note units)."""
+    """Convert a 'num/denom[,pickup]' time signature string to jianpu-ly barLength (64th-note units)."""
     try:
-        num_s, denom_s = time_signature.split('/')
+        ts = time_signature.split(',')[0]  # strip optional anacrusis suffix, e.g. "4/4,8" → "4/4"
+        num_s, denom_s = ts.split('/')
         return int(64 * int(num_s) / int(denom_s))
     except (ValueError, ZeroDivisionError, AttributeError):
         return 64  # fallback: 4/4
+
+
+def _parse_anacrusis_units(time_signature: str) -> Optional[int]:
+    """Return pickup bar length in 64th-note units if the time signature has an anacrusis suffix (e.g. '4/4,8')."""
+    if ',' not in time_signature:
+        return None
+    code = time_signature.split(',', 1)[1].strip()
+    return _ANACRUSIS_CODE_TO_UNITS.get(code)
 
 
 def pad_measure_to_bar(notes: list[JianpuNote], bar_units: int) -> list[JianpuNote]:
@@ -426,7 +446,7 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
     Extract jianpu measure list and time signature from a music21 score.
     Merges polyphony by offset; fills gaps and overflows with rests at bar boundaries.
     """
-    from .utils import log_message
+    from ..utils import log_message
     import logging as _logging
     part = score.parts[0] if score.parts else score.flatten()
     time_signature = '4/4'
@@ -450,9 +470,25 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
         )
         measure_streams = measure_streams[:MAX_SANE_BARS]
 
+    # ── Pickup (anacrusis / 弱起) detection ───────────────────────────────────
+    # A pickup measure has paddingLeft > 0 in music21 (ported from MusicXML's implicit="yes").
+    # Actual pickup duration = nominal_measure_length - paddingLeft.
+    _first_measure_length_override: Optional[float] = None
+    _first_m = measure_streams[0]
+    _padding_left = float(getattr(_first_m, 'paddingLeft', 0.0) or 0.0)
+    if _padding_left > 0.01 and _padding_left < nominal_measure_length - 0.01:
+        _actual_pickup = nominal_measure_length - _padding_left
+        _closest_ql = min(_QL_TO_ANACRUSIS_CODE, key=lambda q: abs(q - _actual_pickup))
+        if abs(_closest_ql - _actual_pickup) < 0.25:
+            time_signature = f'{time_signature},{_QL_TO_ANACRUSIS_CODE[_closest_ql]}'
+            _first_measure_length_override = _closest_ql
+
     tol = 0.01
-    for measure in measure_streams:
-        measure_length = nominal_measure_length or float(getattr(measure.barDuration, 'quarterLength', 4.0) or 4.0)
+    for _m_idx, measure in enumerate(measure_streams):
+        if _m_idx == 0 and _first_measure_length_override is not None:
+            measure_length = _first_measure_length_override
+        else:
+            measure_length = nominal_measure_length or float(getattr(measure.barDuration, 'quarterLength', 4.0) or 4.0)
         by_offset: dict[float, list[object]] = {}
 
         # 合并同小节延音线（cross-measure tie-stop 音符在本小节内无对应 start，
@@ -565,7 +601,7 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
     Extract jianpu measures by re-slicing all notes strictly by bar length,
     ignoring the score's own Measure objects.
     """
-    from .utils import log_message
+    from ..utils import log_message
     import logging as _logging
     part = score.parts[0] if score.parts else score.flatten()
     # 合并延音线：同小节 start→stop 对合并为单音符；跨小节 tie 的合并音符由
@@ -582,6 +618,18 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
         bar_length = float(getattr(time_sig[0].barDuration, 'quarterLength', 4.0) or 4.0)
 
     max_score_offset = MAX_SANE_BARS * bar_length  # hard ceiling on note offsets
+
+    # ── Pickup (anacrusis / 弱起) detection ───────────────────────────────────
+    _first_pickup_ql: Optional[float] = None
+    _m_list = list(part.getElementsByClass(stream.Measure))
+    if _m_list:
+        _pl = float(getattr(_m_list[0], 'paddingLeft', 0.0) or 0.0)
+        if _pl > 0.01 and _pl < bar_length - 0.01:
+            _act = bar_length - _pl
+            _closest = min(_QL_TO_ANACRUSIS_CODE, key=lambda q: abs(q - _act))
+            if abs(_closest - _act) < 0.25:
+                time_signature = f'{time_signature},{_QL_TO_ANACRUSIS_CODE[_closest]}'
+                _first_pickup_ql = _closest
 
     by_offset: dict[float, object] = {}
     for element in part.flatten().notesAndRests:
@@ -603,7 +651,7 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
 
     # 警告：如果最大 offset 超过合理上限
     if offsets[-1] >= max_score_offset * 0.5 and offsets[-1] > bar_length * 30:
-        from .utils import log_message
+        from ..utils import log_message
         import logging as _logging
         log_message(
             f'[jianpu] 注意：MusicXML 中最大音符偏移量为 {offsets[-1]:.1f} 拍'
@@ -624,15 +672,30 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
             # 安全检查：超过小节上限时提前退出
             if len(measures) >= MAX_SANE_BARS:
                 return
-            pos_in_bar = current_pos % bar_length
-            capacity = bar_length - pos_in_bar if pos_in_bar > tol else bar_length
-            piece_total = min(remaining, capacity)
+            # 弱起小节：第一小节的边界是 _first_pickup_ql，后续小节按 bar_length 推进
+            if not measures and _first_pickup_ql:
+                capacity = _first_pickup_ql - current_pos
+            elif _first_pickup_ql:
+                pos_in_bar = (current_pos - _first_pickup_ql) % bar_length
+                capacity = bar_length - pos_in_bar if pos_in_bar > tol else bar_length
+            else:
+                pos_in_bar = current_pos % bar_length
+                capacity = bar_length - pos_in_bar if pos_in_bar > tol else bar_length
+            piece_total = min(remaining, max(capacity, 0.0))
             for piece in split_duration_chunks(piece_total):
                 element_piece = clone_monophonic_element(element_template, piece)
                 current_measure.append(note_to_jianpu(element_piece, key_tonic_semitone))
                 current_pos += piece
             remaining -= piece_total
-            if abs(current_pos % bar_length) < tol:
+            # 判断当前位置是否恰好是小节边界
+            if _first_pickup_ql:
+                at_bar_end = (
+                    (not measures and abs(current_pos - _first_pickup_ql) < tol)
+                    or (measures and abs((current_pos - _first_pickup_ql) % bar_length) < tol)
+                )
+            else:
+                at_bar_end = abs(current_pos % bar_length) < tol
+            if at_bar_end:
                 measures.append(current_measure)
                 current_measure = []
 
@@ -654,14 +717,23 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
         append_element_chunks(by_offset[offset], duration)
 
     if current_measure:
-        pos_in_bar = current_pos % bar_length
+        if _first_pickup_ql:
+            if not measures:
+                pos_in_bar = current_pos  # still in pickup bar
+            else:
+                pos_in_bar = (current_pos - _first_pickup_ql) % bar_length
+        else:
+            pos_in_bar = current_pos % bar_length
         if pos_in_bar > tol:
             rest = m21note.Rest()
             append_element_chunks(rest, bar_length - pos_in_bar)
         elif current_measure:
             measures.append(current_measure)
 
-    repaired_measures = [repair_jianpu_measure(measure, bar_length) for measure in measures]
+    repaired_measures = [
+        repair_jianpu_measure(m, (_first_pickup_ql if ri == 0 and _first_pickup_ql else bar_length))
+        for ri, m in enumerate(measures)
+    ]
     return repaired_measures, time_signature
 
 
@@ -706,11 +778,14 @@ def build_jianpu_ly_text_from_measures(
     """
     header = ['% jianpu-ly.py', f'title={title}', f'1={tonic_name}', time_sig, '']
     bar_units = _parse_bar_units(time_sig)
+    pickup_units = _parse_anacrusis_units(time_sig)
     for i in range(0, len(measures), 4):
         line_measures = measures[i:i + 4]
         measure_texts = [
-            ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(m, bar_units))
-            for m in line_measures
+            ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(
+                m, (pickup_units if (i + mi) == 0 and pickup_units is not None else bar_units)
+            ))
+            for mi, m in enumerate(line_measures)
         ]
         header.append(' | '.join(measure_texts) + ' |')
     return '\n'.join(header)
@@ -727,12 +802,15 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> 
     header.append('')
 
     bar_units = _parse_bar_units(time_signature)
+    pickup_units = _parse_anacrusis_units(time_signature)
     measures_per_line = 4
     for i in range(0, len(measures), measures_per_line):
         line_measures = measures[i:i + measures_per_line]
         measure_texts = [
-            ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(m, bar_units))
-            for m in line_measures
+            ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(
+                m, (pickup_units if (i + mi) == 0 and pickup_units is not None else bar_units)
+            ))
+            for mi, m in enumerate(line_measures)
         ]
         header.append(' | '.join(measure_texts) + ' |')
 

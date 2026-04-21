@@ -21,6 +21,7 @@ class ProgressOverlay(ft.Stack):
         # ── 跨线程安全的待处理更新队列 ──────────────────────────────────────
         # 工作线程只向队列中追加数据（非阻塞），计时器异步任务负责刷新 UI，
         # 避免工作线程在 Flet/Flutter 侧暂停时被 ctrl.update() 阻塞。
+        self._log_auto_scroll: bool = True   # smart scroll 状态：True=跟随底部
         self._pending_logs: collections.deque[tuple[str, str]] = collections.deque()  # (line, color)
         self._pending_progress: tuple[float, str] | None = None  # (value, message)
         self._pending_sub_progress: tuple[float, str] | None = None  # 子步骤进度
@@ -64,6 +65,7 @@ class ProgressOverlay(ft.Stack):
             spacing=2,
             expand=True,
             auto_scroll=True,
+            on_scroll=self._on_log_scroll,
         )
 
         close_btn = ft.IconButton(
@@ -238,6 +240,8 @@ class ProgressOverlay(ft.Stack):
         self._pending_logs.clear()
         self._pending_progress = None
         self._pending_sub_progress = None
+        self._log_auto_scroll = True
+        self._log_list.auto_scroll = True
         self._sub_progress_bar.value = 0.0
         self._sub_progress_bar.visible = False
         self._sub_status_text.value = ''
@@ -265,6 +269,18 @@ class ProgressOverlay(ft.Stack):
                 p.update()
         except Exception:
             pass
+
+    async def _on_log_scroll(self, e: ft.OnScrollEvent) -> None:
+        """Smart auto-scroll：用户向上滚时暂停，滚回底部时恢复。"""
+        _THRESHOLD = 40  # 距底部 ≤40px 视为「在底部」
+        at_bottom = e.extent_after <= _THRESHOLD
+        if at_bottom != self._log_auto_scroll:
+            self._log_auto_scroll = at_bottom
+            self._log_list.auto_scroll = at_bottom
+            try:
+                self._log_list.update()
+            except Exception:
+                pass
 
     def _on_close_click(self, _e) -> None:
         # 用户主动关闭：重置处理标志，_run_conversion 检测到后会终止子进程
