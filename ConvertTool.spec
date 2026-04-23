@@ -58,6 +58,18 @@ datas += onnx_datas; binaries += onnx_binaries; hiddenimports += onnx_hidden
 tmp_ret = collect_all('fitz')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# ── Pillow（PIL，图像处理 / 二值化 / 质量评分）────────────────────────────
+# core/image/ 的多处 try/except ImportError 块导入 PIL；
+# Windows 上 Pillow 含额外 DLL（_imaging.pyd / pillow.libs/）必须显式收集，
+# 否则打包版运行时图像处理功能会静默失败。
+tmp_ret = collect_all('PIL')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# ── NumPy（Pillow / OpenCV / ONNX 的底层数值库）──────────────────────────
+# 虽然 collect_all('cv2') 会间接触发 numpy hook，但显式声明更可靠。
+tmp_ret = collect_all('numpy')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 # ── homr 本地仓库、ONNX 模型权重和运行时代码（本项目扩展 OMR 引擎）─────────────────────
 # 只打包 omr_engine/homr/homr（Python 包本身），跳过仓库根目录下的
 # .git、training、tests、validation、figures、docs 等开发用目录和配置文件。

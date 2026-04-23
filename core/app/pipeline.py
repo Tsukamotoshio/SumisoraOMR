@@ -68,10 +68,25 @@ def _archive_mxl_to_xml_scores(
     """
     try:
         xml_scores_dir.mkdir(parents=True, exist_ok=True)
-        ext = mxl_path.suffix.lower() or '.musicxml'
-        dest_name = f'{source_stem}.{engine_label}{ext}' if engine_label else f'{source_stem}{ext}'
+        # 始终以 .musicxml（非压缩）格式归档，方便后续移调引擎直接使用
+        dest_name = f'{source_stem}.{engine_label}.musicxml' if engine_label else f'{source_stem}.musicxml'
         dest = xml_scores_dir / dest_name
-        shutil.copy2(str(mxl_path), str(dest))
+        if mxl_path.suffix.lower() == '.mxl':
+            # 解压 .mxl（ZIP 包）中的 XML 文件并保存为 .musicxml
+            import zipfile
+            with zipfile.ZipFile(mxl_path, 'r') as zf:
+                xml_names = [n for n in zf.namelist() if n.lower().endswith('.xml') and not n.startswith('META-INF')]
+                if not xml_names:
+                    # 兜底：直接复制原文件
+                    shutil.copy2(str(mxl_path), str(dest.with_suffix('.mxl')))
+                    log_message(f'  ↳ MusicXML 已归档（无法解压）→ xml-scores/{dest.with_suffix(".mxl").name}')
+                    return
+                # 优先取不含路径分隔符的顶级 XML，否则取第一个
+                top_level = [n for n in xml_names if '/' not in n and '\\' not in n]
+                chosen = top_level[0] if top_level else xml_names[0]
+                dest.write_bytes(zf.read(chosen))
+        else:
+            shutil.copy2(str(mxl_path), str(dest))
         log_message(f'  ↳ MusicXML 已归档 → xml-scores/{dest_name}')
     except OSError as exc:
         log_message(f'  [警告] MusicXML 归档失败: {exc}', logging.WARNING)
@@ -116,9 +131,25 @@ def process_single_input_to_jianpu(
     _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO
 
-    # ── 路由：AUTO 和显式单引擎 ────────────────────────────────────────────
+    # ── 路由：AUTO 智能选择 ────────────────────────────────────────────────
+    # 图片格式 → Homr
+    # PDF + 矢量图 → Audiveris
+    # PDF + 位图 → Homr
     if _is_auto:
-        effective_engine = OMREngine.AUDIVERIS
+        if _IS_IMAGE:
+            effective_engine = OMREngine.HOMR
+            log_message(f'  [自动选择] {source_file.name} 为图片格式 → Homr 引擎。')
+        elif source_file.suffix.lower() == '.pdf':
+            from ..omr.engine_router import is_pdf_vector
+            if is_pdf_vector(source_file):
+                effective_engine = OMREngine.AUDIVERIS
+                log_message(f'  [自动选择] {source_file.name} 检测为矢量 PDF → Audiveris 引擎。')
+            else:
+                effective_engine = OMREngine.HOMR
+                log_message(f'  [自动选择] {source_file.name} 检测为位图 PDF → Homr 引擎。')
+        else:
+            effective_engine = OMREngine.AUDIVERIS
+            log_message(f'  [自动选择] {source_file.name} 格式未知 → Audiveris 引擎。')
     else:
         effective_engine = engine
 

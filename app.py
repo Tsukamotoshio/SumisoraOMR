@@ -255,7 +255,7 @@ async def main(page: ft.Page) -> None:
 
     # ── 顶部 AppBar ──────────────────────────────────────────────────────────
     page.appbar = ft.AppBar(
-        title=ft.Text('OMR 乐谱转换工具  v0.2.3', size=15, weight=ft.FontWeight.W_600),
+        title=ft.Text('OMR 乐谱转换工具  v0.2.4', size=15, weight=ft.FontWeight.W_600),
         center_title=False,
         bgcolor=Palette.BG_SURFACE,
         leading=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color=Palette.PRIMARY),
@@ -366,7 +366,10 @@ def _setup_flet_view_name() -> None:
 
             if getattr(sys, 'frozen', False):
                 # 打包版：从随包附带的 flet-windows.zip 解压
-                _zip = _Path(sys._MEIPASS) / 'flet_desktop' / 'app' / 'flet-windows.zip'
+                _meipass = getattr(sys, '_MEIPASS', None)
+                if _meipass is None:
+                    return
+                _zip = _Path(_meipass) / 'flet_desktop' / 'app' / 'flet-windows.zip'
                 if not _zip.exists():
                     return
                 with _zipfile.ZipFile(_zip) as _zf:

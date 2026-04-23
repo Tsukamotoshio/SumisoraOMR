@@ -453,7 +453,7 @@ def crop_white_border(img: 'Image.Image') -> tuple['Image.Image', float]:
                 rmin = int(_np.where(rows_ok)[0][0])
                 rmax = int(_np.where(rows_ok)[0][-1])
             else:
-                # 普通扫描件：白色/近白色边框
+                # 普通扫描件：白色/近白色边框——百分位数全局阈值法
                 p92 = float(_np.percentile(gray_arr, 92))
                 bg_thresh = max(200, int(p92) - 15)
                 content_mask = _np.array(gray.point(lambda px: 0 if px >= bg_thresh else 255, '1'))

@@ -5,7 +5,7 @@ chcp 65001 >nul
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%.."
 set "BASE_DIR=%CD%\"
-set "APP_VERSION=0.2.3"
+set "APP_VERSION=0.2.4"
 
 set "AUDIVERIS_SOURCE=%BASE_DIR%omr_engine\audiveris"
 set "AUDIVERIS_RUNTIME_SRC=%AUDIVERIS_SOURCE%\app\build\install\app"

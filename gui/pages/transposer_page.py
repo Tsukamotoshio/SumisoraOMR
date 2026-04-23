@@ -559,9 +559,7 @@ class TransposerPage(ft.Column):
         self._transposed_mxl = None
         self._state.transposed_mxl = None
         self._trans_render_token += 1
-        self._trans_viewer._image.src = None
-        self._trans_viewer._image.visible = False
-        self._trans_viewer._placeholder.visible = True
+        self._trans_viewer.reset()
         p = self.page
         if p is not None:
             p.loop.call_soon_threadsafe(p.update, self._trans_viewer)
@@ -590,12 +588,8 @@ class TransposerPage(ft.Column):
     def reset_view(self) -> None:
         self._orig_mxl = None
         self._transposed_mxl = None
-        self._orig_viewer._image.src = None
-        self._orig_viewer._image.visible = False
-        self._orig_viewer._placeholder.visible = True
-        self._trans_viewer._image.src = None
-        self._trans_viewer._image.visible = False
-        self._trans_viewer._placeholder.visible = True
+        self._orig_viewer.reset()
+        self._trans_viewer.reset()
         self._status.value = '请先打开乐谱文件。'
         p = self.page
         if p is not None:

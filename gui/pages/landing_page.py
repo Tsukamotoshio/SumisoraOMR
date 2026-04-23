@@ -42,14 +42,14 @@ class LandingPage(ft.Row):
         self._sidebar = FileSidebar(self._state)
         self._viewer = PdfViewer()
 
-        # 引擎选择（'auto' 已关闭，待重新设计后恢复）
+        # 引擎选择
         self._engine_dd = ft.Dropdown(
             label='OMR 引擎',
-            value='audiveris',
+            value='auto',
             options=[
-                # ft.dropdown.Option('auto',  '自动（暂未开放）'),
+                ft.dropdown.Option('auto',      '自动选择（推荐）'),
                 ft.dropdown.Option('audiveris', 'Audiveris（启发式算法）'),
-                ft.dropdown.Option('homr',      'Homr（实验性）'),
+                ft.dropdown.Option('homr',      'Homr（深度学习）'),
             ],
             width=200,
             text_size=13,
@@ -359,7 +359,7 @@ class LandingPage(ft.Row):
                     'skip_dup': getattr(self, '_skip_dup', False),
                     'dup_files': list(getattr(self, '_dup_files', set())),
                     'base_dir': str(base_dir),
-                    'use_gpu': engine_val == 'homr' and _gpu_crash_count < 2,
+                    'use_gpu': engine_val in ('homr', 'auto') and _gpu_crash_count < 2,
                     'files_offset': _files_done_total,       # GPU崩溃重试用
                     'total_files_orig': _total_files_orig,   # GPU崩溃重试用
                 }
@@ -456,7 +456,7 @@ class LandingPage(ft.Row):
                     err_text = '\n'.join(err_lines).strip()
                     if proc.returncode != 0:
                         gpu_access_violation_codes = {-1073741819, 3221225477}
-                        if engine_val == 'homr' and task.get('use_gpu') and proc.returncode in gpu_access_violation_codes:
+                        if engine_val in ('homr', 'auto') and task.get('use_gpu') and proc.returncode in gpu_access_violation_codes:
                             # 0xC0000005 访问冲突，GPU 模式崩溃
                             # 裁掉已处理完的文件，从崩溃位置继续重试
                             _files_done_total += _files_done_this_run

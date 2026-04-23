@@ -105,13 +105,7 @@ class ProgressOverlay(ft.Stack):
                         ),
                         visible=True,
                     ),
-                    ft.Container(
-                        content=self._log_list,
-                        height=200,
-                        bgcolor=Palette.BG_DARK,
-                        border_radius=ft.BorderRadius.all(6),
-                        padding=ft.Padding.all(8),
-                    ),
+
                 ],
                 spacing=4,
                 tight=True,

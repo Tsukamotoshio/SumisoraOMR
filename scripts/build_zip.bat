@@ -15,7 +15,7 @@ echo [DEBUG] BASE_DIR=%BASE_DIR%
 
 
 
-set "APP_VERSION=0.2.3"
+set "APP_VERSION=0.2.4"
 
 
 

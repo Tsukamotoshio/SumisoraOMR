@@ -17,44 +17,41 @@ from core.app.backend import editor_workspace_dir, open_directory
 from ..components.jianpu_editor import JianpuEditor
 from ..theme import Palette
 
+# 1×1 透明 PNG，用于保持 InteractiveViewer content 始终 visible=True
+_BLANK_PNG_B64 = (
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBg'
+    'AAAABQABpfZFQAAAAABJRU5ErkJggg=='
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 左侧：二值化图像浏览器（带缩放 + 放大镜 + 行高亮）
+# 左侧：二值化图像浏览器（InteractiveViewer 内建缩放/平移 + 行高亮）
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _BinaryImageView(ft.Column):
-    """显示预处理后的二值化图像，支持鼠标滚轮缩放、放大镜和行高亮。"""
+    """显示预处理后的二值化图像，支持内建缩放/平移和行高亮联动。"""
 
-    MIN_SCALE = 0.25
+    MIN_SCALE = 0.3
     MAX_SCALE = 8.0
-    SCALE_STEP = 0.1
+    SCALE_STEP = 0.15
 
     def __init__(self, state: AppState):
         super().__init__(spacing=0, expand=True)
         self._state = state
-        self._scale = 1.0
         self._path: Optional[Path] = None
         self._raw_b64: Optional[str] = None
         self._highlighted_line: int = -1
-        self._mag_visible = False
-        self._mag_rendering = False   # 节流标志
-        self._mag_pending: Optional[tuple] = None   # 最新位置
         self._load_token: int = 0
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_line_selected)
 
     def _build_ui(self) -> None:
-        self._scale_label = ft.Text('100%', size=12, color=Palette.TEXT_SECONDARY, width=44)
-        self._mag_btn = ft.IconButton(ft.Icons.SEARCH_ROUNDED, icon_size=18, on_click=self._toggle_mag, tooltip='放大镜')
-
         toolbar = ft.Container(
             content=ft.Row(
                 [
-                    ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED, icon_size=18, on_click=self._zoom_out, tooltip='缩小'),
-                    self._scale_label,
-                    ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,  icon_size=18, on_click=self._zoom_in,  tooltip='放大'),
-                    ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED, icon_size=18, on_click=self._zoom_fit, tooltip='适应'),
-                    self._mag_btn,
+                    ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,    icon_size=18, on_click=self._zoom_out, tooltip='缩小'),
+                    ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,     icon_size=18, on_click=self._zoom_in,  tooltip='放大'),
+                    ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,  icon_size=18, on_click=self._zoom_fit, tooltip='适应'),
                 ],
                 spacing=2,
             ),
@@ -63,60 +60,69 @@ class _BinaryImageView(ft.Column):
             border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
         )
 
-        self._image = ft.Image(src=None, fit=ft.BoxFit.CONTAIN, expand=True, visible=False)
+        self._image = ft.Image(
+            src=_BLANK_PNG_B64, fit=ft.BoxFit.FIT_WIDTH,
+            visible=True, gapless_playback=True,
+        )
+        # GestureDetector 仅用于 tap-to-line 联动，不处理滚轮/悬停
+        self._tap_detector = ft.GestureDetector(
+            content=self._image,
+            on_tap=self._on_tap,
+        )
+        # constrained=False：允许内容超出视口高度，从而可垂直拖动；
+        # 宽度由 _on_viewer_resize 动态设定。
+        self._interactive = ft.InteractiveViewer(
+            content=self._tap_detector,
+            pan_enabled=True,
+            scale_enabled=True,
+            min_scale=self.MIN_SCALE,
+            max_scale=self.MAX_SCALE,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            constrained=False,
+            expand=True,
+        )
+
+        self._placeholder_col = ft.Column(
+            [
+                ft.Icon(ft.Icons.IMAGE_OUTLINED, size=40, color=Palette.TEXT_DISABLED),
+                ft.Text('请先在首页选择并转换文件，或在此页打开对应图像/简谱文件',
+                        size=12, color=Palette.TEXT_DISABLED, text_align=ft.TextAlign.CENTER),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        )
         self._placeholder = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Icon(ft.Icons.IMAGE_OUTLINED, size=40, color=Palette.TEXT_DISABLED),
-                    ft.Text('请先在首页选择并转换文件，或在此页打开对应图像/简谱文件',
-                            size=12, color=Palette.TEXT_DISABLED, text_align=ft.TextAlign.CENTER),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
+            content=self._placeholder_col,
             expand=True,
             alignment=ft.Alignment(0, 0),
         )
 
-        # 放大镜浮层（初始不可见）
-        self._mag_crop = ft.Image(src=None, width=200, height=200, fit=ft.BoxFit.FILL,
-                                  border_radius=ft.BorderRadius.all(6), visible=False)
-        self._mag_container = ft.Container(
-            content=self._mag_crop,
-            bgcolor=Palette.MAGNIFIER_BG,
-            border_radius=ft.BorderRadius.all(10),
-            border=ft.Border.all(2, Palette.PRIMARY),
-            visible=False, width=204, height=204,
-            left=0, top=0,
-        )
-
-        self._gesture = ft.GestureDetector(
-            content=ft.Stack(
-                [self._placeholder, self._image, self._mag_container],   # 直接放入 Stack
-                expand=True,
-            ),
-            on_scroll=self._on_scroll,
-            on_hover=self._on_hover,
-            on_tap=self._on_tap,
+        self._view_container = ft.Container(
+            content=ft.Stack([self._interactive, self._placeholder], expand=True),
             expand=True,
+            bgcolor=Palette.BG_CARD,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            on_size_change=self._on_viewer_resize,
         )
-
-        self.controls = [
-            toolbar,
-            ft.Container(content=self._gesture, expand=True, bgcolor=Palette.BG_DARK,
-                         clip_behavior=ft.ClipBehavior.HARD_EDGE),
-        ]
+        self.controls = [toolbar, self._view_container]
         self.expand = True
+
+    def _on_viewer_resize(self, e) -> None:
+        """视口尺寸变化时将图像宽度同步为视口宽度，消除左右黑边并允许垂直拖动。"""
+        w = int(e.width)
+        if w > 0 and self._image.width != w:
+            self._image.width = w
+            try:
+                self._image.update()
+            except Exception:
+                pass
 
     # ── 加载图像 ─────────────────────────────────────────────────────────────
 
     def load(self, path: Path) -> None:
         self._path = path
-        self._scale = 1.0
         self._load_token += 1
         token = self._load_token
-        # 重置缩放变换
-        self._image.scale = None
         if path.suffix.lower() == '.pdf':
             threading.Thread(target=self._load_pdf_async, args=(path, token), daemon=True).start()
         else:
@@ -203,7 +209,6 @@ class _BinaryImageView(ft.Column):
             return
         self._raw_b64 = raw_b64
         self._image.src = self._raw_b64
-        self._image.visible = True
         self._placeholder.visible = False
         try:
             self.update()
@@ -213,108 +218,23 @@ class _BinaryImageView(ft.Column):
     def _apply_load_error(self, message: str, token: int) -> None:
         if token != self._load_token:
             return
-        self._placeholder.controls[-1] = ft.Text(message, size=12, color=Palette.ERROR)
+        self._placeholder_col.controls[-1] = ft.Text(message, size=12, color=Palette.ERROR)
         self._placeholder.visible = True
         try:
             self.update()
         except Exception:
             pass
 
-    # ── 缩放 ─────────────────────────────────────────────────────────────────
+    # ── 缩放（InteractiveViewer 内建）────────────────────────────────────────
 
-    def _zoom_in(self, _e=None) -> None:
-        self._scale = min(self.MAX_SCALE, self._scale + self.SCALE_STEP)
-        self._apply_scale()
+    async def _zoom_in(self, _e=None) -> None:
+        await self._interactive.zoom(1 + self.SCALE_STEP)
 
-    def _zoom_out(self, _e=None) -> None:
-        self._scale = max(self.MIN_SCALE, self._scale - self.SCALE_STEP)
-        self._apply_scale()
+    async def _zoom_out(self, _e=None) -> None:
+        await self._interactive.zoom(1.0 / (1 + self.SCALE_STEP))
 
-    def _zoom_fit(self, _e=None) -> None:
-        self._scale = 1.0
-        self._apply_scale()
-
-    def _apply_scale(self) -> None:
-        self._scale_label.value = f'{int(self._scale * 100)}%'
-        # 用 Scale 变换实现视觉缩放（即时生效，无需 PIL 重渲染）
-        self._image.scale = ft.Scale(scale=self._scale)
-        try:
-            self._scale_label.update()
-            self._image.update()
-        except Exception:
-            pass
-
-    def _rerender_scaled(self) -> None:
-        # 保留兼容，内部改用 scale 变换
-        self._apply_scale()
-
-    def _on_scroll(self, e: ft.ScrollEvent) -> None:
-        delta = e.scroll_delta.y if hasattr(e, 'scroll_delta') else 0
-        if delta < 0:
-            self._zoom_in()
-        elif delta > 0:
-            self._zoom_out()
-
-    # ── 放大镜 ───────────────────────────────────────────────────────────────
-
-    def _toggle_mag(self, _e) -> None:
-        self._mag_visible = not self._mag_visible
-        self._mag_container.visible = self._mag_visible
-        try:
-            self._mag_container.update()
-        except Exception:
-            pass
-
-    def _on_hover(self, e: ft.HoverEvent) -> None:
-        if not self._mag_visible or self._raw_b64 is None:
-            return
-        lx = e.local_position.x if hasattr(e, 'local_position') else 0
-        ly = e.local_position.y if hasattr(e, 'local_position') else 0
-        # 先更新位置（无 PIL 开销）——放大镜以鼠标为中心
-        self._mag_container.left = lx - 102
-        self._mag_container.top  = ly - 102
-        try:
-            self._mag_container.update()
-        except Exception:
-            pass
-        # 节流：只在无渲染时才启动
-        self._mag_pending = (lx, ly)
-        if not self._mag_rendering:
-            self._mag_rendering = True
-            threading.Thread(target=self._mag_render_loop, daemon=True).start()
-
-    def _mag_render_loop(self) -> None:
-        """消费待渲染位置，确保每次只跑一个 PIL 线程。"""
-        while True:
-            pos = self._mag_pending
-            if pos is None:
-                break
-            self._mag_pending = None
-            self._render_magnifier(pos[0], pos[1])
-        self._mag_rendering = False
-
-    def _render_magnifier(self, px: float, py: float) -> None:
-        try:
-            from PIL import Image as PILImage
-            buf = io.BytesIO(base64.b64decode(self._raw_b64))
-            with PILImage.open(buf) as img:
-                w, h = img.size
-                radius = max(int(min(w, h) * 0.08), 40)
-                cx = int(px / 800.0 * w)
-                cy = int(py / 1000.0 * h)
-                x0, y0 = max(cx - radius, 0), max(cy - radius, 0)
-                x1, y1 = min(cx + radius, w), min(cy + radius, h)
-                crop = img.crop((x0, y0, x1, y1)).resize((200, 200), PILImage.LANCZOS)
-                out = io.BytesIO()
-                crop.save(out, format='PNG')
-                self._mag_crop.src = base64.b64encode(out.getvalue()).decode()
-                self._mag_crop.visible = True
-                try:
-                    self._mag_crop.update()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    async def _zoom_fit(self, _e=None) -> None:
+        await self._interactive.reset()
 
     # ── 行联动 ───────────────────────────────────────────────────────────────
 
@@ -322,18 +242,13 @@ class _BinaryImageView(ft.Column):
         """将点击的 Y 坐标映射为简谱行号并广播事件。"""
         if self._raw_b64 is None:
             return
-        lx = e.local_position.x if hasattr(e, 'local_position') else 0
         ly = e.local_position.y if hasattr(e, 'local_position') else 0
         try:
-            from PIL import Image as PILImage
-            buf = io.BytesIO(base64.b64decode(self._raw_b64))
-            with PILImage.open(buf) as img:
-                _, img_h = img.size
-            num_lines = max(len(self._state.log_lines), 1)  # fallback
+            num_lines = max(len(self._state.log_lines), 1)
             if self._state.current_jianpu_txt and self._state.current_jianpu_txt.exists():
                 lines = self._state.current_jianpu_txt.read_text(encoding='utf-8-sig', errors='replace').splitlines()
                 num_lines = max(len(lines), 1)
-            rel_y = ly / max(600, 1)  # 归一化
+            rel_y = ly / max(600, 1)
             line_no = int(rel_y * num_lines)
             self._highlighted_line = line_no
             self._state.emit(Event.JIANPU_TXT_SELECTED, line_no=line_no)
@@ -341,24 +256,17 @@ class _BinaryImageView(ft.Column):
             pass
 
     def _on_line_selected(self, line_no: int, **_kw) -> None:
-        """外部（文本编辑器）选中行时，高亮图像对应区域（叠加颜色条）。"""
+        """外部（文本编辑器）选中行时记录状态（供未来扩展行高亮）。"""
         self._highlighted_line = line_no
-        # 在图像上叠加一条半透明横条（通过对整张图片应用 color_filter 近似）
-        # Flet Image 不支持精确区域染色；此处仅记录状态供未来扩展。
 
     def reset(self) -> None:
         self._path = None
         self._raw_b64 = None
         self._highlighted_line = -1
-        self._image.src = None
-        self._image.visible = False
+        self._image.src = _BLANK_PNG_B64
         self._placeholder.visible = True
-        self._mag_container.visible = False
-        self._mag_crop.visible = False
         try:
-            self._image.update()
-            self._placeholder.update()
-            self._mag_container.update()
+            self.update()
         except Exception:
             pass
 
@@ -387,7 +295,7 @@ class EditorPage(ft.Row):
     def _build_ui(self) -> None:
         open_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开')],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开乐谱')],
                 tight=True, spacing=6,
             ),
             on_click=self._on_open_click,
@@ -415,8 +323,8 @@ class EditorPage(ft.Row):
                     ft.Text('简谱编辑套件', size=13, weight=ft.FontWeight.W_600,
                             color=Palette.TEXT_SECONDARY),
                     ft.Container(expand=True),
-                    open_output_btn,
                     open_btn,
+                    open_output_btn,
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=8,
