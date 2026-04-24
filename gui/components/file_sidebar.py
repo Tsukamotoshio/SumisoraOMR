@@ -264,3 +264,4 @@ class FileSidebar(ft.Column):
                 self._make_file_row(fp) for fp in pinned
             ]
             self._update_select_all_icon()
+

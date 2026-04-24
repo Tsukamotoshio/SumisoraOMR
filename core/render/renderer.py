@@ -491,11 +491,29 @@ def render_score_to_jianpu_pdf(
     Render a music21 score to jianpu PDF.
     Tries in order: standard jianpu-ly → strict-timing → reportlab fallback → LilyPond markup fallback.
     """
-    txt_content = build_jianpu_ly_text(score, title)
-    txt_path.write_text(txt_content, encoding='utf-8')
-    log_message(f'已生成 jianpu-ly 文本文件: {txt_path.name}')
+    try:
+        txt_content = build_jianpu_ly_text(score, title)
+    except Exception as exc:
+        log_message(f'[jianpu] 标准 jianpu-ly 文本生成失败 ({exc})，尝试使用简化处理', logging.WARNING)
+        try:
+            from ..music.jianpu_core import parse_score_to_jianpu, build_jianpu_ly_text_from_measures
+            measures, header_lines, time_sig = parse_score_to_jianpu(score)
+            key_name = header_lines[0].split()[0] if header_lines else '1=C'
+            txt_content = build_jianpu_ly_text_from_measures(measures, time_sig, key_name, title)
+        except Exception as exc2:
+            log_message(f'[jianpu] 简化处理也失败: {exc2}，继续尝试其他方式', logging.WARNING)
+            txt_content = None
 
-    measures, header_lines, _ = parse_score_to_jianpu(score)
+    if txt_content:
+        txt_path.write_text(txt_content, encoding='utf-8')
+        log_message(f'已生成 jianpu-ly 文本文件: {txt_path.name}')
+
+    try:
+        from ..music.jianpu_core import parse_score_to_jianpu
+        measures, header_lines, _ = parse_score_to_jianpu(score)
+    except Exception as exc:
+        log_message(f'[jianpu] parse_score_to_jianpu 失败: {exc}，跳过中间产物保存', logging.WARNING)
+        measures, header_lines = [], []
 
     if render_jianpu_ly(txt_path, ly_path):
         log_message(f'已生成 jianpu-ly LilyPond 文件: {ly_path.name}')
@@ -701,7 +719,10 @@ def generate_jianpu_pdf_from_mxl(
 
         return result
     except Exception as exc:
+        import traceback
+        tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         log_message(f'生成简谱 PDF 失败: {mxl_path.name}，原因: {exc}', logging.WARNING)
+        log_message(f'详细错误信息:\n{tb_str}', logging.DEBUG)
         return False
     finally:
         safe_remove_file(txt_path)

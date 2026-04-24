@@ -339,6 +339,8 @@ class LandingPage(ft.Row):
     def _run_conversion(self) -> None:
         """在后台线程中启动 Worker 子进程并通过 JSON IPC 更新进度。"""
         _done_or_error_received = False
+        _conversion_results = {'success': [], 'failed': []}  # 记录转换结果
+
         try:
             base_dir = app_base_dir()
             output_path = output_dir(self._output_dir_text.value)
@@ -387,6 +389,7 @@ class LandingPage(ft.Row):
                 self._worker_proc = proc
 
                 err_lines: list[str] = []
+                _current_processing_file: Optional[str] = None  # 正在处理的文件名
 
                 def _read_stderr() -> None:
                     try:
@@ -429,11 +432,26 @@ class LandingPage(ft.Row):
                     mtype = msg.get('type', '')
                     if mtype == 'progress':
                         self._state.set_progress(msg.get('value', 0.0), msg.get('message', ''))
+                        # 从 message 中提取文件名（格式：[n/total] filename）
+                        msg_text = msg.get('message', '')
+                        if msg_text and ']' in msg_text:
+                            _current_processing_file = msg_text.split('] ', 1)[-1]
                     elif mtype == 'sub_progress':
                         self._overlay.set_sub_progress(msg.get('value', 0.0), msg.get('message', ''))
                     elif mtype == 'log':
                         text = msg.get('text', '').strip()
                         self._state.append_log(text)
+                        # 从日志中提取失败信息
+                        if '✗' in text and _current_processing_file:
+                            reason = text.replace('✗', '').strip()
+                            if reason.startswith('['):
+                                # 形如 "[引擎] xxx" 的日志，提取失败原因
+                                if '：' in reason or ':' in reason:
+                                    reason = reason.split('：' if '：' in reason else ':', 1)[-1].strip()
+                            _conversion_results['failed'].append({
+                                'file': _current_processing_file,
+                                'reason': reason or '未知原因'
+                            })
                     elif mtype == 'result':
                         _files_done_this_run += 1
                         if msg.get('success'):
@@ -442,8 +460,24 @@ class LandingPage(ft.Row):
                                 archived = Path(msg['archived_mxl'])
                                 self._state.current_mxl = archived
                                 self._state.emit(Event.MXL_READY, path=archived)
+                            if _current_processing_file:
+                                _conversion_results['success'].append(_current_processing_file)
+                        else:
+                            if _current_processing_file:
+                                # result 消息中没有原因，检查是否已记录在 failed 中
+                                if not any(f['file'] == _current_processing_file for f in _conversion_results['failed']):
+                                    _conversion_results['failed'].append({
+                                        'file': _current_processing_file,
+                                        'reason': '未知原因'
+                                    })
                     elif mtype == 'done':
                         _done_or_error_received = True
+                        self._state.conversion_summary = {
+                            'success_count': len(_conversion_results['success']),
+                            'failed_count': len(_conversion_results['failed']),
+                            'failed_files': _conversion_results['failed'],
+                            'message': msg.get('message', '完成。')
+                        }
                         self._state.set_done(msg.get('message', '完成。'))
                     elif mtype == 'error':
                         _done_or_error_received = True
@@ -491,6 +525,102 @@ class LandingPage(ft.Row):
                     pass
             if self._state.is_processing:
                 self._state.is_processing = False
+            # 转换完成后，如果有失败文件则显示详细结果对话框
+            self._show_conversion_results()
+
+    def _show_conversion_results(self) -> None:
+        """显示转换结果详情（成功数、失败数、失败文件列表）。"""
+        try:
+            if self.page is None:
+                return
+
+            summary = self._state.conversion_summary
+            if not summary:
+                return
+
+            success_count = summary.get('success_count', 0)
+            failed_count = summary.get('failed_count', 0)
+            failed_files = summary.get('failed_files', [])
+
+            # 如果没有失败文件，不需要显示详细对话框
+            if failed_count == 0:
+                return
+
+            # 构建失败详情内容
+            details_items: list[ft.Control] = []
+
+            # 摘要行
+            summary_text = f'✓ 成功 {success_count} 个'
+            if failed_count > 0:
+                summary_text += f'  ✗ 失败 {failed_count} 个'
+            details_items.append(
+                ft.Text(summary_text, size=13, weight=ft.FontWeight.W_600, color=Palette.TEXT_PRIMARY)
+            )
+            details_items.append(ft.Container(height=8))
+
+            # 失败文件列表
+            if failed_files:
+                details_items.append(
+                    ft.Text('失败文件：', size=12, weight=ft.FontWeight.W_500, color=Palette.ERROR)
+                )
+                for idx, item in enumerate(failed_files[:10]):  # 最多显示前 10 个
+                    file_name = item.get('file', '未知') if isinstance(item, dict) else item
+                    reason = item.get('reason', '') if isinstance(item, dict) else ''
+                    details_items.append(
+                        ft.Column(
+                            [
+                                ft.Text(f'  • {file_name}', size=11, color=Palette.TEXT_PRIMARY),
+                                ft.Text(
+                                    f'    原因：{reason}',
+                                    size=10,
+                                    color=Palette.TEXT_SECONDARY,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                ),
+                            ],
+                            spacing=2,
+                        )
+                    )
+
+                if len(failed_files) > 10:
+                    details_items.append(
+                        ft.Text(
+                            f'  …以及另外 {len(failed_files)-10} 个失败的文件',
+                            size=10,
+                            color=Palette.TEXT_DISABLED,
+                        )
+                    )
+
+            # 显示对话框
+            def _close_dialog(_ev=None):
+                if self.page:
+                    self.page.pop_dialog()
+
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text('转换结果详情', size=15, weight=ft.FontWeight.W_600),
+                content=ft.Container(
+                    content=ft.Column(
+                        details_items,
+                        tight=True,
+                        spacing=6,
+                        scroll=ft.ScrollMode.AUTO,
+                    ),
+                    padding=ft.Padding.only(top=6),
+                    width=450,
+                    height=300,
+                    max_height=400,
+                ),
+                actions=[
+                    ft.TextButton(
+                        '关闭',
+                        on_click=_close_dialog,
+                    ),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            self.page.show_dialog(dialog)
+        except Exception:
+            pass
 
     def terminate_worker(self) -> None:
         """关闭 GUI 时强制终止 Worker 子进程及其所有子进程（如 java.exe）。"""

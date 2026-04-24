@@ -68,6 +68,9 @@ class AppState:
     log_lines: list[str] = field(default_factory=list)
     max_log_lines: int = 500
 
+    # 转换结果记录
+    conversion_summary: dict[str, Any] = field(default_factory=dict)
+
     # 内部：事件总线
     _listeners: dict[str, list[Callable]] = field(default_factory=dict)
     _lock: threading.Lock                 = field(default_factory=threading.Lock)
@@ -110,7 +113,12 @@ class AppState:
     # ── 状态变更辅助 ─────────────────────────────────────────────────────────
 
     def add_file(self, path: Path) -> None:
+        """添加文件到列表（只允许支持的格式）。"""
         path = path.resolve()
+        # 验证文件类型（只允许 pdf, png, jpg, jpeg）
+        supported_suffixes = {'.pdf', '.png', '.jpg', '.jpeg'}
+        if path.suffix.lower() not in supported_suffixes:
+            return
         if path not in self.pinned_files:
             self.pinned_files.append(path)
             self.checked_files.add(path)

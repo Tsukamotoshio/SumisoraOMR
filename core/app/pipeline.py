@@ -158,17 +158,14 @@ def process_single_input_to_jianpu(
         f'{"Homr" if effective_engine is OMREngine.HOMR else "Audiveris"} 引擎。'
     )
 
-    # ── Homr (images / PDF first page) ────────────────────────────────────────
-    if effective_engine is OMREngine.HOMR:
+    # ── Helper: try to run Homr (used for fallback) ─────────────────────────
+    def _try_run_homr() -> Optional[Path]:
+        """尝试运行 Homr，返回输出目录或 None 失败。"""
         if not _IS_IMAGE and source_file.suffix.lower() != '.pdf':
-            log_message(
-                f'  ✗ Homr 仅支持图片或 PDF 首页，跳过 {source_file.name}。',
-                logging.WARNING,
-            )
-            return False
+            return None
         if not check_homr_available():
-            return False
-        _report_subprogress(0.05, '[homr] 启动 OMR 识别…')
+            return None
+        _report_subprogress(0.05, '[Homr] 启动 OMR 识别…')
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
         with ThreadPoolExecutor(max_workers=1) as _homr_ex:
             _homr_future = _homr_ex.submit(
@@ -179,21 +176,34 @@ def process_single_input_to_jianpu(
                 progress_fn=_report_subprogress,
             )
             try:
-                omr_out = _homr_future.result(timeout=MAX_HOMR_SECONDS)
+                return _homr_future.result(timeout=MAX_HOMR_SECONDS)
             except _TimeoutError:
                 log_message(
                     f'  [Homr] 识别超时（>{MAX_HOMR_SECONDS}s），已中止 {source_file.name}。',
                     logging.WARNING,
                 )
                 _homr_future.cancel()
-                omr_out = None
+                return None
             except Exception as _exc:
                 log_message(f'  [Homr] 识别异常：{_exc}', logging.WARNING)
-                omr_out = None
+                return None
+
+    # ── Homr (single-engine mode, with validation fallback) ─────────────────
+    if effective_engine is OMREngine.HOMR:
+        if not _IS_IMAGE and source_file.suffix.lower() != '.pdf':
+            log_message(
+                f'  ✗ Homr 仅支持图片或 PDF 首页，跳过 {source_file.name}。',
+                logging.WARNING,
+            )
+            return False
+        omr_out = _try_run_homr()
         engine_label = 'Homr'
 
+        if omr_out is None:
+            log_message(f'  ✗ Homr 处理失败，跳过 {source_file.name}。', logging.WARNING)
+            return False
 
-    # ── Audiveris (PDF and images) ────────────────────────────────────────────
+    # ── Audiveris (with fallback to Homr) ──────────────────────────────────
     else:
         _report_subprogress(0.05, '[Audiveris] 启动 OMR 识别…')
         omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
@@ -201,14 +211,16 @@ def process_single_input_to_jianpu(
             _report_subprogress(0.65, 'OMR 完成，正在生成简谱…')
         engine_label = 'Audiveris'
 
-    # ── Error / fallback ────────────────────────────────────────────────────────
-    if omr_out is None:
-        if effective_engine is OMREngine.HOMR:
-            log_message(f'  ✗ Homr 处理失败，跳过 {source_file.name}。', logging.WARNING)
-            return False
-        else:
-            log_message(f'  ✗ Audiveris 处理失败，跳过 {source_file.name}。', logging.WARNING)
-            return False
+        # ── Audiveris 失败时回退到 Homr ─────────────────────────────────────
+        if omr_out is None:
+            log_message(f'  ✗ Audiveris 处理失败，正在尝试 Homr 引擎作为回退...')
+            omr_out = _try_run_homr()
+            if omr_out is not None:
+                engine_label = 'Homr'
+                log_message(f'  ✓ Homr 回退成功。')
+            else:
+                log_message(f'  ✗ Audiveris 和 Homr 均处理失败，跳过 {source_file.name}。', logging.WARNING)
+                return False
 
     # ── Resolve MusicXML path ──────────────────────────────────────────────────
     mxl_file = find_first_musicxml_file(omr_out, source_file.stem)
@@ -235,11 +247,12 @@ def process_single_input_to_jianpu(
     else:
         effective_source = source_file
 
-    # ── Homr 后处理：结构清洗（安全操作，不修改时值）──────────────────────────
+    # ── Homr 后处理：结构清洗 + 简谱时值对齐──────────────────────────────────────
     if effective_engine is OMREngine.HOMR:
         try:
             from ..omr.dl_fix import fix_homr_output
-            _cleaned = fix_homr_output(mxl_file, file_temp_dir)
+            # 为简谱转换启用时值对齐：jianpu-ly 的拍号检查对浮点差敏感
+            _cleaned = fix_homr_output(mxl_file, file_temp_dir, align_for_jianpu=True)
             if _cleaned is not None:
                 mxl_file = _cleaned
         except Exception as _fix_exc:

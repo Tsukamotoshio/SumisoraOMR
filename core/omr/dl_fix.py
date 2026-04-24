@@ -112,7 +112,12 @@ def _rule_based_fix(
                 ts = measure.getContextByClass('TimeSignature')
                 if ts is None:
                     continue
-                expected_ql = ts.barDuration.quarterLength
+                # 弱起小节（anacrusis）：paddingLeft > 0 表示小节有前置静默，
+                # 有效时值 = barDuration - paddingLeft，而非完整小节长度。
+                _padding_left = float(getattr(measure, 'paddingLeft', 0.0) or 0.0)
+                expected_ql = ts.barDuration.quarterLength - _padding_left
+                if expected_ql < 0.01:
+                    continue
                 # 重新计算（已删除零时值元素后）
                 actual_ql = sum(
                     el.duration.quarterLength for el in measure.notesAndRests
@@ -293,15 +298,19 @@ def fix_with_dl(
 
 def _homr_rule_based_fix(
     score_obj: 'stream.Score',
+    align_for_jianpu: bool = False,
 ) -> tuple['stream.Score', int]:
     """对 homr 输出的 music21 Score 对象应用安全的规则型修复。
 
     与 Audiveris 的 _rule_based_fix 的关键区别
     ------------------------------------------
-    ⚠ 本函数故意 **不修改** 小节时值（不补休止符、不截短音符）。
+    ⚠ 本函数默认 **不修改** 小节时值（不补休止符、不截短音符）。
       homr Transformer 的内部时值模型与 music21 解析的拍号 barDuration
-      之间存在正常的浮点差，不代表识别错误。强制对齐会引入虚假休止符
-      并截断合法音符，破坏识别结果。
+      之间存在正常的浮点差，不代表识别错误。
+
+      但当 align_for_jianpu=True 时，执行 **宽松的时值对齐**：
+      jianpu-ly 的拍号检查对浮点差敏感，需要强制对齐以避免
+      "note crosses barline" 错误。此时允许补齐/截短。
 
     修复项目
     --------
@@ -319,11 +328,22 @@ def _homr_rule_based_fix(
        - tie stop 前无任何 tie start（孤立 stop）→ 移除 tie stop。
        music21 的 tie 对象操作在此层处理，不触碰音符本身。
 
+    4. [可选] 简谱时值对齐（align_for_jianpu=True）。
+       补齐时值不足的小节，截短时值溢出的小节（末尾元素）。
+
+    Parameters
+    ----------
+    score_obj : music21.stream.Score
+        待修复的乐谱对象。
+    align_for_jianpu : bool
+        是否执行简谱专用的时值对齐（默认 False）。
+
     Returns
     -------
     (修复后的 Score, 修复计数)
     """
     fix_count = 0
+    tol = 0.01
     try:
         for part in score_obj.parts:
             measures = list(part.getElementsByClass('Measure'))
@@ -394,6 +414,43 @@ def _homr_rule_based_fix(
                     n.tie = None
                     fix_count += 1
 
+            # ── 修复 4：[可选] 简谱时值对齐 ─────────────────────────
+            # jianpu-ly 对拍号检查敏感，需要强制时值对齐
+            if align_for_jianpu:
+                for measure in measures:
+                    # 弱起小节（anacrusis）：paddingLeft > 0 表示小节有前置静默，
+                    # 有效时值 = barDuration - paddingLeft，而非完整小节长度。
+                    # 若按完整小节长度补齐，会在弱起后插入错误的休止符停顿。
+                    _padding = float(getattr(measure, 'paddingLeft', 0.0) or 0.0)
+                    bar_duration = float(getattr(measure.barDuration, 'quarterLength', 4.0) or 4.0)
+                    effective_duration = bar_duration - _padding
+                    if effective_duration < tol:
+                        continue
+                    current_total = sum(
+                        float(el.duration.quarterLength or 0.0)
+                        for el in measure.notesAndRests
+                    )
+
+                    # 时值不足：补休止符
+                    if current_total < effective_duration - tol:
+                        rest = note.Rest()
+                        rest.duration.quarterLength = effective_duration - current_total
+                        measure.append(rest)
+                        fix_count += 1
+
+                    # 时值溢出：截短末尾元素
+                    elif current_total > effective_duration + tol:
+                        elements = list(measure.notesAndRests)
+                        if elements:
+                            last = elements[-1]
+                            new_dur = effective_duration - sum(
+                                float(el.duration.quarterLength or 0.0)
+                                for el in elements[:-1]
+                            )
+                            if new_dur > 0.125:
+                                last.duration.quarterLength = max(0.125, new_dur)
+                                fix_count += 1
+
     except Exception as exc:
         log_message(f'  [homr修复] 规则型修复异常: {exc}', logging.WARNING)
 
@@ -403,6 +460,7 @@ def _homr_rule_based_fix(
 def fix_homr_output(
     mxl_path: Path,
     work_dir: Path,
+    align_for_jianpu: bool = False,
 ) -> Optional[Path]:
     """对 homr 输出的 MusicXML 应用安全的结构清洗。
 
@@ -410,6 +468,9 @@ def fix_homr_output(
     ----------
     mxl_path : homr 输出的 MusicXML 文件路径（.musicxml）。
     work_dir : 输出临时目录（修复后文件写入此处）。
+    align_for_jianpu : bool
+        是否执行简谱专用的时值对齐（补齐/截短小节）。
+        默认 False（保持原有行为）；调用方可根据后续用途设置。
 
     Returns
     -------
@@ -434,7 +495,7 @@ def fix_homr_output(
         log_message(f'  [homr修复] 无法解析 MusicXML: {exc}', logging.WARNING)
         return mxl_path  # 解析失败时透传原始文件
 
-    score_obj, fix_count = _homr_rule_based_fix(score_obj)
+    score_obj, fix_count = _homr_rule_based_fix(score_obj, align_for_jianpu=align_for_jianpu)
 
     if fix_count == 0:
         log_message('  [homr修复] 未检测到需要清洗的问题，使用原始 MusicXML。')

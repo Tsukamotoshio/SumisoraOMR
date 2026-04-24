@@ -207,6 +207,30 @@ def detect_key_from_musicxml(mxl_path: Path) -> str:
         return 'C'
 
 
+def extract_metadata_from_musicxml(mxl_path: Path) -> dict[str, str]:
+    """从 MusicXML 文件中提取元数据（标题、作曲家、版权等）。
+
+    Returns
+    -------
+    dict with keys: 'title', 'composer', 'copyright'（如果找不到则为空字符串）
+    """
+    result = {'title': '', 'composer': '', 'copyright': ''}
+    try:
+        from music21 import converter
+        score = converter.parse(str(mxl_path))
+        if hasattr(score, 'metadata') and score.metadata is not None:
+            meta = score.metadata
+            if hasattr(meta, 'title') and meta.title:
+                result['title'] = str(meta.title).strip()
+            if hasattr(meta, 'composer') and meta.composer:
+                result['composer'] = str(meta.composer).strip()
+            if hasattr(meta, 'copyright') and meta.copyright:
+                result['copyright'] = str(meta.copyright).strip()
+    except Exception as exc:
+        LOGGER.debug('extract_metadata_from_musicxml 失败: %s', exc)
+    return result
+
+
 def _strip_music21_creator(dst: Path) -> None:
     """移除 music21 在写出 MusicXML 时自动注入的 ``Music21`` 作曲者标记。
 

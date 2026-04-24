@@ -24,17 +24,69 @@ _CHROMATIC_FLAT: dict[int, tuple[str, str]] = {
 _FLAT_KEY_SEMITONES: frozenset = frozenset({1, 3, 5, 6, 8, 10, 11})
 
 
-def _get_first_note_tonic(score) -> tuple[int, str]:
-    """Return (pitch_class 0-11, display_name) of the first non-rest sounding note.
+def _get_score_key_tonic(score) -> tuple[int, str]:
+    """Extract the tonic (main note) from the score's key signature.
 
-    This is used as the Movable-Do reference: the very first note is treated as
-    scale degree 1 (do).  Falls back to C (pitch class 0) if no note is found.
+    首调唱名法的关键：从调号中提取主音，而非从第一个实际音符。
+    Extracts (pitch_class 0-11, display_name) of the tonic from the Key element.
+
+    Detection priority:
+    1. ``Key`` element — explicit tonic + mode (most authoritative).
+    2. ``KeySignature`` element (fifths only, no mode) + ``score.analyze('key')``
+       to disambiguate major/minor — mirrors the transposer's
+       ``_parse_musicxml_key_signature`` + ``detect_key_from_musicxml`` logic
+       but adds mode resolution.  Handles OMR engines (e.g. Homr) that write
+       ``<fifths>`` without ``<mode>``.
+    3. ``score.analyze('key')`` tonic alone — for scores with no key-signature
+       element at all.
+    4. First actual note — last resort.
     """
+    from music21 import key as m21key  # local import to avoid circular at module level
+    try:
+        # Priority 1: explicit Key element (has both fifths and mode)
+        part = score.parts[0] if score.parts else score.flatten()
+        key_sigs = part.flatten().getElementsByClass(m21key.Key)
+        if key_sigs:
+            key = key_sigs[0]
+            tonic = key.tonic
+            name = tonic.name.replace('-', 'b')
+            return tonic.pitchClass, name
+    except Exception:
+        pass
+
+    try:
+        # Priority 2: KeySignature (fifths only) + statistical mode detection
+        # music21 parses MusicXML <key><fifths>N</fifths></key> (no <mode>) as
+        # KeySignature, not Key.  We combine the explicit accidental count with
+        # Krumhansl-Schmuckler analysis to determine major vs minor, then call
+        # asKey(mode) to obtain the correct tonic.
+        part = score.parts[0] if score.parts else score.flatten()
+        ksigs = part.flatten().getElementsByClass(m21key.KeySignature)
+        if ksigs:
+            ks = ksigs[0]
+            analyzed = score.analyze('key')
+            mode = analyzed.mode if analyzed else 'major'
+            resolved = ks.asKey(mode)
+            tonic = resolved.tonic
+            name = tonic.name.replace('-', 'b')
+            return tonic.pitchClass, name
+    except Exception:
+        pass
+
+    # Priority 3: pure statistical analysis (no key-signature element at all)
+    try:
+        analyzed = score.analyze('key')
+        tonic = analyzed.tonic
+        name = tonic.name.replace('-', 'b')
+        return tonic.pitchClass, name
+    except Exception:
+        pass
+
+    # Priority 4: first actual note — last resort
     try:
         part = score.parts[0] if score.parts else score.flatten()
         for element in part.flatten().notesAndRests:
             if isinstance(element, m21note.Note) and element.pitch is not None:
-                # music21 uses '-' for flats (e.g. 'B-'), jianpu-ly expects 'b' (e.g. 'Bb')
                 name = element.pitch.name.replace('-', 'b')
                 return element.pitch.pitchClass, name
             if isinstance(element, m21chord.Chord) and element.pitches:
@@ -43,6 +95,7 @@ def _get_first_note_tonic(score) -> tuple[int, str]:
                 return top.pitchClass, name
     except Exception:
         pass
+
     return 0, 'C'
 
 
@@ -304,16 +357,62 @@ _ALLOWED_UNITS_DESC: list[tuple[int, float]] = sorted(
     ((u, d) for d, u in _DURATION_TO_UNITS.items()), reverse=True
 )  # [(64, 4.0), (48, 3.0), ..., (2, 0.125)]
 
-# Jianpu-ly anacrusis (弱起) duration code mapping — matches jianpu-ly.py line 1170.
-# Key: pickup duration in quarter lengths; Value: duration code written after ',' in time sig.
+# Jianpu-ly anacrusis (弱起) duration code mapping.
+# Key: pickup duration in quarter lengths (QL); Value: duration code written after ',' in time sig.
+# The code is the note-type denominator for \partial in LilyPond:
+#   '4' = quarter note pickup (1.0 QL), '8' = eighth (0.5 QL), '16' = sixteenth (0.25 QL), etc.
+# jianpu-ly.py line ~1170 uses the same table but keyed in quavers (1 quaver = 0.5 QL),
+# so quaver key N maps to our QL key N*0.5 (e.g. quaver 2 → QL 1.0 → code '4').
 _QL_TO_ANACRUSIS_CODE: dict[float, str] = {
-    0.5: '16', 0.75: '16.', 1.0: '8', 1.5: '8.',
-    2.0: '4', 3.0: '4.', 4.0: '2', 6.0: '2.', 8.0: '1', 12.0: '1.',
+    0.25: '16', 0.375: '16.', 0.5: '8', 0.75: '8.',
+    1.0: '4', 1.5: '4.', 2.0: '2', 3.0: '2.', 4.0: '1', 6.0: '1.',
 }
 # Anacrusis code → 64th-note units (1 quarter = 16 units)
 _ANACRUSIS_CODE_TO_UNITS: dict[str, int] = {
     code: round(ql * 16) for ql, code in _QL_TO_ANACRUSIS_CODE.items()
 }
+
+
+def _detect_trailing_rest_pickup(measure, nominal_length: float) -> Optional[float]:
+    """Fallback pickup (弱起) detection for measures where MusicXML has ``implicit="no"``.
+
+    Some OMR engines (e.g. Homr) encode a pickup bar as a *full* measure with
+    the actual pickup notes at the start followed by a filler rest — rather than
+    using ``implicit="yes"`` (which music21 translates to ``paddingLeft``).
+
+    Detection criteria:
+    - The last element in the measure is a rest (trailing-rest pattern).
+    - The notes before that rest occupy ≤ half the nominal bar length
+      (conservative threshold to avoid false positives on normal first bars
+      that simply end with a rest).
+    - The note portion matches a recognised anacrusis code to within 0.25 QL.
+
+    Returns the pickup QL duration if detected, else ``None``.
+    """
+    try:
+        elements = sorted(measure.flatten().notesAndRests, key=lambda e: float(e.offset))
+    except Exception:
+        return None
+    if not elements:
+        return None
+    # Must end with a rest (trailing-rest pattern)
+    if not isinstance(elements[-1], m21note.Rest):
+        return None
+    # Find effective end = offset + duration of last non-rest element
+    last_note_end = 0.0
+    for e in elements:
+        if not isinstance(e, m21note.Rest):
+            last_note_end = float(e.offset) + float(e.duration.quarterLength or 0.25)
+    if last_note_end < 0.01:
+        return None  # all rests — not a pickup
+    # Pickup must be ≤ half bar (conservative; avoids treating normal bars as pickups)
+    if last_note_end > nominal_length * 0.5 + 0.01:
+        return None
+    # Match to recognised anacrusis code
+    _closest = min(_QL_TO_ANACRUSIS_CODE, key=lambda q: abs(q - last_note_end))
+    if abs(_closest - last_note_end) < 0.25:
+        return _closest
+    return None
 
 
 def _parse_bar_units(time_signature: str) -> int:
@@ -482,6 +581,12 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
         if abs(_closest_ql - _actual_pickup) < 0.25:
             time_signature = f'{time_signature},{_QL_TO_ANACRUSIS_CODE[_closest_ql]}'
             _first_measure_length_override = _closest_ql
+    # Fallback: detect pickup from trailing-rest pattern (implicit="no" but notes+filler-rest)
+    if _first_measure_length_override is None:
+        _fallback_ql = _detect_trailing_rest_pickup(_first_m, nominal_measure_length)
+        if _fallback_ql is not None:
+            time_signature = f'{time_signature},{_QL_TO_ANACRUSIS_CODE[_fallback_ql]}'
+            _first_measure_length_override = _fallback_ql
 
     tol = 0.01
     for _m_idx, measure in enumerate(measure_streams):
@@ -621,6 +726,7 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
 
     # ── Pickup (anacrusis / 弱起) detection ───────────────────────────────────
     _first_pickup_ql: Optional[float] = None
+    _trailing_rest_pickup = False  # was pickup inferred from trailing-rest pattern?
     _m_list = list(part.getElementsByClass(stream.Measure))
     if _m_list:
         _pl = float(getattr(_m_list[0], 'paddingLeft', 0.0) or 0.0)
@@ -630,6 +736,13 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
             if abs(_closest - _act) < 0.25:
                 time_signature = f'{time_signature},{_QL_TO_ANACRUSIS_CODE[_closest]}'
                 _first_pickup_ql = _closest
+    # Fallback: detect pickup from trailing-rest pattern (implicit="no" but notes+filler-rest)
+    if _first_pickup_ql is None and _m_list:
+        _fallback_ql = _detect_trailing_rest_pickup(_m_list[0], bar_length)
+        if _fallback_ql is not None:
+            time_signature = f'{time_signature},{_QL_TO_ANACRUSIS_CODE[_fallback_ql]}'
+            _first_pickup_ql = _fallback_ql
+            _trailing_rest_pickup = True
 
     by_offset: dict[float, object] = {}
     for element in part.flatten().notesAndRests:
@@ -644,6 +757,23 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[
             by_offset[offset] = candidate
         elif isinstance(existing, m21note.Note) and isinstance(candidate, m21note.Note) and candidate.pitch.midi > existing.pitch.midi:
             by_offset[offset] = candidate
+
+    # For trailing-rest pickups: rebuild by_offset so that the layout matches
+    # what append_element_chunks expects (identical to the implicit="yes" case).
+    # Remove filler rests in [pickup_ql, bar_length) and shift all notes at
+    # offset >= bar_length by -(bar_length - pickup_ql), so bar 1 starts
+    # immediately after the pickup with no silent gap.
+    if _trailing_rest_pickup and _first_pickup_ql is not None:
+        _shift = bar_length - _first_pickup_ql
+        _adjusted: dict[float, object] = {}
+        for _off, _elem in by_offset.items():
+            if _first_pickup_ql <= _off < bar_length:
+                continue  # skip filler rests / elements
+            elif _off >= bar_length:
+                _adjusted[_off - _shift] = _elem  # shift into correct position
+            else:
+                _adjusted[_off] = _elem  # keep pickup notes as-is
+        by_offset = _adjusted
 
     offsets = sorted(by_offset.keys())
     if not offsets:
@@ -750,17 +880,26 @@ def choose_measures_per_line(measures: list[list[JianpuNote]]) -> int:
 
 def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str]:
     """Parse a score into jianpu format; return (measures, header_lines, time_sig)."""
-    key_tonic_semitone, tonic_name = _get_first_note_tonic(score)
+    from ..utils import log_message
+    import logging as _logging
+
+    key_tonic_semitone, tonic_name = _get_score_key_tonic(score)
     key_header = f'1={tonic_name}'
 
     measures, time_signature = extract_jianpu_measures(score, key_tonic_semitone)
     header_lines: list[str] = [f'{key_header} {time_signature}', '']
 
     measures_per_line = choose_measures_per_line(measures)
+    log_message(f'[jianpu] parse_score_to_jianpu: {len(measures)} 个小节（每行 {measures_per_line} 个）', _logging.DEBUG)
+
     for i in range(0, len(measures), measures_per_line):
         line_measures = measures[i:i + measures_per_line]
-        measure_texts = [' '.join(format_jianpu_note_text(note) for note in measure) for measure in line_measures]
-        header_lines.append(' | '.join(measure_texts) + ' |')
+        try:
+            measure_texts = [' '.join(format_jianpu_note_text(note) for note in measure) for measure in line_measures]
+            header_lines.append(' | '.join(measure_texts) + ' |')
+        except Exception as exc:
+            log_message(f'[jianpu] parse_score_to_jianpu 处理小节组 [{i}:{i+measures_per_line}] 失败: {exc}', _logging.WARNING)
+            raise
 
     return measures, header_lines, time_signature
 
@@ -793,7 +932,10 @@ def build_jianpu_ly_text_from_measures(
 
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> str:
     """Build jianpu-ly plain-text (.txt) content, including title, key, time signature, and measures."""
-    key_tonic_semitone, tonic_name = _get_first_note_tonic(score)
+    from ..utils import log_message
+    import logging as _logging
+
+    key_tonic_semitone, tonic_name = _get_score_key_tonic(score)
 
     header = ['% jianpu-ly.py', f'title={title}', f'1={tonic_name}']
 
@@ -804,15 +946,22 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> 
     bar_units = _parse_bar_units(time_signature)
     pickup_units = _parse_anacrusis_units(time_signature)
     measures_per_line = 4
+
+    log_message(f'[jianpu] 开始处理 {len(measures)} 个小节（每行 {measures_per_line} 个）', _logging.DEBUG)
+
     for i in range(0, len(measures), measures_per_line):
         line_measures = measures[i:i + measures_per_line]
-        measure_texts = [
-            ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(
-                m, (pickup_units if (i + mi) == 0 and pickup_units is not None else bar_units)
-            ))
-            for mi, m in enumerate(line_measures)
-        ]
-        header.append(' | '.join(measure_texts) + ' |')
+        try:
+            measure_texts = [
+                ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(
+                    m, (pickup_units if (i + mi) == 0 and pickup_units is not None else bar_units)
+                ))
+                for mi, m in enumerate(line_measures)
+            ]
+            header.append(' | '.join(measure_texts) + ' |')
+        except Exception as exc:
+            log_message(f'[jianpu] 处理小节组 [{i}:{i+measures_per_line}] 失败: {exc}', _logging.WARNING)
+            raise
 
     return '\n'.join(header)
 

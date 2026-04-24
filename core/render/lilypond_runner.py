@@ -3,6 +3,7 @@
 import importlib.util
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -115,10 +116,109 @@ def render_lilypond_pdf(ly_path: Path) -> Optional[Path]:
         return None
 
 
+def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> None:
+    """将 MusicXML 中的元数据（标题、作曲家）注入到 LilyPond 文件中。
+
+    修复了预览中标题和作者信息丢失或乱码的问题。
+    """
+    try:
+        from ..music.transposer import extract_metadata_from_musicxml
+        metadata = extract_metadata_from_musicxml(mxl_path)
+
+        # 提取元数据，如果没有则从文件名推导
+        title = metadata.get('title', '').strip()
+        composer = metadata.get('composer', '').strip()
+
+        # 如果没有标题，从 MusicXML 文件名推导
+        if not title:
+            title = mxl_path.stem
+
+        LOGGER.debug(f'_inject_metadata_to_lilypond: 提取到的元数据 - title="{title}", composer="{composer}"')
+
+        ly_content = ly_path.read_text(encoding='utf-8', errors='ignore')
+
+        # 转义 LilyPond 中的特殊字符
+        def escape_lilypond_text(text: str) -> str:
+            if not text:
+                return ''
+            # LilyPond 中的特殊字符需要用反斜杠转义或用双引号包围
+            text = text.replace('\\', '\\\\')
+            text = text.replace('"', '\\"')
+            return text
+
+        title_escaped = escape_lilypond_text(title)
+        composer_escaped = escape_lilypond_text(composer)
+
+        # 简单有效的方法：直接查找并替换或添加 title/composer
+        # 先尝试替换现有的 title 和 composer，如果不存在就添加
+
+        # 1. 查找现有的 \header 块
+        if '\\header' in ly_content:
+            # 替换现有的 title（如果有）
+            if 'title' in ly_content:
+                ly_content = re.sub(
+                    r'title\s*=\s*[^\n}]+',
+                    f'title = "{title_escaped}"',
+                    ly_content,
+                    count=1,
+                    flags=re.IGNORECASE
+                )
+            else:
+                # 在 header 块中添加 title
+                ly_content = re.sub(
+                    r'(\\header\s*\{)',
+                    f'\\1\n  title = "{title_escaped}"',
+                    ly_content,
+                    count=1
+                )
+
+            # 替换或添加 composer
+            if composer_escaped:
+                if 'composer' in ly_content:
+                    ly_content = re.sub(
+                        r'composer\s*=\s*[^\n}]+',
+                        f'composer = "{composer_escaped}"',
+                        ly_content,
+                        count=1,
+                        flags=re.IGNORECASE
+                    )
+                else:
+                    # 在 header 块中添加 composer
+                    ly_content = re.sub(
+                        r'(\\header\s*\{[^\}]*)',
+                        f'\\1\n  composer = "{composer_escaped}"',
+                        ly_content,
+                        count=1,
+                        flags=re.DOTALL
+                    )
+        else:
+            # 没有 header 块，创建一个
+            header_block = f'\\header {{\n  title = "{title_escaped}"'
+            if composer_escaped:
+                header_block += f'\n  composer = "{composer_escaped}"'
+            header_block += '\n}}\n\n'
+
+            # 在合适的位置插入
+            inserted = False
+            for pattern in [r'(?=\\version)', r'(?=\\score)', r'(?=\\new)']:
+                if re.search(pattern, ly_content):
+                    ly_content = re.sub(pattern, header_block, ly_content, count=1)
+                    inserted = True
+                    break
+            if not inserted:
+                # 插入在开头
+                ly_content = header_block + ly_content
+
+        ly_path.write_text(ly_content, encoding='utf-8')
+        LOGGER.debug(f'已注入元数据到 {ly_path.name}: title="{title}", composer="{composer}"')
+    except Exception as exc:
+        LOGGER.debug('_inject_metadata_to_lilypond 失败: %s', exc)
+
+
 def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     """将 MusicXML 渲染为标准五线谱 PDF（不经简谱转换）。
 
-    流程：musicxml2ly.py（LilyPond 附带）→ .ly → LilyPond → PDF。
+    流程：musicxml2ly.py（LilyPond 附带）→ .ly → [注入元数据] → LilyPond → PDF。
     返回生成的 PDF 路径，失败返回 None。
     """
     lilypond_exe = find_lilypond_executable()
@@ -166,7 +266,10 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
         log_message(f'musicxml2ly 执行出错: {exc}', logging.WARNING)
         return None
 
-    # Step 2: LilyPond → PDF（使用已有的 render_lilypond_pdf）
+    # Step 2: 将 MusicXML 中的元数据注入到 LilyPond 文件（修复标题/作者显示问题）
+    _inject_metadata_to_lilypond(ly_path, mxl_path)
+
+    # Step 3: LilyPond → PDF（使用已有的 render_lilypond_pdf）
     return render_lilypond_pdf(ly_path)
 
 

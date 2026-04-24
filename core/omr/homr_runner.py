@@ -14,7 +14,7 @@ from typing import Optional
 
 from ..config import HOMR_SOURCE_DIR_NAME, MAX_HOMR_SECONDS, OMR_ENGINE_DIR_NAME
 from ..image.image_preprocess import preprocess_image_for_omr
-from ..utils import find_first_musicxml_file, get_app_base_dir, log_message
+from ..utils import find_first_musicxml_file, get_app_base_dir, log_message, safe_remove_file
 
 _PATH_LOCK = threading.Lock()
 
@@ -312,6 +312,84 @@ def _homr_gpu_available() -> bool:
         return False
 
 
+def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
+    """Homr 专用预处理：几何校正 + 超分 - 激进锐化。
+
+    不同于通用预处理，这个函数避免激进的去噪锐化（UnsharpMask radius=3, percent=300）
+    可能会放大 artifacts，导致 Homr SegNet 误识别 staff。
+
+    步骤：
+    1. 白边裁剪（crop_white_border）
+    2. 旋转校正（detect_and_correct_rotation）
+    3. 梯度修正（correct_gradient）
+    4. 超分辨率（waifu2x, 如果最短边 < 1200px）
+    5. 降采样（如果超过像素上限）
+
+    跳过：激进锐化（denoise_and_sharpen）
+    """
+    from pathlib import Path
+    from ..image.image_preprocess import (
+        crop_white_border, detect_and_correct_rotation, correct_gradient,
+        upscale_image_with_waifu2x, fit_image_within_pixel_limit,
+        LOW_RES_PIXEL_THRESHOLD, AUDIVERIS_MAX_PIXELS, _measure_laplacian_stddev,
+    )
+    from PIL import Image
+
+    try:
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+        with Image.open(image_path) as img:
+            working = img.convert('RGB')
+
+        # 步骤 1: 白边裁剪
+        working, border_ratio = crop_white_border(working)
+        if border_ratio > 0.02:
+            log_message(f'  [预处理] 白边裁剪 {border_ratio:.1%}')
+
+        # 步骤 2: 旋转校正
+        working, angle = detect_and_correct_rotation(working)
+        if abs(angle) >= 0.5:
+            log_message(f'  [预处理] 旋转校正 {angle:+.1f}°')
+
+        # 步骤 3: 梯度修正
+        working = correct_gradient(working)
+
+        # 保存中间结果
+        intermediate_path = work_dir / f'geo_{image_path.stem}.png'
+        working.save(intermediate_path)
+        current_path = intermediate_path
+
+        # 步骤 4: 超分辨率（如果需要）
+        with Image.open(current_path) as chk:
+            min_dim = min(chk.size)
+        if min_dim < LOW_RES_PIXEL_THRESHOLD:
+            upscaled_path = work_dir / f'sr_{image_path.stem}.png'
+            if upscale_image_with_waifu2x(current_path, upscaled_path, scale=2):
+                safe_remove_file(current_path)
+                current_path = upscaled_path
+                log_message(
+                    f'  [预处理] 最短边 {min_dim}px < {LOW_RES_PIXEL_THRESHOLD}px，'
+                    '已执行 2× 超分辨率放大。'
+                )
+
+        # 步骤 5: 降采样（如果超过像素上限）
+        rescaled = fit_image_within_pixel_limit(current_path, work_dir, max_pixels=AUDIVERIS_MAX_PIXELS)
+        if rescaled is not None:
+            safe_remove_file(current_path)
+            current_path = rescaled
+
+        # 重命名为规范输出
+        final_path = work_dir / f'omr_ready_{image_path.stem}.png'
+        if current_path != final_path:
+            current_path.rename(final_path)
+
+        return final_path
+
+    except Exception as exc:
+        log_message(f'[预处理] Homr 预处理失败: {exc}', logging.WARNING)
+        return None
+
+
 def run_homr_batch(
     source_image: Path,
     output_dir: Path,
@@ -341,12 +419,14 @@ def run_homr_batch(
 
     preprocess_dir = output_dir / '_homr_preprocessed'
     log_message('[homr] 正在进行图像预处理…')
-    preprocessed_image = preprocess_image_for_omr(image_path, preprocess_dir, keep_color=True)
+    # Homr 使用温和预处理：几何校正 + 超分 - 激进锐化
+    # 激进锐化会放大 artifacts 导致 SegNet 误识别（如 416 个虚假小节）
+    preprocessed_image = _preprocess_for_homr(image_path, preprocess_dir)
     if preprocessed_image is not None:
         image_path = preprocessed_image
-        log_message(f'[homr] 图像预处理完成: {preprocessed_image.name}')
+        log_message(f'[homr] 温和预处理完成: {preprocessed_image.name}')
     else:
-        log_message('[homr] 图像预处理未生成新文件，使用原始输入。')
+        log_message('[homr] 预处理未生成新文件，使用原始输入。')
 
     safe_image_path = output_dir / f'homr_input{image_path.suffix.lower()}'
     if not safe_image_path.exists() or safe_image_path.stat().st_size != image_path.stat().st_size:
@@ -466,4 +546,5 @@ def run_homr_batch(
     if mxl is None:
         log_message(f'[homr] 未找到输出 MusicXML，可能识别失败。', )
         return None
+
     return output_dir
