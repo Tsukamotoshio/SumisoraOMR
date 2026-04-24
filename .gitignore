@@ -3,10 +3,12 @@ CLAUDE.md
 # Runtime binaries / bundled runtimes
 .venv/
 .vscode/
+.claude/
 jdk/
 package-assets/
 lilypond-2.24.4/
 audiveris-5.10.2/
+omr_engine/audiveris/
 waifu2x-ncnn-vulkan/
 audiveris_job_*/
 
@@ -55,6 +57,7 @@ __pycache__/
 # Test and temporary files
 test_*.py
 *_test.py
+_test*.py
 test_*.txt
 *_test*.txt
 temp_*
