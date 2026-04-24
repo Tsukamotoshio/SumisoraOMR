@@ -391,10 +391,10 @@ def run_subprocess_with_spinner(
     if tessdata_dir is not None and not env.get('TESSDATA_PREFIX'):
         env['TESSDATA_PREFIX'] = str(tessdata_dir)
 
-    stdout_handle = tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='ignore')
-    stderr_handle = tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='ignore')
-
-    try:
+    with (
+        tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='ignore') as stdout_handle,
+        tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='ignore') as stderr_handle,
+    ):
         with subprocess.Popen(
             prepared_cmd,
             cwd=cwd,
@@ -432,9 +432,6 @@ def run_subprocess_with_spinner(
             stderr = stderr_handle.read()
             if sys.stdout: sys.stdout.write('\r'); sys.stdout.flush()
             return return_code, stdout or '', stderr or ''
-    finally:
-        stdout_handle.close()
-        stderr_handle.close()
 
 
 def ensure_audiveris_executable() -> Optional[Path]:

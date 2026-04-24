@@ -49,6 +49,7 @@ class PdfViewer(ft.Column):
         self._on_page_change = on_page_change
         self._refresh_pending = False
         self._refresh_waiting = False
+        self._fitz_doc = None
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._build_ui()
 
@@ -198,7 +199,7 @@ class PdfViewer(ft.Column):
         self._load_token += 1
         current_token = self._load_token
 
-        if hasattr(self, '_fitz_doc') and self._fitz_doc is not None:
+        if self._fitz_doc is not None:
             try:
                 self._fitz_doc.close()
             except Exception:
@@ -224,6 +225,16 @@ class PdfViewer(ft.Column):
         else:
             self._executor.submit(self._load_pdf_async, path, current_token)
 
+    def will_unmount(self) -> None:
+        self._load_token += 1  # 使所有后台任务尽快放弃
+        self._executor.shutdown(wait=False)
+        if self._fitz_doc is not None:
+            try:
+                self._fitz_doc.close()
+            except Exception:
+                pass
+            self._fitz_doc = None
+
     def reset(self) -> None:
         """重置为空白占位符状态（无文件）。"""
         self._load_token += 1
@@ -231,7 +242,7 @@ class PdfViewer(ft.Column):
         self._page_count = 0
         self._current_page = 0
 
-        if hasattr(self, '_fitz_doc') and self._fitz_doc is not None:
+        if self._fitz_doc is not None:
             try:
                 self._fitz_doc.close()
             except Exception:
@@ -293,7 +304,7 @@ class PdfViewer(ft.Column):
             return
         try:
             import fitz
-            if not hasattr(self, '_fitz_doc') or self._fitz_doc is None:
+            if self._fitz_doc is None:
                 doc = fitz.open(str(path))
                 if token != self._load_token:
                     try:
@@ -311,7 +322,7 @@ class PdfViewer(ft.Column):
             token = self._load_token
         if token != self._load_token:
             return
-        if not hasattr(self, '_fitz_doc') or self._fitz_doc is None:
+        if self._fitz_doc is None:
             return
         try:
             import fitz

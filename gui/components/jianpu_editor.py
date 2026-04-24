@@ -30,6 +30,7 @@ class JianpuEditor(ft.Column):
         self._path: Optional[Path] = None
         self._lines: list[str] = []
         self._load_token: int = 0
+        self._file_lock = threading.Lock()
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_external_select)
 
@@ -170,7 +171,8 @@ class JianpuEditor(ft.Column):
             return
         try:
             content = self._editor.value or ''
-            self._path.write_text(content, encoding='utf-8')
+            with self._file_lock:
+                self._path.write_text(content, encoding='utf-8')
             self._state.append_log(f'已保存: {self._path.name}')
         except Exception as exc:
             self._state.append_log(f'保存失败: {exc}')
@@ -184,7 +186,8 @@ class JianpuEditor(ft.Column):
         # 先保存最新内容
         try:
             content = self._editor.value or ''
-            self._path.write_text(content, encoding='utf-8')
+            with self._file_lock:
+                self._path.write_text(content, encoding='utf-8')
         except Exception as exc:
             self._state.append_log(f'保存失败（导出前）: {exc}')
             return
@@ -196,7 +199,8 @@ class JianpuEditor(ft.Column):
             txt_path = self._path
             ly_path  = txt_path.with_suffix('.ly')
             self._state.append_log(f'正在生成 LilyPond 中间文件: {ly_path.name}')
-            ok = render_jianpu_ly(txt_path, ly_path)
+            with self._file_lock:
+                ok = render_jianpu_ly(txt_path, ly_path)
             if not ok:
                 self._state.append_log('jianpu-ly 转换失败，请确认 LilyPond 与 jianpu-ly.py 已安装')
                 return

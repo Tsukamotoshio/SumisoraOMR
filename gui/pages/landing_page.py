@@ -481,7 +481,14 @@ class LandingPage(ft.Row):
             if not _done_or_error_received:
                 self._state.set_error(str(exc))
         finally:
+            _p = self._worker_proc
             self._worker_proc = None
+            if _p is not None and _p.poll() is None:
+                try:
+                    _p.kill()
+                    _p.wait(timeout=3)
+                except Exception:
+                    pass
             if self._state.is_processing:
                 self._state.is_processing = False
 

@@ -16,6 +16,8 @@ from ..config import HOMR_SOURCE_DIR_NAME, MAX_HOMR_SECONDS, OMR_ENGINE_DIR_NAME
 from ..image.image_preprocess import preprocess_image_for_omr
 from ..utils import find_first_musicxml_file, get_app_base_dir, log_message
 
+_PATH_LOCK = threading.Lock()
+
 
 def _get_available_memory_mb() -> Optional[int]:
     """返回当前可用物理内存（MB）。仅 Windows 有效，其他平台返回 None。"""
@@ -226,19 +228,20 @@ def _homr_api_available() -> bool:
         source_dir = find_homr_source_dir()
         if source_dir is None:
             return False
-        if str(source_dir) not in sys.path:
-            sys.path.insert(0, str(source_dir))
-            added = True
-        else:
-            added = False
+        with _PATH_LOCK:
+            added = str(source_dir) not in sys.path
+            if added:
+                sys.path.insert(0, str(source_dir))
         try:
             import homr.main  # noqa: F401
             return True
         except Exception:
             return False
         finally:
-            if added and str(source_dir) in sys.path:
-                sys.path.remove(str(source_dir))
+            if added:
+                with _PATH_LOCK:
+                    if str(source_dir) in sys.path:
+                        sys.path.remove(str(source_dir))
 
 
 def check_homr_available() -> bool:
@@ -263,9 +266,10 @@ def _ensure_homr_import_path() -> Optional[Path]:
     source_dir = find_homr_source_dir()
     if source_dir is None:
         return None
-    if str(source_dir) not in sys.path:
-        sys.path.insert(0, str(source_dir))
-        return source_dir
+    with _PATH_LOCK:
+        if str(source_dir) not in sys.path:
+            sys.path.insert(0, str(source_dir))
+            return source_dir
     return None
 
 
@@ -453,8 +457,10 @@ def run_homr_batch(
             log_message(f'[homr] 识别失败: {exc}')
             return None
     finally:
-        if source_dir is not None and str(source_dir) in sys.path:
-            sys.path.remove(str(source_dir))
+        if source_dir is not None:
+            with _PATH_LOCK:
+                if str(source_dir) in sys.path:
+                    sys.path.remove(str(source_dir))
 
     mxl = find_first_musicxml_file(output_dir, image_path.stem)
     if mxl is None:

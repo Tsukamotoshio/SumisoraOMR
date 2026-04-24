@@ -51,6 +51,11 @@ This file provides license and attribution notices for third-party components di
 - Fork used by this project: <https://github.com/Tsukamotoshio/homr>
 - Modifications: DirectML GPU inference support, ORT thread limits, explicit resource teardown, and safe XML output preservation on post-write exceptions.
 - Note: End-to-end optical music recognition engine integrated as a local repository under `omr_engine/homr`.
+- Upstream foundations: Homr builds upon two prior works whose models and segmentation code are embedded in the homr package:
+  - **oemer** (MIT) — segmentation models for staff lines, note heads, and bar lines.
+    Copyright © BreezeWhite. <https://github.com/BreezeWhite/oemer>
+  - **Polyphonic-TrOMR** (MIT) — transformer model for end-to-end symbol sequence recognition.
+    Copyright © NetEase. <https://github.com/NetEase/Polyphonic-TrOMR>
 
 ## scikit-learn
 - License: BSD-3-Clause

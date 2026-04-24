@@ -287,8 +287,8 @@ class TransposerPage(ft.Column):
         # 优先用 xml-scores 目录作初始目录
         _init_dir = str(self._xml_dir) if self._xml_dir.exists() else None
         files = await self._file_picker.pick_files(
-            dialog_title='打开乐谱文件（MusicXML / PDF）',
-            allowed_extensions=['mxl', 'musicxml', 'xml', 'pdf', 'png', 'jpg'],
+            dialog_title='打开乐谱文件（MusicXML）',
+            allowed_extensions=['musicxml'],
             allow_multiple=False,
             initial_directory=_init_dir,
         )

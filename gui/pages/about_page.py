@@ -9,6 +9,7 @@ import webbrowser
 import flet as ft
 
 from ..theme import Palette
+from core.config import APP_VERSION
 
 
 _AGPL_LICENSE = """\
@@ -35,7 +36,6 @@ class AboutPage(ft.Column):
     """关于页面：作者、项目地址、许可证。"""
 
     _GITHUB_URL = 'https://github.com/Tsukamotoshio/OMR-to-Jianpu-Conversion-Tool'
-    VERSION = 'v0.2.3'
 
     def __init__(self):
         self._opening = False
@@ -85,7 +85,7 @@ class AboutPage(ft.Column):
                             weight=ft.FontWeight.BOLD, color=Palette.TEXT_PRIMARY),
                     ft.Text('将五线谱 PDF 智能转换为简谱', size=14, color=Palette.TEXT_SECONDARY),
                     ft.Container(
-                        content=ft.Text(self.VERSION, size=12, color=Palette.PRIMARY,
+                        content=ft.Text(f'v{APP_VERSION}', size=12, color=Palette.PRIMARY,
                                         weight=ft.FontWeight.W_500),
                         bgcolor=Palette.PRIMARY + '22',
                         border_radius=ft.BorderRadius.all(6),

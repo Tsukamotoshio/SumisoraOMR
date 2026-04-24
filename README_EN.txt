@@ -2,7 +2,7 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: v0.2.3
+Version: v0.2.4
 
 Batch-convert Western staff notation PDFs into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
@@ -11,7 +11,23 @@ notation) PDFs, with optional MIDI output.
 What's New
 ----------
 
-0.2.3 (current)
+0.2.4 (current)
+  - OMR engine dropdown: a new "Auto (Recommended)" option automatically
+    routes each file to Audiveris or Homr based on input format and image
+    quality; if Homr crashes in GPU mode it falls back to CPU and retries
+    without user intervention.
+  - Transposition engine upgrade: key dropdown now follows the circle of
+    fifths with ♯/♭ symbols; a new Direction option (Closest/Up/Down,
+    matching MuseScore behavior) updates the semitone count in real time
+    without extra clicks; the "Compute offset" button is replaced by
+    "Detect key"; a new "Export original score" button renders the
+    unmodified score as a staff-notation PDF.
+  - File-list multi-select delete: sidebar file entries now use checkboxes,
+    supporting batch selection and bulk deletion.
+  - Pickup-bar (anacrusis) support: when the first bar is incomplete, Jianpu
+    barline alignment is now correct — no extra rests or truncated notes.
+
+0.2.3
   - License changed from MIT to GNU Affero General Public License v3
     (AGPL-3.0).
   - Oemer engine temporarily removed: replaced by Homr (lighter weight,
@@ -94,7 +110,11 @@ Usage
 2. Double-click the "Jianpu Conversion Tool" desktop shortcut, or run
    ConvertTool.exe in the installation directory.
 3. In the file sidebar, select the files you want to convert.
-4. Choose the OMR engine (Audiveris recommended; Homr is experimental).
+4. Choose the OMR engine:
+     Auto (Recommended)  — the app decides automatically; vector PDFs go
+                           to Audiveris, images / low-quality scans go to Homr
+     Audiveris           — heuristic engine, best for clean typeset PDFs
+     Homr (Deep Learning)— better for phone photos or low-quality scans
 5. Optionally set a custom output directory, then click "Start Conversion".
 6. Confirm options in the dialog (MIDI generation, skip duplicates), then
    click "Start Conversion" to begin.
