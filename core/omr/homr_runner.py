@@ -330,7 +330,7 @@ def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
     from pathlib import Path
     from ..image.image_preprocess import (
         crop_white_border, detect_and_correct_rotation, correct_gradient,
-        upscale_image_with_waifu2x, fit_image_within_pixel_limit,
+        upscale_image, fit_image_within_pixel_limit,
         LOW_RES_PIXEL_THRESHOLD, AUDIVERIS_MAX_PIXELS, _measure_laplacian_stddev,
     )
     from PIL import Image
@@ -364,7 +364,7 @@ def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
             min_dim = min(chk.size)
         if min_dim < LOW_RES_PIXEL_THRESHOLD:
             upscaled_path = work_dir / f'sr_{image_path.stem}.png'
-            if upscale_image_with_waifu2x(current_path, upscaled_path, scale=2):
+            if upscale_image(current_path, upscaled_path, scale=2):
                 safe_remove_file(current_path)
                 current_path = upscaled_path
                 log_message(

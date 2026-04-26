@@ -165,6 +165,7 @@ def run_worker() -> None:
 
         files = [Path(f) for f in task.get('files', [])]
         engine_str = task.get('engine', 'auto')
+        sr_engine_str = task.get('sr_engine', 'waifu2x')
         output_dir_path = Path(task['output_dir'])
         gen_midi: bool = task.get('gen_midi', True)
         skip_dup: bool = task.get('skip_dup', False)
@@ -174,6 +175,10 @@ def run_worker() -> None:
         _total_files_orig: int = task.get('total_files_orig', 0)  # 0 = 会在下面用 total 充实
         # ── 修补日志函数 ──────────────────────────────────────────────────────
         _patch_log_message()
+
+        # ── 注入超分辨率引擎选择 ───────────────────────────────────────────────
+        from core.image.image_preprocess import set_sr_engine  # noqa: PLC0415
+        set_sr_engine(sr_engine_str)
 
         # ── 导入（延迟，避免在修补前触发 import-time 副作用）──────────────────
         from core.config import OMREngine  # noqa: PLC0415
@@ -199,6 +204,7 @@ def run_worker() -> None:
 
         success_count = 0
         fail_count = 0
+        skip_count = 0
 
         for idx, src in enumerate(files):
             base_progress = ((_file_start_offset + idx) / _total_files_orig) * 0.9
@@ -208,6 +214,7 @@ def run_worker() -> None:
 
             if skip_dup and src.name in dup_files:
                 _send({'type': 'log', 'text': f'  ⏭ 已跳过（输出已存在）: {src.name}'})
+                skip_count += 1
                 continue
 
             (base_dir / 'build').mkdir(parents=True, exist_ok=True)
@@ -262,20 +269,26 @@ def run_worker() -> None:
                 _send({'type': 'result', 'success': False, 'output_pdf': None, 'archived_mxl': None})
 
         # ── 发送最终完成消息 ──────────────────────────────────────────────────
+        parts: list[str] = []
         if success_count > 0:
-            msg = f'完成：{success_count} 个成功'
-            if fail_count:
-                msg += f'，{fail_count} 个失败'
-            _send({'type': 'done', 'success_count': success_count, 'fail_count': fail_count, 'message': msg + '。'})
+            parts.append(f'{success_count} 个成功')
+        if fail_count > 0:
+            parts.append(f'{fail_count} 个失败')
+        if skip_count > 0:
+            parts.append(f'{skip_count} 个已跳过')
+        if parts:
+            msg = '完成：' + '，'.join(parts) + '。'
         elif fail_count > 0:
-            _send({
-                'type': 'done',
-                'success_count': 0,
-                'fail_count': fail_count,
-                'message': f'全部 {fail_count} 个文件转换失败，请查看日志。',
-            })
+            msg = f'全部 {fail_count} 个文件转换失败，请查看日志。'
         else:
-            _send({'type': 'done', 'success_count': 0, 'fail_count': 0, 'message': '没有需要处理的文件。'})
+            msg = '没有需要处理的文件。'
+        _send({
+            'type': 'done',
+            'success_count': success_count,
+            'fail_count': fail_count,
+            'skip_count': skip_count,
+            'message': msg,
+        })
 
     except Exception as exc:
         _send({'type': 'error', 'message': str(exc)})

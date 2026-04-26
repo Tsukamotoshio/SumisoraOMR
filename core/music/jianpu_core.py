@@ -909,13 +909,22 @@ def build_jianpu_ly_text_from_measures(
     time_sig: str,
     tonic_name: str,
     title: str,
+    composer: str = '',
+    tempo: int = 0,
 ) -> str:
     """Build jianpu-ly plain-text from pre-computed JianpuNote measures (bypassing score parsing).
 
     Equivalent to ``build_jianpu_ly_text`` but accepts already-parsed note data
     instead of a music21 Score object.  Used by the dual-engine fusion path.
     """
-    header = ['% jianpu-ly.py', f'title={title}', f'1={tonic_name}', time_sig, '']
+    header = ['% jianpu-ly.py', f'title={title}']
+    if composer:
+        header.append(f'composer={composer}')
+    header.append(f'1={tonic_name}')
+    header.append(time_sig)
+    if tempo > 0:
+        header.append(f'4={tempo}')
+    header.append('')
     bar_units = _parse_bar_units(time_sig)
     pickup_units = _parse_anacrusis_units(time_sig)
     for i in range(0, len(measures), 4):
@@ -930,17 +939,33 @@ def build_jianpu_ly_text_from_measures(
     return '\n'.join(header)
 
 
-def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False) -> str:
+def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
+                          composer: str = '', tempo: int = 0) -> str:
     """Build jianpu-ly plain-text (.txt) content, including title, key, time signature, and measures."""
     from ..utils import log_message
     import logging as _logging
 
     key_tonic_semitone, tonic_name = _get_score_key_tonic(score)
 
-    header = ['% jianpu-ly.py', f'title={title}', f'1={tonic_name}']
+    # Extract tempo from score if not provided
+    if tempo <= 0:
+        try:
+            from music21 import tempo as m21tempo
+            tempos = list(score.flatten().getElementsByClass(m21tempo.MetronomeMark))
+            if tempos:
+                tempo = int(round(tempos[0].number))
+        except Exception:
+            pass
+
+    header = ['% jianpu-ly.py', f'title={title}']
+    if composer:
+        header.append(f'composer={composer}')
+    header.append(f'1={tonic_name}')
 
     measures, time_signature = extract_strict_jianpu_measures(score, key_tonic_semitone) if use_strict_timing else extract_jianpu_measures(score, key_tonic_semitone)
     header.append(time_signature)
+    if tempo > 0:
+        header.append(f'4={tempo}')
     header.append('')
 
     bar_units = _parse_bar_units(time_signature)

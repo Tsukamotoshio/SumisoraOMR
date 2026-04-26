@@ -11,8 +11,7 @@ from .image_preprocess import (
     HAS_PILLOW,
     LOW_RES_PIXEL_THRESHOLD,
     detect_and_correct_rotation,
-    find_waifu2x_executable,
-    upscale_image_with_waifu2x,
+    upscale_image,
 )
 from ..utils import log_message
 
@@ -172,26 +171,24 @@ def normalize_dpi_by_interline(
             print(f'[DPI归一化] 降采样完成，预计间距 ≈ {spacing * scale:.2f} px')
             return result
 
-        # 放大：优先 waifu2x，失败则 INTER_CUBIC
-        waifu2x_exe = find_waifu2x_executable()
-        if waifu2x_exe is not None:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_in = Path(tmp_dir) / 'dpi_in.png'
-                tmp_out = Path(tmp_dir) / 'dpi_out.png'
-                _cv2.imwrite(str(tmp_in), img_array)
-                waifu_scale = 4 if scale > 3.0 else 2
-                ok = upscale_image_with_waifu2x(tmp_in, tmp_out, scale=waifu_scale)
-                if ok:
-                    sr_img = _cv2.imread(str(tmp_out))
-                    if sr_img is not None:
-                        result = _cv2.resize(sr_img, (new_w, new_h), interpolation=_cv2.INTER_AREA)
-                        print(f'[DPI归一化] waifu2x {waifu_scale}× 超分+精确缩放完成，'
-                              f'预计间距 ≈ {spacing * scale:.2f} px')
-                        return result
+        # 放大：优先超分辨率，失败则 INTER_CUBIC
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_in = Path(tmp_dir) / 'dpi_in.png'
+            tmp_out = Path(tmp_dir) / 'dpi_out.png'
+            _cv2.imwrite(str(tmp_in), img_array)
+            sr_scale = 4 if scale > 3.0 else 2
+            ok = upscale_image(tmp_in, tmp_out, scale=sr_scale)
+            if ok:
+                sr_img = _cv2.imread(str(tmp_out))
+                if sr_img is not None:
+                    result = _cv2.resize(sr_img, (new_w, new_h), interpolation=_cv2.INTER_AREA)
+                    print(f'[DPI归一化] SR {sr_scale}× 超分+精确缩放完成，'
+                          f'预计间距 ≈ {spacing * scale:.2f} px')
+                    return result
 
         # 回退：INTER_CUBIC 双三次插值
         result = _cv2.resize(img_array, (new_w, new_h), interpolation=_cv2.INTER_CUBIC)
-        print(f'[DPI归一化] INTER_CUBIC 放大完成（waifu2x 不可用），'
+        print(f'[DPI归一化] INTER_CUBIC 放大完成（超分辨率不可用），'
               f'预计间距 ≈ {spacing * scale:.2f} px')
         return result
 

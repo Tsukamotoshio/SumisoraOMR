@@ -1,0 +1,3 @@
+[submodule "omr_engine/realesrgan"]
+	path = omr_engine/realesrgan
+	url = https://github.com/xinntao/Real-ESRGAN

@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import math
 import subprocess
+import sys
 
 # 防止子进程在 Windows 上弹出控制台窗口（GUI 分发版）
 _WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -25,7 +26,9 @@ except ImportError:
 
 from ..config import (
     LOGGER,
+    REALESRGAN_RUNTIME_DIR_NAME,
     RUNTIME_ASSETS_DIR_NAME,
+    SREngine,
     WAIFU2X_RUNTIME_DIR_NAME,
 )
 from ..utils import (
@@ -49,7 +52,17 @@ except ImportError:
     _HAS_CV2 = False
 
 
-# 图像最小边像素阈值：低于此值的图像使用 waifu2x 超分辨率放大
+# 当前超分辨率引擎（由 worker_main 通过 set_sr_engine() 注入）
+_current_sr_engine: str = SREngine.WAIFU2X.value
+
+
+def set_sr_engine(engine: str) -> None:
+    """设置当前超分辨率引擎（'waifu2x' 或 'realesrgan'）。由 worker 进程在启动时调用。"""
+    global _current_sr_engine
+    _current_sr_engine = engine
+
+
+# 图像最小边像素阈值：低于此值的图像使用超分辨率放大
 LOW_RES_PIXEL_THRESHOLD = 1200
 # Audiveris 允许处理的最大像素总数（超出则报 Too large image 并拒绝识别）
 AUDIVERIS_MAX_PIXELS = 20_000_000
@@ -102,6 +115,159 @@ def find_waifu2x_executable() -> Optional[Path]:
         if candidate.exists() and candidate.is_file():
             return candidate
     return None
+
+
+def find_realesrgan_executable() -> Optional[Path]:
+    """Search for realesrgan-ncnn-vulkan binary in app directory and PATH."""
+    import os
+    import shutil
+
+    exe_names = ['realesrgan-ncnn-vulkan.exe', 'realesrgan-ncnn-vulkan']
+    candidates: list[Path] = []
+
+    for base_dir in get_runtime_search_roots():
+        for exe_name in exe_names:
+            candidates.extend([
+                base_dir / exe_name,
+                base_dir / REALESRGAN_RUNTIME_DIR_NAME / exe_name,
+                base_dir / RUNTIME_ASSETS_DIR_NAME / REALESRGAN_RUNTIME_DIR_NAME / exe_name,
+                base_dir / 'realesrgan-ncnn-vulkan' / exe_name,
+                base_dir / 'tools' / exe_name,
+            ])
+
+    packaged = find_packaged_runtime_dir(REALESRGAN_RUNTIME_DIR_NAME)
+    if packaged is not None:
+        for exe_name in exe_names:
+            candidates.append(packaged / exe_name)
+
+    program_files = os.environ.get('PROGRAMFILES', r'C:\Program Files')
+    local_app_data = os.environ.get('LOCALAPPDATA', '')
+    for root in [Path(program_files), Path(local_app_data) / 'Programs']:
+        for exe_name in exe_names:
+            candidates.append(root / 'realesrgan-ncnn-vulkan' / exe_name)
+
+    for exe_name in exe_names:
+        found = shutil.which(exe_name)
+        if found:
+            candidates.append(Path(found))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _find_realesrgan_python_script() -> Optional[Path]:
+    """Find inference_realesrgan.py from the cloned Real-ESRGAN repo at omr_engine/realesrgan/."""
+    for base_dir in get_runtime_search_roots():
+        candidate = base_dir / 'omr_engine' / 'realesrgan' / 'inference_realesrgan.py'
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def upscale_with_realesrgan(input_path: Path, output_path: Path, scale: int = 4) -> bool:
+    """Upscale using Real-ESRGAN anime model (4×). Tries ncnn-vulkan binary first, Python script fallback.
+
+    Always uses the anime/line-art model which is best suited for sheet music.
+    The scale parameter is accepted for API compatibility but Real-ESRGAN always runs at 4×;
+    callers that request 2× will get a 4× result which fit_image_within_pixel_limit can downsample.
+    """
+    # ── 优先：realesrgan-ncnn-vulkan 二进制（无 Python 依赖，Vulkan 加速）
+    exe = find_realesrgan_executable()
+    if exe is not None:
+        models_dir = exe.parent / 'models'
+        cmd = [
+            str(exe),
+            '-i', str(input_path),
+            '-o', str(output_path),
+            '-n', 'realesrgan-x4plus-anime',
+            '-s', '4',
+        ]
+        if models_dir.is_dir():
+            cmd += ['-m', str(models_dir)]
+        log_message('使用 realesrgan-ncnn-vulkan 进行 4× 超分辨率处理 (anime 模型)...')
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=600,
+                check=False,
+                creationflags=_WIN_NO_WINDOW,
+            )
+            if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
+                log_message(f'Real-ESRGAN (ncnn) 超分辨率完成: {output_path.name}')
+                return True
+            detail = (result.stderr or result.stdout or '').strip()[:200]
+            log_message(f'realesrgan-ncnn-vulkan 失败（退出码 {result.returncode}）: {detail}', logging.WARNING)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log_message(f'realesrgan-ncnn-vulkan 调用异常: {exc}', logging.WARNING)
+
+    # ── 回退：Python 脚本（需 pip install realesrgan 及 PyTorch）
+    script = _find_realesrgan_python_script()
+    if script is not None:
+        import shutil as _shutil
+        import tempfile as _tempfile
+        with _tempfile.TemporaryDirectory() as tmp_dir:
+            cmd = [
+                sys.executable, str(script),
+                '-n', 'RealESRGAN_x4plus_anime_6B',
+                '-i', str(input_path),
+                '-o', tmp_dir,
+                '-s', '4',
+                '--fp32',
+            ]
+            log_message('使用 Real-ESRGAN Python 脚本进行 4× 超分辨率处理 (anime 模型)...')
+            try:
+                result = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=600,
+                    check=False,
+                )
+                out_file = Path(tmp_dir) / (input_path.stem + '.png')
+                if not out_file.exists():
+                    out_file = Path(tmp_dir) / input_path.name
+                if result.returncode == 0 and out_file.exists() and out_file.stat().st_size > 0:
+                    _shutil.copy2(str(out_file), str(output_path))
+                    log_message(f'Real-ESRGAN (Python) 超分辨率完成: {output_path.name}')
+                    return True
+                detail = (result.stderr or result.stdout or '').strip()[:300]
+                log_message(f'Real-ESRGAN Python 脚本失败: {detail}', logging.WARNING)
+            except (OSError, subprocess.SubprocessError) as exc:
+                log_message(f'Real-ESRGAN Python 脚本调用异常: {exc}', logging.WARNING)
+
+    log_message(
+        '未找到 Real-ESRGAN 可执行文件。\n'
+        '  → 方案 A（推荐）：下载 realesrgan-ncnn-vulkan 二进制，\n'
+        '    解压至 realesrgan-runtime/ 目录\n'
+        '  → 方案 B：在 venv 中执行 pip install realesrgan，\n'
+        '    并确保 omr_engine/realesrgan/ 子模块已克隆。',
+        logging.WARNING,
+    )
+    return False
+
+
+def upscale_image(input_path: Path, output_path: Path, scale: int = 2) -> bool:
+    """Route SR upscale to the configured engine (waifu2x or Real-ESRGAN).
+
+    Falls back to waifu2x if Real-ESRGAN is selected but unavailable.
+    Falls back to bicubic resize (returns False) if neither tool is found.
+    """
+    if _current_sr_engine == SREngine.REALESRGAN.value:
+        if upscale_with_realesrgan(input_path, output_path, scale):
+            return True
+        log_message('Real-ESRGAN 失败，回退到 waifu2x...', logging.WARNING)
+    return upscale_image_with_waifu2x(input_path, output_path, scale)
 
 
 def is_low_resolution_image(image_path: Path) -> bool:
@@ -675,15 +841,16 @@ def enhance_image(
             min_dim = min(chk.size)
         if min_dim < LOW_RES_PIXEL_THRESHOLD:
             upscaled_path = work_dir / f'sr_{image_path.stem}.png'
-            ok = upscale_image_with_waifu2x(current_path, upscaled_path, scale=2)
+            ok = upscale_image(current_path, upscaled_path, scale=2)
             if ok:
                 safe_remove_file(current_path)
                 current_path = upscaled_path
                 meta.sr_applied = True
-                steps.append('waifu2x 超分辨率')
+                engine_label = 'Real-ESRGAN' if _current_sr_engine == SREngine.REALESRGAN.value else 'waifu2x'
+                steps.append(f'{engine_label} 超分辨率')
                 log_message(
                     f'  [增强] 最短边 {min_dim}px < {LOW_RES_PIXEL_THRESHOLD}px，'
-                    '已执行 2× 超分辨率放大。'
+                    f'已执行超分辨率放大（{engine_label}）。'
                 )
             else:
                 log_message('  [增强] 超分辨率放大失败，使用现有分辨率继续。', logging.WARNING)

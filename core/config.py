@@ -48,6 +48,7 @@ RUNTIME_ASSETS_DIR_NAME = 'package-assets'
 AUDIVERIS_RUNTIME_DIR_NAME = 'audiveris-runtime'
 LILYPOND_RUNTIME_DIR_NAME = 'lilypond-runtime'
 WAIFU2X_RUNTIME_DIR_NAME = 'waifu2x-runtime'
+REALESRGAN_RUNTIME_DIR_NAME = 'realesrgan-runtime'
 OMR_ENGINE_DIR_NAME = 'omr_engine'
 AUDIVERIS_INSTALL_DIR_NAME = 'Audiveris'
 AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris', 'audiveris-5.10.2')
@@ -60,6 +61,20 @@ AUDIVERIS_MSI_NAMES = [
     'Audiveris.msi',
     'audiveris.msi',
 ]
+
+
+# ──────────────────────────────────────────────
+# 超分辨率引擎枚举
+# ──────────────────────────────────────────────
+class SREngine(Enum):
+    """可选的超分辨率引擎。
+
+    WAIFU2X:    基于 waifu2x-ncnn-vulkan 的线条画超分（当前默认）。
+    REALESRGAN: 基于 Real-ESRGAN 的高质量超分（anime 模型，更适合乐谱）。
+                优先使用 realesrgan-ncnn-vulkan 二进制，回退至 Python 脚本。
+    """
+    WAIFU2X = 'waifu2x'
+    REALESRGAN = 'realesrgan'
 
 
 # ──────────────────────────────────────────────

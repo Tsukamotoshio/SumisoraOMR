@@ -278,19 +278,24 @@ def ensure_lilypond_font_block(text: str) -> str:
     return font_block + text
 
 
-def build_lilypond_title_markup(title: str) -> str:
-    """Build a LilyPond \\markup block that displays the title at the top of the page."""
+def build_lilypond_title_markup(title: str, composer: str = '') -> str:
+    """Build a LilyPond \\markup block that displays the title (and optional composer) at the top of the page."""
     safe_title = escape_lilypond_text(title.strip())
     if not safe_title:
         return ''
 
     lilypond_font_name = resolve_lilypond_font_name() or 'Sans'
     safe_font_name = escape_lilypond_text(lilypond_font_name)
+    composer_line = ''
+    if composer.strip():
+        safe_composer = escape_lilypond_text(composer.strip())
+        composer_line = f'    \\fill-line {{ "" \\fontsize #1 \\italic "{safe_composer}" }}\n'
     return (
         '\\markup {\n'
         f'  \\override #\'(font-name . "{safe_font_name}")\n'
         '  \\column {\n'
         f'    \\fill-line {{ \\fontsize #3 \\bold "{safe_title}" }}\n'
+        f'{composer_line}'
         '    \\vspace #1\n'
         '  }\n'
         '}\n'
@@ -418,7 +423,12 @@ def _fix_deprecated_override_syntax(text: str) -> str:
     )
 
 
-def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics_lines: Optional[list[str]] = None) -> None:
+def sanitize_generated_lilypond_file(
+    ly_path: Path,
+    preferred_title: str,
+    lyrics_lines: Optional[list[str]] = None,
+    composer: str = '',
+) -> None:
     """
     Post-process a jianpu-ly .ly file: set title, strip 5-line staves,
     insert title/lyrics markup, configure fonts, and suppress the tagline.
@@ -426,13 +436,23 @@ def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics
     if not ly_path.exists():
         return
 
-    safe_title = escape_lilypond_text(preferred_title)
-    title_markup = build_lilypond_title_markup(preferred_title)
-    lyrics_markup = build_lilypond_lyrics_markup(lyrics_lines)
     text = ly_path.read_text(encoding='utf-8', errors='ignore')
+
+    # If caller didn't supply composer, try to read it from the generated \header block
+    # (jianpu-ly.py emits \header { composer="..." } when the .txt file has composer=... ).
+    if not composer:
+        _cm = re.search(r'composer\s*=\s*"([^"]*)"', text)
+        if _cm:
+            composer = _cm.group(1).strip()
+
+    title_markup = build_lilypond_title_markup(preferred_title, composer)
+    lyrics_markup = build_lilypond_lyrics_markup(lyrics_lines)
 
     # Convert deprecated #'property syntax to dot notation (LilyPond 2.24+)
     text = _fix_deprecated_override_syntax(text)
+
+    # Suppress title and composer from LilyPond's default header — custom markup handles display.
+    _header_clear = '\\header { title="" composer="" instrument="" tagline=##f }'
 
     if '% === BEGIN JIANPU STAFF ===' in text and '% === END JIANPU STAFF ===' in text:
         preamble = text.split('\\score {', 1)[0]
@@ -445,7 +465,7 @@ def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics
                 preamble
                 + '\n\\score {\n<<\n'
                 + jianpu_section
-                + f'\n>>\n\\header{{\n  title=""\n  instrument=""\n  tagline=##f\n}}\n\\layout{{}}\n}}\n'
+                + f'\n>>\n\\header{{\n  title=""\n  composer=""\n  instrument=""\n  tagline=##f\n}}\n\\layout{{}}\n}}\n'
             )
             extra_markup = title_markup + lyrics_markup
             if extra_markup and '\\score {' in rebuilt and '\\fill-line { \\fontsize #3 \\bold' not in rebuilt.split('\\score {', 1)[0]:
@@ -457,11 +477,11 @@ def sanitize_generated_lilypond_file(ly_path: Path, preferred_title: str, lyrics
     text = re.sub(r'% === BEGIN 5-LINE STAFF ===.*?% === END 5-LINE STAFF ===\s*', '', text, flags=re.S)
     text = re.sub(r'^instrument=.*$', '', text, flags=re.M)
     text = re.sub(r'instrument="[^"]*"', 'instrument=""', text)
-    # Use our custom title markup and set header title to empty to avoid duplicates
+    # Use custom markup for title/composer; clear them from LilyPond's default header to avoid duplicates
     if '\\paper {' in text:
-        text = text.replace('\\paper {', f'\\header {{ title="" tagline=##f }}\n\\paper {{', 1)
+        text = text.replace('\\paper {', f'{_header_clear}\n\\paper {{', 1)
     else:
-        text = f'\\header {{ title="" tagline=##f }}\n' + text
+        text = f'{_header_clear}\n' + text
     extra_markup = title_markup + lyrics_markup
     if extra_markup and '\\score {' in text and '\\fill-line { \\fontsize #3 \\bold' not in text.split('\\score {', 1)[0]:
         text = text.replace('\\score {', extra_markup + '\\score {', 1)
@@ -486,20 +506,23 @@ def render_score_to_jianpu_pdf(
     txt_path: Path,
     ly_path: Path,
     lyrics_lines: Optional[list[str]] = None,
+    composer: str = '',
+    tempo: int = 0,
 ) -> bool:
     """
     Render a music21 score to jianpu PDF.
     Tries in order: standard jianpu-ly → strict-timing → reportlab fallback → LilyPond markup fallback.
     """
     try:
-        txt_content = build_jianpu_ly_text(score, title)
+        txt_content = build_jianpu_ly_text(score, title, composer=composer, tempo=tempo)
     except Exception as exc:
         log_message(f'[jianpu] 标准 jianpu-ly 文本生成失败 ({exc})，尝试使用简化处理', logging.WARNING)
         try:
             from ..music.jianpu_core import parse_score_to_jianpu, build_jianpu_ly_text_from_measures
             measures, header_lines, time_sig = parse_score_to_jianpu(score)
             key_name = header_lines[0].split()[0] if header_lines else '1=C'
-            txt_content = build_jianpu_ly_text_from_measures(measures, time_sig, key_name, title)
+            txt_content = build_jianpu_ly_text_from_measures(measures, time_sig, key_name, title,
+                                                              composer=composer, tempo=tempo)
         except Exception as exc2:
             log_message(f'[jianpu] 简化处理也失败: {exc2}，继续尝试其他方式', logging.WARNING)
             txt_content = None
@@ -517,7 +540,7 @@ def render_score_to_jianpu_pdf(
 
     if render_jianpu_ly(txt_path, ly_path):
         log_message(f'已生成 jianpu-ly LilyPond 文件: {ly_path.name}')
-        sanitize_generated_lilypond_file(ly_path, title, lyrics_lines)
+        sanitize_generated_lilypond_file(ly_path, title, lyrics_lines, composer=composer)
         pdf_path = render_lilypond_pdf(ly_path)
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
@@ -527,11 +550,12 @@ def render_score_to_jianpu_pdf(
     else:
         log_message('文本版 jianpu-ly 失败，尝试严格按拍号重建简谱。', logging.WARNING)
 
-    strict_txt_content = build_jianpu_ly_text(score, title, use_strict_timing=True)
+    strict_txt_content = build_jianpu_ly_text(score, title, use_strict_timing=True,
+                                               composer=composer, tempo=tempo)
     txt_path.write_text(strict_txt_content, encoding='utf-8')
     if render_jianpu_ly(txt_path, ly_path):
         log_message(f'已通过严格拍号重建生成 jianpu-ly 文件: {ly_path.name}')
-        sanitize_generated_lilypond_file(ly_path, title, lyrics_lines)
+        sanitize_generated_lilypond_file(ly_path, title, lyrics_lines, composer=composer)
         pdf_path = render_lilypond_pdf(ly_path)
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
@@ -678,6 +702,8 @@ def generate_jianpu_pdf_from_mxl(
     preferred_title: Optional[str] = None,
     source_path: Optional[Path] = None,
     editor_workspace_dir: Optional[Path] = None,
+    composer: str = '',
+    tempo_bpm: int = 0,
 ) -> bool:
     """
     Generate a jianpu PDF from MusicXML: parse MXL → render jianpu PDF directly.
@@ -691,10 +717,38 @@ def generate_jianpu_pdf_from_mxl(
     txt_path = temp_dir / f'{mxl_path.stem}.jianpu.txt'
     ly_path = temp_dir / f'{mxl_path.stem}.jianpu.ly'
 
+    # Titles that OMR engines write when no real title is found — fall back to filename for these.
+    _GENERIC_TITLES = {'', 'music21', 'untitled', 'title', 'score', 'new score', 'unknown'}
+
     try:
         source_score = converter.parse(str(mxl_path))
-        title = (preferred_title or output_pdf_path.stem.replace('.jianpu', '') or mxl_path.stem).strip()
+
+        # Prefer a meaningful title from score metadata; fall back to the caller-supplied name.
+        _score_meta = getattr(source_score, 'metadata', None)
+        _raw_title = (getattr(_score_meta, 'title', None) or '').strip()
+        if _raw_title.lower() not in _GENERIC_TITLES:
+            title = _raw_title
+        else:
+            title = (preferred_title or output_pdf_path.stem.replace('.jianpu', '') or mxl_path.stem).strip()
+
         apply_score_title(source_score, title)
+
+        # Extract composer from score if not pre-supplied.
+        if not composer:
+            _raw_composer = (getattr(_score_meta, 'composer', None) or '').strip()
+            if _raw_composer.lower() not in ('', 'music21', 'composer'):
+                composer = _raw_composer
+
+        # Extract tempo from score if not pre-supplied.
+        if tempo_bpm <= 0:
+            try:
+                from music21 import tempo as m21tempo
+                _tempos = list(source_score.flatten().getElementsByClass(m21tempo.MetronomeMark))
+                if _tempos:
+                    tempo_bpm = int(round(_tempos[0].number))
+            except Exception:
+                pass
+
         lyrics_lines = collect_preserved_lyrics_lines(source_score, source_path)
 
         # Extract the same jianpu notes that will be used for PDF rendering so that
@@ -706,16 +760,17 @@ def generate_jianpu_pdf_from_mxl(
             if not render_midi_from_score(jianpu_score, midi_output_path):
                 log_message('简谱 MIDI 生成失败，跳过 MIDI 输出，继续生成简谱 PDF。', logging.WARNING)
 
-
         # Use the MXL-parsed score directly — preserves exact note durations and pitches
         log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
         result = render_score_to_jianpu_pdf(
-            source_score, title, output_pdf_path, temp_dir, txt_path, ly_path, lyrics_lines
+            source_score, title, output_pdf_path, temp_dir, txt_path, ly_path,
+            lyrics_lines, composer=composer, tempo=tempo_bpm,
         )
 
         # Preserve editor workspace files when the conversion succeeded
         if result and editor_workspace_dir is not None:
-            _save_editor_files(title, txt_path, source_path, editor_workspace_dir)
+            _ws_stem = (preferred_title or output_pdf_path.stem.replace('.jianpu', '') or mxl_path.stem).strip()
+            _save_editor_files(_ws_stem, txt_path, source_path, editor_workspace_dir)
 
         return result
     except Exception as exc:

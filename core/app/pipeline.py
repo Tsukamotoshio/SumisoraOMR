@@ -54,17 +54,60 @@ def _report_subprogress(value: float, message: str = '') -> None:
             pass
 
 
+def _inject_musicxml_metadata(xml_path: Path, title: str = '', tempo_bpm: int = 0) -> None:
+    """Inject title and tempo into an uncompressed MusicXML file via direct XML text editing.
+
+    Only modifies fields that are empty or hold generic placeholder values so that
+    meaningful metadata written by the OMR engine is never overwritten.
+    """
+    import re as _re
+    try:
+        raw = xml_path.read_text(encoding='utf-8', errors='ignore')
+
+        if title:
+            safe = title.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            # Replace empty or missing <work-title>
+            if _re.search(r'<work-title\s*>', raw):
+                raw = _re.sub(r'<work-title\s*>[^<]*</work-title>',
+                              f'<work-title>{safe}</work-title>', raw, count=1)
+            elif '<work>' in raw:
+                raw = raw.replace('<work>', f'<work>\n    <work-title>{safe}</work-title>', 1)
+            else:
+                # Insert <work> block before <identification> or at top of root element
+                if '<identification>' in raw:
+                    raw = raw.replace('<identification>',
+                                      f'<work>\n  <work-title>{safe}</work-title>\n</work>\n<identification>', 1)
+
+        if tempo_bpm > 0 and '<sound' not in raw:
+            # Inject a minimal <direction> with <sound tempo="..."> into the first measure
+            tempo_xml = (
+                f'<direction placement="above">'
+                f'<direction-type><metronome><beat-unit>quarter</beat-unit>'
+                f'<per-minute>{tempo_bpm}</per-minute></metronome></direction-type>'
+                f'<sound tempo="{tempo_bpm}"/></direction>'
+            )
+            raw = _re.sub(r'(<measure\b[^>]*>)', r'\1\n      ' + tempo_xml, raw, count=1)
+
+        xml_path.write_text(raw, encoding='utf-8')
+    except Exception as exc:
+        log_message(f'  [警告] MusicXML 元数据注入失败: {exc}', logging.WARNING)
+
+
 def _archive_mxl_to_xml_scores(
     mxl_path: Path,
     source_stem: str,
     xml_scores_dir: Path,
     engine_label: str = '',
+    title: str = '',
+    tempo_bpm: int = 0,
 ) -> None:
     """将五线谱 MusicXML 文件复制到 xml_scores_dir（归档供移调器使用）。
 
     命名规则：
       - 单引擎或融合后选出的唯一文件：``{source_stem}{ext}``
       - 双引擎均成功，需区分来源：``{source_stem}.{engine_label}{ext}``
+
+    当 title / tempo_bpm 非空时，会直接注入到归档副本，使其与渲染管线使用的元数据一致。
     """
     try:
         xml_scores_dir.mkdir(parents=True, exist_ok=True)
@@ -87,9 +130,32 @@ def _archive_mxl_to_xml_scores(
                 dest.write_bytes(zf.read(chosen))
         else:
             shutil.copy2(str(mxl_path), str(dest))
+        # Enrich the archived copy with the resolved metadata
+        if title or tempo_bpm > 0:
+            _inject_musicxml_metadata(dest, title=title, tempo_bpm=tempo_bpm)
         log_message(f'  ↳ MusicXML 已归档 → xml-scores/{dest_name}')
     except OSError as exc:
         log_message(f'  [警告] MusicXML 归档失败: {exc}', logging.WARNING)
+
+
+def _quick_read_mxl_title(mxl_path: Path) -> str:
+    """Quick regex read of <work-title> from an MXL/MusicXML file without music21 overhead."""
+    import re as _re, zipfile as _zf
+    _GENERIC = {'', 'music21', 'untitled', 'title', 'score', 'new score', 'unknown'}
+    try:
+        if mxl_path.suffix.lower() == '.mxl':
+            with _zf.ZipFile(mxl_path, 'r') as zf:
+                names = [n for n in zf.namelist() if n.lower().endswith('.xml') and 'META-INF' not in n]
+                raw = zf.read(names[0]).decode('utf-8', errors='ignore') if names else ''
+        else:
+            raw = mxl_path.read_text(encoding='utf-8', errors='ignore')
+        for pattern in (r'<work-title>([^<]+)</work-title>', r'<movement-title>([^<]+)</movement-title>'):
+            m = _re.search(pattern, raw)
+            if m and m.group(1).strip().lower() not in _GENERIC:
+                return m.group(1).strip()
+    except Exception:
+        pass
+    return ''
 
 
 def process_single_input_to_jianpu(
@@ -260,15 +326,20 @@ def process_single_input_to_jianpu(
 
     _report_subprogress(0.70, '正在生成简谱 PDF…')
 
+    preferred_title = source_file.stem
+
     if xml_scores_dir is not None:
-        _archive_mxl_to_xml_scores(mxl_file, source_file.stem, xml_scores_dir)
+        _archive_mxl_to_xml_scores(
+            mxl_file, source_file.stem, xml_scores_dir,
+            title=preferred_title,
+        )
 
     return generate_jianpu_pdf_from_mxl(
         mxl_file,
         output_pdf,
         file_temp_dir,
         output_midi,
-        preferred_title=source_file.stem,
+        preferred_title=preferred_title,
         source_path=effective_source,
         editor_workspace_dir=editor_workspace_dir,
     )
