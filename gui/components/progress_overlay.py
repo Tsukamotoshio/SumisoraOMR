@@ -39,19 +39,19 @@ class ProgressOverlay(ft.Stack):
     def _build_panel(self) -> None:
         self._progress_bar = ft.ProgressBar(
             value=0.0,
-            bgcolor=Palette.BG_CARD,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
             color=Palette.PRIMARY,
             height=6,
         )
         # 每个文件内子步骤进度条（细，辅色）
         self._sub_progress_bar = ft.ProgressBar(
             value=0.0,
-            bgcolor=Palette.BG_CARD,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
             color=Palette.INFO,
             height=3,
             visible=False,
         )
-        self._sub_status_text = ft.Text('', size=11, color=Palette.TEXT_SECONDARY, visible=False)
+        self._sub_status_text = ft.Text('', size=11, color=ft.Colors.ON_SURFACE_VARIANT, visible=False)
         # 旋转进度圈（不确定模式，视觉动画）
         self._spinner = ft.ProgressRing(
             width=20, height=20,
@@ -59,8 +59,8 @@ class ProgressOverlay(ft.Stack):
             color=Palette.PRIMARY,
             visible=True,
         )
-        self._status_text = ft.Text('', size=13, color=Palette.TEXT_PRIMARY, expand=True)
-        self._elapsed_text = ft.Text('00:00', size=11, color=Palette.TEXT_SECONDARY, width=38)
+        self._status_text = ft.Text('', size=13, color=ft.Colors.ON_SURFACE, expand=True)
+        self._elapsed_text = ft.Text('00:00', size=11, color=ft.Colors.ON_SURFACE_VARIANT, width=38)
         self._log_list = ft.ListView(
             spacing=2,
             expand=True,
@@ -71,7 +71,7 @@ class ProgressOverlay(ft.Stack):
         close_btn = ft.IconButton(
             icon=ft.Icons.CLOSE_ROUNDED,
             icon_size=18,
-            icon_color=Palette.TEXT_SECONDARY,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
             tooltip='关闭',
             on_click=self._on_close_click,
         )
@@ -110,19 +110,19 @@ class ProgressOverlay(ft.Stack):
                 spacing=4,
                 tight=True,
             ),
-            bgcolor=Palette.BG_SURFACE,
+            bgcolor=ft.Colors.SURFACE,
             border_radius=ft.BorderRadius.all(14),
             padding=ft.Padding.all(22),
             width=560,
             shadow=ft.BoxShadow(
                 blur_radius=40,
-                color='#000000AA',
+                color='#AA000000',
                 offset=ft.Offset(0, 8),
             ),
         )
 
         self._backdrop = ft.Container(
-            bgcolor='#00000088',
+            bgcolor='#88000000',
             expand=True,
             visible=False,
         )
@@ -324,9 +324,9 @@ class ProgressOverlay(ft.Stack):
         elif '✗' in line or '异常' in line or '失败' in line:
             color = Palette.ERROR
         elif line.startswith('▶'):
-            color = Palette.PRIMARY_LIGHT
+            color = ft.Colors.SECONDARY
         else:
-            color = Palette.TEXT_SECONDARY
+            color = ft.Colors.ON_SURFACE_VARIANT
         # 非阻塞：追加到队列，由 _timer_loop 批量渲染，
         # 避免工作线程被 ctrl.update() 阻塞而挂起识别进程。
         self._pending_logs.append((line, color))

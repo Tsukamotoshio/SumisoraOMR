@@ -56,14 +56,14 @@ class PdfViewer(ft.Column):
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self._page_label = ft.Text('—', size=12, color=Palette.TEXT_SECONDARY)
+        self._page_label = ft.Text('—', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
         toolbar = ft.Row(
             [
                 ft.IconButton(ft.Icons.CHEVRON_LEFT_ROUNDED,  icon_size=18, on_click=self._prev_page, tooltip='上一页'),
                 self._page_label,
                 ft.IconButton(ft.Icons.CHEVRON_RIGHT_ROUNDED, icon_size=18, on_click=self._next_page, tooltip='下一页'),
-                ft.VerticalDivider(width=1, color=Palette.DIVIDER_DARK),
+                ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT),
                 ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,      icon_size=18, on_click=self._zoom_out,  tooltip='缩小'),
                 ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,       icon_size=18, on_click=self._zoom_in,   tooltip='放大'),
                 ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,    icon_size=18, on_click=self._zoom_fit,  tooltip='复位缩放'),
@@ -73,9 +73,9 @@ class PdfViewer(ft.Column):
         )
         toolbar_bar = ft.Container(
             content=toolbar,
-            bgcolor=Palette.BG_SURFACE,
+            bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-            border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         # ft.Image 始终 visible=True（InteractiveViewer 要求 content 必须可见）。
@@ -91,8 +91,8 @@ class PdfViewer(ft.Column):
         # 占位符列（单独保存，方便 _show_error / reset 修改内容）
         self._placeholder_col = ft.Column(
             [
-                ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=Palette.TEXT_DISABLED),
-                ft.Text('暂无文件', size=13, color=Palette.TEXT_DISABLED),
+                ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
+                ft.Text('暂无文件', size=13, color=ft.Colors.OUTLINE),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -126,7 +126,7 @@ class PdfViewer(ft.Column):
         scroll_view = ft.Container(
             content=self._view_stack,
             expand=True,
-            bgcolor=Palette.BG_CARD,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
             on_size_change=self._on_viewer_resize,
         )
@@ -251,8 +251,8 @@ class PdfViewer(ft.Column):
 
         self._image.src = _BLANK_PNG_B64
         self._placeholder_col.controls = [
-            ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=Palette.TEXT_DISABLED),
-            ft.Text('暂无文件', size=13, color=Palette.TEXT_DISABLED),
+            ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
+            ft.Text('暂无文件', size=13, color=ft.Colors.OUTLINE),
         ]
         self._placeholder.visible = True
         self._update_toolbar()

@@ -28,6 +28,7 @@ from ..music.jianpu_core import (
     parse_score_to_jianpu,
 )
 from .lilypond_runner import (
+    merge_polyphonic_jianpu_staves,
     render_jianpu_ly,
     render_lilypond_pdf,
 )
@@ -458,7 +459,8 @@ def sanitize_generated_lilypond_file(
         preamble = text.split('\\score {', 1)[0]
         preamble = re.sub(r'^instrument=.*$', '', preamble, flags=re.M)
         preamble = preamble.replace('WithStaff NextPart', 'NextPart')
-        match = re.search(r'(% === BEGIN JIANPU STAFF ===.*?% === END JIANPU STAFF ===)', text, flags=re.S)
+        # Capture ALL sections from the first BEGIN to the last END (greedy match).
+        match = re.search(r'(%+\s*===\s*BEGIN JIANPU STAFF\s*===.*%+\s*===\s*END JIANPU STAFF\s*===)', text, flags=re.S)
         if match:
             jianpu_section = match.group(1).replace('WithStaff NextPart', 'NextPart')
             rebuilt = (
@@ -514,8 +516,10 @@ def render_score_to_jianpu_pdf(
     Tries in order: standard jianpu-ly → strict-timing → reportlab fallback → LilyPond markup fallback.
     """
     try:
-        txt_content = build_jianpu_ly_text(score, title, composer=composer, tempo=tempo)
+        txt_content, _voice_groups = build_jianpu_ly_text(
+            score, title, composer=composer, tempo=tempo, _return_groups=True)
     except Exception as exc:
+        _voice_groups = []
         log_message(f'[jianpu] 标准 jianpu-ly 文本生成失败 ({exc})，尝试使用简化处理', logging.WARNING)
         try:
             from ..music.jianpu_core import parse_score_to_jianpu, build_jianpu_ly_text_from_measures
@@ -541,6 +545,7 @@ def render_score_to_jianpu_pdf(
     if render_jianpu_ly(txt_path, ly_path):
         log_message(f'已生成 jianpu-ly LilyPond 文件: {ly_path.name}')
         sanitize_generated_lilypond_file(ly_path, title, lyrics_lines, composer=composer)
+        merge_polyphonic_jianpu_staves(ly_path, _voice_groups)
         pdf_path = render_lilypond_pdf(ly_path)
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
@@ -751,13 +756,9 @@ def generate_jianpu_pdf_from_mxl(
 
         lyrics_lines = collect_preserved_lyrics_lines(source_score, source_path)
 
-        # Extract the same jianpu notes that will be used for PDF rendering so that
-        # the MIDI output is guaranteed to match the displayed jianpu notation exactly
-        # (monophonic melody from part 0, polyphony collapsed to top note).
+        # Use the original parsed score for MIDI — preserves all parts and voices.
         if midi_output_path is not None:
-            jianpu_measures, _, jianpu_time_sig = parse_score_to_jianpu(source_score)
-            jianpu_score = build_score_from_jianpu_measures(jianpu_measures, jianpu_time_sig, source_score)
-            if not render_midi_from_score(jianpu_score, midi_output_path):
+            if not render_midi_from_score(source_score, midi_output_path):
                 log_message('简谱 MIDI 生成失败，跳过 MIDI 输出，继续生成简谱 PDF。', logging.WARNING)
 
         # Use the MXL-parsed score directly — preserves exact note durations and pitches

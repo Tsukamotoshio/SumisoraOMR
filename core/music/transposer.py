@@ -232,21 +232,40 @@ def extract_metadata_from_musicxml(mxl_path: Path) -> dict[str, str]:
 
 
 def _strip_music21_creator(dst: Path) -> None:
-    """移除 music21 在写出 MusicXML 时自动注入的 ``Music21`` 作曲者标记。
+    """移除 music21 在写出 MusicXML 时自动注入的各种标识符。
 
-    music21 在原乐谱没有作曲者信息时会写出
-    ``<creator type="composer">Music21</creator>``，这会出现在渲染后的 PDF 中。
-    本函数对写出的文件（.musicxml 或 .mxl）做 XML 后处理，将其删除。
+    music21 写出时可能注入：
+    - ``<creator type="composer">Music21</creator>``
+    - ``<software>music21 v...</software>``（出现在 MuseScore 的乐谱属性中）
+    - ``<encoding-description>Music21 ...</encoding-description>``
+
+    本函数对写出的文件（.musicxml 或 .mxl）做 XML 后处理，全部删除。
     """
     import zipfile
 
     def _clean_xml_bytes(raw: bytes) -> bytes:
-        # 去掉 Music21 creator 标记（大小写不敏感匹配文本内容）
-        return re.sub(
-            rb'<creator[^>]*>\s*[Mm]usic21\s*</creator>\s*',
+        cleaned = raw
+        # 1. <creator type="...">Music21</creator>
+        cleaned = re.sub(
+            rb'<creator[^>]*>\s*[Mm]usic21\s*</creator>[ \t]*\n?',
             b'',
-            raw,
+            cleaned,
         )
+        # 2. <software>music21 v...</software>（位于 <encoding> 块内）
+        cleaned = re.sub(
+            rb'<software>[^<]*[Mm]usic21[^<]*</software>[ \t]*\n?',
+            b'',
+            cleaned,
+        )
+        # 3. <encoding-description>...music21...</encoding-description>
+        cleaned = re.sub(
+            rb'<encoding-description>[^<]*[Mm]usic21[^<]*</encoding-description>[ \t]*\n?',
+            b'',
+            cleaned,
+        )
+        # 4. 清理因上述删除而产生的空 <encoding></encoding> 块
+        cleaned = re.sub(rb'<encoding>\s*</encoding>[ \t]*\n?', b'', cleaned)
+        return cleaned
 
     suffix = dst.suffix.lower()
     if suffix in ('.musicxml', '.xml'):
@@ -254,7 +273,7 @@ def _strip_music21_creator(dst: Path) -> None:
         cleaned = _clean_xml_bytes(raw)
         if cleaned != raw:
             dst.write_bytes(cleaned)
-            LOGGER.debug('已移除 music21 creator 标记: %s', dst.name)
+            LOGGER.debug('已移除 music21 标识符: %s', dst.name)
     elif suffix == '.mxl':
         # .mxl 是 ZIP 包，需要重建
         import io
@@ -266,7 +285,7 @@ def _strip_music21_creator(dst: Path) -> None:
                     data = _clean_xml_bytes(data)
                 zout.writestr(item, data)
         dst.write_bytes(buf.getvalue())
-        LOGGER.debug('已移除 music21 creator 标记 (mxl): %s', dst.name)
+        LOGGER.debug('已移除 music21 标识符 (mxl): %s', dst.name)
 
 
 def transpose_musicxml(

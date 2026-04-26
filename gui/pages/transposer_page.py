@@ -70,30 +70,36 @@ class TransposerPage(ft.Column):
             value='C',
             options=[ft.dropdown.Option(key=k, text=_KEY_DISPLAY[k]) for k in _KEYS],
             width=110,
-            bgcolor=Palette.BG_INPUT,
-            color=Palette.TEXT_PRIMARY,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
             text_size=13,
+            border_color=Palette.BORDER_PURPLE,
+            focused_border_color=Palette.PRIMARY,
         )
         self._to_key_dd = ft.Dropdown(
             label='目标调',
             value='G',
             options=[ft.dropdown.Option(key=k, text=_KEY_DISPLAY[k]) for k in _KEYS],
             width=110,
-            bgcolor=Palette.BG_INPUT,
-            color=Palette.TEXT_PRIMARY,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
             text_size=13,
+            border_color=Palette.BORDER_PURPLE,
+            focused_border_color=Palette.PRIMARY,
         )
         self._direction_dd = ft.Dropdown(
             label='方向',
             value='closest',
             options=[ft.dropdown.Option(key=v, text=label) for v, label in _DIRECTIONS],
             width=100,
-            bgcolor=Palette.BG_INPUT,
-            color=Palette.TEXT_PRIMARY,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
             text_size=13,
             tooltip='最近：自动选择半音距离更近的上/下行（同调时不动）',
+            border_color=Palette.BORDER_PURPLE,
+            focused_border_color=Palette.PRIMARY,
         )
-        self._semitone_label = ft.Text('', size=12, color=Palette.TEXT_SECONDARY)
+        self._semitone_label = ft.Text('', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
         transpose_btn = ft.Button(
             content=ft.Row(
@@ -124,8 +130,8 @@ class TransposerPage(ft.Column):
             ),
             on_click=self._on_auto_detect,
             style=ft.ButtonStyle(
-                color=Palette.TEXT_SECONDARY,
-                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.DIVIDER_DARK)},
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
@@ -136,8 +142,8 @@ class TransposerPage(ft.Column):
             ),
             on_click=self._on_export_orig,
             style=ft.ButtonStyle(
-                color=Palette.TEXT_SECONDARY,
-                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.DIVIDER_DARK)},
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
@@ -166,8 +172,8 @@ class TransposerPage(ft.Column):
             ),
             on_click=self._on_open_output_dir,
             style=ft.ButtonStyle(
-                color=Palette.TEXT_SECONDARY,
-                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.DIVIDER_DARK)},
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
@@ -189,7 +195,7 @@ class TransposerPage(ft.Column):
                         [
                             # 左侧：调号控件 + 半音标签
                             ft.Row(
-                                [self._from_key_dd, ft.Text('→', color=Palette.TEXT_SECONDARY), self._to_key_dd, self._direction_dd, self._semitone_label],
+                                [self._from_key_dd, ft.Text('→', color=ft.Colors.ON_SURFACE_VARIANT), self._to_key_dd, self._direction_dd, self._semitone_label],
                                 spacing=6,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             ),
@@ -207,9 +213,9 @@ class TransposerPage(ft.Column):
                 ],
                 spacing=6,
             ),
-            bgcolor=Palette.BG_SURFACE,
+            bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=16, vertical=10),
-            border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         # 双栏预览
@@ -219,10 +225,10 @@ class TransposerPage(ft.Column):
         orig_col = ft.Column(
             [
                 ft.Container(
-                    content=ft.Text('原调', size=12, weight=ft.FontWeight.W_600, color=Palette.TEXT_SECONDARY),
+                    content=ft.Text('原调', size=12, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE_VARIANT),
                     padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-                    bgcolor=Palette.BG_SURFACE,
-                    border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+                    bgcolor=ft.Colors.SURFACE,
+                    border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
                 ),
                 ft.Container(content=self._orig_viewer, expand=True),
             ],
@@ -233,8 +239,8 @@ class TransposerPage(ft.Column):
                 ft.Container(
                     content=ft.Text('移调后', size=12, weight=ft.FontWeight.W_600, color=Palette.PRIMARY),
                     padding=ft.Padding.symmetric(horizontal=12, vertical=6),
-                    bgcolor=Palette.BG_SURFACE,
-                    border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+                    bgcolor=ft.Colors.SURFACE,
+                    border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
                 ),
                 ft.Container(content=self._trans_viewer, expand=True),
             ],
@@ -244,7 +250,7 @@ class TransposerPage(ft.Column):
         preview_row = ft.Row(
             [
                 ft.Container(content=orig_col, expand=True),
-                ft.VerticalDivider(width=1, color=Palette.DIVIDER_DARK),
+                ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT),
                 ft.Container(content=trans_col, expand=True),
             ],
             spacing=0,
@@ -253,8 +259,8 @@ class TransposerPage(ft.Column):
         )
 
         # 底部状态栏
-        self._status = ft.Text('请先打开乐谱文件。', size=12, color=Palette.TEXT_SECONDARY)
-        self._progress = ft.ProgressBar(value=0, visible=False, bgcolor=Palette.BG_CARD, color=Palette.PRIMARY, height=3)
+        self._status = ft.Text('请先打开乐谱文件。', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._progress = ft.ProgressBar(value=0, visible=False, bgcolor=ft.Colors.SURFACE_CONTAINER, color=Palette.PRIMARY, height=3)
 
         bottom_bar = ft.Container(
             content=ft.Column(
@@ -265,8 +271,8 @@ class TransposerPage(ft.Column):
                 spacing=8,
             ),
             padding=ft.Padding.symmetric(horizontal=16, vertical=8),
-            bgcolor=Palette.BG_SURFACE,
-            border=ft.Border.only(top=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            bgcolor=ft.Colors.SURFACE,
+            border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         self.controls = [top_bar, ft.Container(content=preview_row, expand=True), bottom_bar]

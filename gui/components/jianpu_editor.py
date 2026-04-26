@@ -48,7 +48,7 @@ class JianpuEditor(ft.Column):
             '导出PDF',
             icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
             on_click=self._on_export_pdf,
-            style=ft.ButtonStyle(color=Palette.TEXT_SECONDARY),
+            style=ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT),
             tooltip='将当前简谱文件通过 LilyPond 渲染为 PDF',
         )
 
@@ -59,8 +59,8 @@ class JianpuEditor(ft.Column):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-            bgcolor=Palette.BG_SURFACE,
-            border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            bgcolor=ft.Colors.SURFACE,
+            border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         # 主编辑区：用 TextField（多行）支持直接编辑
@@ -69,15 +69,15 @@ class JianpuEditor(ft.Column):
             expand=True,
             text_size=13,
             text_style=ft.TextStyle(font_family='Consolas', font_family_fallback='YaHei'),
-            bgcolor=Palette.BG_INPUT,
-            color=Palette.TEXT_PRIMARY,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
             border_color='transparent',
             focused_border_color=Palette.PRIMARY,
             cursor_color=Palette.PRIMARY,
             on_change=self._on_text_change,
             on_selection_change=self._on_selection_change,
             hint_text='尚未加载简谱文件…',
-            hint_style=ft.TextStyle(color=Palette.TEXT_DISABLED),
+            hint_style=ft.TextStyle(color=ft.Colors.OUTLINE),
         )
 
         editor_row = ft.Row(

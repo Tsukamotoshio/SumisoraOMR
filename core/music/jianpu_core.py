@@ -540,14 +540,32 @@ def clone_monophonic_element(element, duration: float):
 MAX_SANE_BARS = 600
 
 
-def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[list[JianpuNote]], str]:
+def _get_voice_ids_in_part(part) -> list[str]:
+    """Return sorted voice IDs that contain at least one non-rest note in the given part."""
+    voice_ids: set[str] = set()
+    for measure in part.getElementsByClass(stream.Measure):
+        for voice in measure.voices:
+            if any(isinstance(e, m21note.Note) for e in voice.flatten().notes):
+                voice_ids.add(str(voice.id))
+    return sorted(voice_ids)
+
+
+def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
+                             _part=None, _voice_id: str = '1') -> tuple[list[list[JianpuNote]], str]:
     """
     Extract jianpu measure list and time signature from a music21 score.
     Merges polyphony by offset; fills gaps and overflows with rests at bar boundaries.
+
+    Parameters
+    ----------
+    _part      : If provided, use this Part stream directly instead of score.parts[0].
+    _voice_id  : Which voice ID to extract when a measure contains multiple voices.
+                 Defaults to '1' (main melody).  Pass a different id to extract
+                 inner/bass voices from polyphonic parts.
     """
     from ..utils import log_message
     import logging as _logging
-    part = score.parts[0] if score.parts else score.flatten()
+    part = _part if _part is not None else (score.parts[0] if score.parts else score.flatten())
     time_signature = '4/4'
     nominal_measure_length = 4.0
     time_sig = part.recurse().getElementsByClass(meter.TimeSignature)
@@ -603,12 +621,11 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
         except Exception:
             measure_src = measure
 
-        # 简谱为单声部格式：若小节包含多声部（homr 有时输出 voice 2），
-        # 只取 voice 1（主旋律），完全忽略 voice 2+ 的内容，
-        # 避免次要音符或占位休止符干扰 repair_jianpu_measure 的预算计算。
+        # 简谱为单声部格式；使用 _voice_id 参数选取目标声部。
+        # 单声部模式下 _voice_id='1'，多声部渲染时由调用方传入具体 ID。
         _voices = list(measure_src.voices)
         if _voices:
-            _v1 = next((v for v in _voices if str(v.id) == '1'), _voices[0])
+            _v1 = next((v for v in _voices if str(v.id) == _voice_id), _voices[0])
             _flat_all = list(_v1.flatten().notesAndRests)
         else:
             _flat_all = list(measure_src.flatten().notesAndRests)
@@ -701,14 +718,21 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[li
     return measures, time_signature
 
 
-def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0) -> tuple[list[list[JianpuNote]], str]:
+def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0,
+                                    _part=None) -> tuple[list[list[JianpuNote]], str]:
     """
     Extract jianpu measures by re-slicing all notes strictly by bar length,
     ignoring the score's own Measure objects.
+
+    Parameters
+    ----------
+    _part : If provided, use this Part stream directly instead of score.parts[0].
+            All voices are merged (flattened) — use extract_jianpu_measures with
+            _voice_id for per-voice extraction.
     """
     from ..utils import log_message
     import logging as _logging
-    part = score.parts[0] if score.parts else score.flatten()
+    part = _part if _part is not None else (score.parts[0] if score.parts else score.flatten())
     # 合并延音线：同小节 start→stop 对合并为单音符；跨小节 tie 的合并音符由
     # append_element_chunks 正确跨 bar 拆分，因此用 retainContainers=True 即可。
     try:
@@ -940,14 +964,33 @@ def build_jianpu_ly_text_from_measures(
 
 
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
-                          composer: str = '', tempo: int = 0) -> str:
-    """Build jianpu-ly plain-text (.txt) content, including title, key, time signature, and measures."""
+                          composer: str = '', tempo: int = 0,
+                          _return_groups: bool = False):
+    """Build jianpu-ly plain-text for all parts in the score.
+
+    For single-part scores the output is identical to the previous behaviour,
+    except that when the single part contains multiple non-rest voices they are
+    each extracted as a separate ``NextPart`` section (capped at 4 voices).
+
+    For multi-part scores each part becomes a separate jianpu section; parts
+    that contain multiple non-rest voices are further split so each voice gets
+    its own section.
+
+    Parameters
+    ----------
+    _return_groups
+        When *True* the function returns ``(text, voice_groups)`` instead of
+        just *text*.  ``voice_groups`` is a ``list[list[int]]`` where each
+        inner list contains the 0-based section indices that belong to the same
+        Part and should therefore be rendered on the *same* jianpu staff as
+        simultaneous polyphonic voices.  Sections with a group of length 1 are
+        monophonic and need no merging.
+    """
     from ..utils import log_message
     import logging as _logging
 
     key_tonic_semitone, tonic_name = _get_score_key_tonic(score)
 
-    # Extract tempo from score if not provided
     if tempo <= 0:
         try:
             from music21 import tempo as m21tempo
@@ -957,37 +1000,116 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
         except Exception:
             pass
 
+    # ── Collect one measures-list per output section ──────────────────────────
+    _parts = list(score.parts) if score.parts else []
+    _sections: list[list[list[JianpuNote]]] = []
+    _voice_groups: list[list[int]] = []   # parallel to _sections groups
+    _time_sig: str = '4/4'
+    _ts_set = False
+
+    if len(_parts) <= 1:
+        part = _parts[0] if _parts else None
+        # Detect multiple voices in the single part (skip in strict mode which flattens)
+        _v_ids = _get_voice_ids_in_part(part) if (not use_strict_timing and part is not None) else []
+
+        if len(_v_ids) <= 1:
+            # Single voice (or strict mode) — existing behaviour
+            fn = extract_strict_jianpu_measures if use_strict_timing else extract_jianpu_measures
+            measures, _time_sig = fn(score, key_tonic_semitone)
+            _sections = [measures]
+            _voice_groups = [[0]]
+        else:
+            # Multiple voices within a single part — extract each voice separately
+            log_message(
+                f'[jianpu] 单声部多声道: {len(_v_ids)} 个声道 ({", ".join(str(v) for v in _v_ids[:4])})',
+                _logging.DEBUG,
+            )
+            for vid in _v_ids[:4]:
+                measures, ts = extract_jianpu_measures(
+                    score, key_tonic_semitone, _part=part, _voice_id=vid)
+                if not _ts_set:
+                    _time_sig, _ts_set = ts, True
+                if measures:
+                    _sections.append(measures)
+            _voice_groups = [list(range(len(_sections)))] if _sections else [[0]]
+    else:
+        # Multi-part path: one section per part / voice combination
+        for part in _parts:
+            if use_strict_timing:
+                # Strict mode flattens all voices; emit one section per part
+                measures, ts = extract_strict_jianpu_measures(score, key_tonic_semitone, _part=part)
+                if not _ts_set:
+                    _time_sig, _ts_set = ts, True
+                if measures:
+                    _voice_groups.append([len(_sections)])
+                    _sections.append(measures)
+            else:
+                voice_ids = _get_voice_ids_in_part(part)
+                if len(voice_ids) <= 1:
+                    # No multi-voice structure — one section for the whole part
+                    measures, ts = extract_jianpu_measures(score, key_tonic_semitone, _part=part)
+                    if not _ts_set:
+                        _time_sig, _ts_set = ts, True
+                    if measures:
+                        _voice_groups.append([len(_sections)])
+                        _sections.append(measures)
+                else:
+                    # Multiple voices: one section per voice (max 4)
+                    group_indices: list[int] = []
+                    for vid in voice_ids[:4]:
+                        measures, ts = extract_jianpu_measures(
+                            score, key_tonic_semitone, _part=part, _voice_id=vid)
+                        if not _ts_set:
+                            _time_sig, _ts_set = ts, True
+                        if measures:
+                            group_indices.append(len(_sections))
+                            _sections.append(measures)
+                    if group_indices:
+                        _voice_groups.append(group_indices)
+
+    # ── Assemble jianpu-ly text ───────────────────────────────────────────────
     header = ['% jianpu-ly.py', f'title={title}']
     if composer:
         header.append(f'composer={composer}')
     header.append(f'1={tonic_name}')
-
-    measures, time_signature = extract_strict_jianpu_measures(score, key_tonic_semitone) if use_strict_timing else extract_jianpu_measures(score, key_tonic_semitone)
-    header.append(time_signature)
+    header.append(_time_sig)
     if tempo > 0:
         header.append(f'4={tempo}')
     header.append('')
 
-    bar_units = _parse_bar_units(time_signature)
-    pickup_units = _parse_anacrusis_units(time_signature)
+    bar_units   = _parse_bar_units(_time_sig)
+    pickup_units = _parse_anacrusis_units(_time_sig)
     measures_per_line = 4
 
-    log_message(f'[jianpu] 开始处理 {len(measures)} 个小节（每行 {measures_per_line} 个）', _logging.DEBUG)
+    log_message(
+        f'[jianpu] build_jianpu_ly_text: {len(_sections)} 个声部段落，共 '
+        f'{sum(len(s) for s in _sections)} 个小节', _logging.DEBUG,
+    )
 
-    for i in range(0, len(measures), measures_per_line):
-        line_measures = measures[i:i + measures_per_line]
-        try:
-            measure_texts = [
-                ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(
-                    m, (pickup_units if (i + mi) == 0 and pickup_units is not None else bar_units)
-                ))
-                for mi, m in enumerate(line_measures)
-            ]
-            header.append(' | '.join(measure_texts) + ' |')
-        except Exception as exc:
-            log_message(f'[jianpu] 处理小节组 [{i}:{i+measures_per_line}] 失败: {exc}', _logging.WARNING)
-            raise
+    for section_idx, measures in enumerate(_sections):
+        if section_idx > 0:
+            header.append('NextPart')
+            header.append(_time_sig)  # jianpu-ly resets barLength per part; repeat time sig
+        for i in range(0, len(measures), measures_per_line):
+            line_measures = measures[i:i + measures_per_line]
+            try:
+                measure_texts = [
+                    ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(
+                        m, (pickup_units if (i + mi) == 0 and pickup_units is not None else bar_units)
+                    ))
+                    for mi, m in enumerate(line_measures)
+                ]
+                header.append(' | '.join(measure_texts) + ' |')
+            except Exception as exc:
+                log_message(
+                    f'[jianpu] 处理声部 {section_idx} 小节组 [{i}:{i+measures_per_line}] 失败: {exc}',
+                    _logging.WARNING,
+                )
+                raise
 
-    return '\n'.join(header)
+    text = '\n'.join(header)
+    if _return_groups:
+        return text, _voice_groups
+    return text
 
 

@@ -20,7 +20,7 @@ from core.app.backend import app_base_dir, output_dir, open_directory
 from ..components.file_sidebar import FileSidebar
 from ..components.pdf_viewer import PdfViewer
 from ..components.progress_overlay import ProgressOverlay
-from ..theme import Palette
+from ..theme import Palette, with_alpha
 
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
@@ -55,8 +55,10 @@ class LandingPage(ft.Row):
             ],
             width=200,
             text_size=13,
-            bgcolor=Palette.BG_INPUT,
-            color=Palette.TEXT_PRIMARY,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
+            border_color=Palette.BORDER_PURPLE,
+            focused_border_color=Palette.PRIMARY,
         )
 
         # 超分辨率引擎选择
@@ -69,8 +71,10 @@ class LandingPage(ft.Row):
             ],
             width=200,
             text_size=13,
-            bgcolor=Palette.BG_INPUT,
-            color=Palette.TEXT_PRIMARY,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
+            border_color=Palette.BORDER_PURPLE,
+            focused_border_color=Palette.PRIMARY,
         )
 
         # 并发处理数（高端机加速；默认 1 = 顺序，低配安全）
@@ -85,22 +89,24 @@ class LandingPage(ft.Row):
             ],
             width=200,
             text_size=13,
-            bgcolor=Palette.BG_INPUT,
-            color=Palette.TEXT_PRIMARY,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+            color=ft.Colors.ON_SURFACE,
+            border_color=Palette.BORDER_PURPLE,
+            focused_border_color=Palette.PRIMARY,
         )
 
         # 输出目录选择
         self._output_dir_text = ft.Text(
             '未指定（默认 Output/）',
             size=12,
-            color=Palette.TEXT_SECONDARY,
+            color=ft.Colors.ON_SURFACE_VARIANT,
             expand=True,
             overflow=ft.TextOverflow.ELLIPSIS,
         )
         self._output_dir_picker = ft.FilePicker()
         output_row = ft.Row(
             [
-                ft.Icon(ft.Icons.FOLDER_OUTLINED, size=16, color=Palette.TEXT_SECONDARY),
+                ft.Icon(ft.Icons.FOLDER_OUTLINED, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
                 self._output_dir_text,
                 ft.TextButton('选择', on_click=self._on_choose_output, style=ft.ButtonStyle(color=Palette.PRIMARY)),
             ],
@@ -128,8 +134,8 @@ class LandingPage(ft.Row):
             ),
             on_click=self._on_open_output_dir,
             style=ft.ButtonStyle(
-                color=Palette.TEXT_SECONDARY,
-                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.DIVIDER_DARK)},
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
@@ -138,11 +144,11 @@ class LandingPage(ft.Row):
             content=ft.Column(
                 [
                     ft.Text('转换选项', size=14, weight=ft.FontWeight.W_600,
-                            color=Palette.TEXT_PRIMARY),
+                            color=ft.Colors.ON_SURFACE),
                     self._engine_dd,
                     self._sr_engine_dd,
                     self._parallel_dd,
-                    ft.Divider(height=1, color=Palette.DIVIDER_DARK),
+                    ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
                     output_row,
                     ft.Container(height=8),
                     self._convert_btn,
@@ -150,10 +156,10 @@ class LandingPage(ft.Row):
                 ],
                 spacing=10,
             ),
-            bgcolor=Palette.BG_SURFACE,
+            bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.all(16),
             width=250,
-            border=ft.Border.only(left=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            border=ft.Border.only(left=ft.BorderSide(2, with_alpha(Palette.BORDER_PURPLE, '99'))),
         )
 
         self.controls = [
@@ -298,12 +304,12 @@ class LandingPage(ft.Row):
             for name in existing[:5]:
                 warn_items.append(
                     ft.Text(f'  • {name}', size=11,
-                            color=Palette.TEXT_SECONDARY)
+                            color=ft.Colors.ON_SURFACE_VARIANT)
                 )
             if len(existing) > 5:
                 warn_items.append(
                     ft.Text(f'  …等另外 {len(existing)-5} 个',
-                            size=11, color=Palette.TEXT_DISABLED)
+                            size=11, color=ft.Colors.OUTLINE)
                 )
             self._skip_dup_cb = ft.Checkbox(
                 label='跳过重复文件（不重新识别）',
@@ -872,7 +878,7 @@ class LandingPage(ft.Row):
             if failed_count > 0:
                 summary_text += f'  ✗ 失败 {failed_count} 个'
             details_items.append(
-                ft.Text(summary_text, size=13, weight=ft.FontWeight.W_600, color=Palette.TEXT_PRIMARY)
+                ft.Text(summary_text, size=13, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE)
             )
             details_items.append(ft.Container(height=8))
 
@@ -887,11 +893,11 @@ class LandingPage(ft.Row):
                     details_items.append(
                         ft.Column(
                             [
-                                ft.Text(f'  • {file_name}', size=11, color=Palette.TEXT_PRIMARY),
+                                ft.Text(f'  • {file_name}', size=11, color=ft.Colors.ON_SURFACE),
                                 ft.Text(
                                     f'    原因：{reason}',
                                     size=10,
-                                    color=Palette.TEXT_SECONDARY,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
                                     overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
                             ],
@@ -904,7 +910,7 @@ class LandingPage(ft.Row):
                         ft.Text(
                             f'  …以及另外 {len(failed_files)-10} 个失败的文件',
                             size=10,
-                            color=Palette.TEXT_DISABLED,
+                            color=ft.Colors.OUTLINE,
                         )
                     )
 

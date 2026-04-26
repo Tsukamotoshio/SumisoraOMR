@@ -116,101 +116,50 @@ def render_lilypond_pdf(ly_path: Path) -> Optional[Path]:
         return None
 
 
-def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> None:
-    """将 MusicXML 中的元数据（标题、作曲家）注入到 LilyPond 文件中。
+def _fix_deprecated_ly_syntax(text: str) -> str:
+    r"""Convert deprecated LilyPond #'property syntax to .property dot notation.
 
-    修复了预览中标题和作者信息丢失或乱码的问题。
+    musicxml2ly may emit ``\set Staff #'instrumentName`` style syntax that is
+    deprecated since LilyPond 2.24.  Safe to apply to any generated .ly file.
+    """
+    return re.sub(
+        r'(\b[A-Z][A-Za-z]+)\s+#\'([a-z][a-z0-9-]*)',
+        r'\1.\2',
+        text,
+    )
+
+
+def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> None:
+    """Append a \\header block with title/composer from MusicXML metadata at EOF.
+
+    Appending is safe for any LilyPond file structure, including complex
+    multi-voice/multi-staff output from musicxml2ly.  In LilyPond, later
+    global \\header blocks override earlier ones for conflicting keys, so the
+    appended block wins over the generic header musicxml2ly generates.
     """
     try:
         from ..music.transposer import extract_metadata_from_musicxml
         metadata = extract_metadata_from_musicxml(mxl_path)
 
-        # 提取元数据，如果没有则从文件名推导
-        title = metadata.get('title', '').strip()
-        composer = metadata.get('composer', '').strip()
-
-        # 如果没有标题，从 MusicXML 文件名推导
-        if not title:
+        _GENERIC = {'', 'music21', 'composer', 'title', 'score', 'untitled', 'new score', 'unknown'}
+        title = (metadata.get('title', '') or '').strip()
+        composer = (metadata.get('composer', '') or '').strip()
+        if title.lower() in _GENERIC:
             title = mxl_path.stem
+        if composer.lower() in _GENERIC:
+            composer = ''
 
-        LOGGER.debug(f'_inject_metadata_to_lilypond: 提取到的元数据 - title="{title}", composer="{composer}"')
+        def _esc(s: str) -> str:
+            return s.replace('\\', '\\\\').replace('"', '\\"')
+
+        parts = [f'  title = "{_esc(title)}"']
+        if composer:
+            parts.append(f'  composer = "{_esc(composer)}"')
 
         ly_content = ly_path.read_text(encoding='utf-8', errors='ignore')
-
-        # 转义 LilyPond 中的特殊字符
-        def escape_lilypond_text(text: str) -> str:
-            if not text:
-                return ''
-            # LilyPond 中的特殊字符需要用反斜杠转义或用双引号包围
-            text = text.replace('\\', '\\\\')
-            text = text.replace('"', '\\"')
-            return text
-
-        title_escaped = escape_lilypond_text(title)
-        composer_escaped = escape_lilypond_text(composer)
-
-        # 简单有效的方法：直接查找并替换或添加 title/composer
-        # 先尝试替换现有的 title 和 composer，如果不存在就添加
-
-        # 1. 查找现有的 \header 块
-        if '\\header' in ly_content:
-            # 替换现有的 title（如果有）
-            if 'title' in ly_content:
-                ly_content = re.sub(
-                    r'title\s*=\s*[^\n}]+',
-                    f'title = "{title_escaped}"',
-                    ly_content,
-                    count=1,
-                    flags=re.IGNORECASE
-                )
-            else:
-                # 在 header 块中添加 title
-                ly_content = re.sub(
-                    r'(\\header\s*\{)',
-                    f'\\1\n  title = "{title_escaped}"',
-                    ly_content,
-                    count=1
-                )
-
-            # 替换或添加 composer
-            if composer_escaped:
-                if 'composer' in ly_content:
-                    ly_content = re.sub(
-                        r'composer\s*=\s*[^\n}]+',
-                        f'composer = "{composer_escaped}"',
-                        ly_content,
-                        count=1,
-                        flags=re.IGNORECASE
-                    )
-                else:
-                    # 在 header 块中添加 composer
-                    ly_content = re.sub(
-                        r'(\\header\s*\{[^\}]*)',
-                        f'\\1\n  composer = "{composer_escaped}"',
-                        ly_content,
-                        count=1,
-                        flags=re.DOTALL
-                    )
-        else:
-            # 没有 header 块，创建一个
-            header_block = f'\\header {{\n  title = "{title_escaped}"'
-            if composer_escaped:
-                header_block += f'\n  composer = "{composer_escaped}"'
-            header_block += '\n}}\n\n'
-
-            # 在合适的位置插入
-            inserted = False
-            for pattern in [r'(?=\\version)', r'(?=\\score)', r'(?=\\new)']:
-                if re.search(pattern, ly_content):
-                    ly_content = re.sub(pattern, header_block, ly_content, count=1)
-                    inserted = True
-                    break
-            if not inserted:
-                # 插入在开头
-                ly_content = header_block + ly_content
-
-        ly_path.write_text(ly_content, encoding='utf-8')
-        LOGGER.debug(f'已注入元数据到 {ly_path.name}: title="{title}", composer="{composer}"')
+        header_block = '\\header {\n' + '\n'.join(parts) + '\n}\n'
+        ly_path.write_text(ly_content.rstrip('\n') + '\n' + header_block, encoding='utf-8')
+        LOGGER.debug('_inject_metadata_to_lilypond: 追加元数据头 title="%s"', title)
     except Exception as exc:
         LOGGER.debug('_inject_metadata_to_lilypond 失败: %s', exc)
 
@@ -266,10 +215,19 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
         log_message(f'musicxml2ly 执行出错: {exc}', logging.WARNING)
         return None
 
-    # Step 2: 将 MusicXML 中的元数据注入到 LilyPond 文件（修复标题/作者显示问题）
+    # Step 2: Fix deprecated #'property syntax emitted by older musicxml2ly builds
+    try:
+        raw = ly_path.read_text(encoding='utf-8', errors='ignore')
+        fixed = _fix_deprecated_ly_syntax(raw)
+        if fixed != raw:
+            ly_path.write_text(fixed, encoding='utf-8')
+    except Exception:
+        pass
+
+    # Step 3: Append title/composer from MusicXML metadata
     _inject_metadata_to_lilypond(ly_path, mxl_path)
 
-    # Step 3: LilyPond → PDF（使用已有的 render_lilypond_pdf）
+    # Step 4: LilyPond → PDF（使用已有的 render_lilypond_pdf）
     return render_lilypond_pdf(ly_path)
 
 
@@ -452,3 +410,221 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
     except subprocess.CalledProcessError as exc:
         log_message(f'jianpu-ly 脚本处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
         return False
+
+
+# ──────────────────────────────────────────────
+# Polyphonic jianpu stave merging
+# ──────────────────────────────────────────────
+
+# Patterns used by _merge_jianpu_voices (compiled once at module level for speed).
+_STAFF_SPLIT_RE = re.compile(r'\}\s*\n(\s*\{)', re.DOTALL)
+_TRANSPARENT_STEM_RE = re.compile(
+    r"(\\override\s+Staff\.Stem\s+#'transparent\s*=\s*##t[^\n]*)"
+)
+_VOICE_OPEN_RE = re.compile(r'(\\new\s+Voice\s*=\s*"[^"]*"\s*\{)')
+
+_VOICE_CMDS = ['\\voiceOne', '\\voiceTwo', '\\voiceThree', '\\voiceFour']
+
+
+def _merge_jianpu_voices(
+    section_contents: list[str],
+    begin_marker: str,
+    end_marker: str,
+) -> str:
+    """Combine 2–4 jianpu ``RhythmicStaff`` section bodies into one polyphonic staff.
+
+    Each *section_content* is the raw text between the ``BEGIN JIANPU STAFF``
+    and ``END JIANPU STAFF`` markers (as captured by a regex group, so it does
+    **not** include the markers themselves).
+
+    The first section's ``\\new RhythmicStaff \\with { … }`` block is reused as
+    the shared staff settings.  Each section's voice block is extracted, given a
+    ``\\voiceOne`` / ``\\voiceTwo`` … command, and placed inside a LilyPond
+    simultaneous-music construct::
+
+        \\new RhythmicStaff \\with { … }
+        {
+            <<
+                \\new Voice="v1" { \\voiceOne … }
+                \\\\
+                \\new Voice="v2" { \\voiceTwo … }
+            >>
+        }
+    """
+    staff_with_block: Optional[str] = None
+    voice_inner_blocks: list[str] = []
+
+    for i, content in enumerate(section_contents):
+        # Find the boundary: }\n    { separates the \with block from the music block.
+        m = _STAFF_SPLIT_RE.search(content)
+        if not m:
+            # Unexpected format — append raw and bail out
+            voice_inner_blocks.append(content.strip())
+            continue
+
+        if i == 0:
+            # Capture the shared staff settings (everything up to and including
+            # the closing } of the \with block).
+            staff_with_block = content[: m.start() + 1].strip()
+
+        # The music block starts at the { that opens it.
+        # content[m.start(1):] = "{ \\new Voice=... } }"
+        music_block = content[m.start(1):]
+
+        # Strip the outer braces of the music block:
+        #   { \\new Voice=... } }
+        # → \\new Voice=... }
+        # (The trailing single } closes the Voice; the staff music block's } was
+        #  the outermost brace we just removed.)
+        inner = music_block.strip()
+        if inner.startswith('{'):
+            inner = inner[1:]
+        inner = inner.rstrip()
+        if inner.endswith('}'):
+            inner = inner[:-1].rstrip()
+
+        # Insert \\voiceX *after* the last per-voice setup override so it
+        # takes precedence over any explicit \override Stem #'direction = #DOWN.
+        tm = _TRANSPARENT_STEM_RE.search(inner)
+        if tm:
+            line_end = inner.find('\n', tm.end())
+            if line_end >= 0:
+                inner = (
+                    inner[: line_end + 1]
+                    + f'    {_VOICE_CMDS[i]}\n'
+                    + inner[line_end + 1 :]
+                )
+            else:
+                inner = inner + f'\n    {_VOICE_CMDS[i]}'
+        else:
+            # Fallback: insert right after the opening { of \\new Voice
+            vm = _VOICE_OPEN_RE.search(inner)
+            if vm:
+                pos = vm.end()
+                inner = inner[:pos] + f' {_VOICE_CMDS[i]}\n' + inner[pos:]
+
+        voice_inner_blocks.append(inner)
+
+    if not voice_inner_blocks or staff_with_block is None:
+        # Could not parse sections — return them as separate staves (safe fallback)
+        result = begin_marker
+        for content in section_contents:
+            result += content
+        result += end_marker
+        return result
+
+    # Assemble the polyphonic staff.
+    # Indent each voice block by 8 spaces; separate voices with \\ (the LilyPond
+    # double-backslash simultaneous-voice separator).
+    voice_parts: list[str] = []
+    for j, block in enumerate(voice_inner_blocks):
+        if j > 0:
+            voice_parts.append('        \\\\')
+        indented = '\n'.join(
+            ('        ' + line) if line.strip() else line
+            for line in block.split('\n')
+        )
+        voice_parts.append(indented)
+
+    combined = (
+        begin_marker + '\n'
+        + '    ' + staff_with_block + '\n'
+        + '    {\n'
+        + '        <<\n'
+        + '\n'.join(voice_parts) + '\n'
+        + '        >>\n'
+        + '    }\n'
+        + end_marker
+    )
+    return combined
+
+
+def merge_polyphonic_jianpu_staves(
+    ly_path: Path,
+    voice_groups: list[list[int]],
+) -> None:
+    """Post-process a jianpu-ly-generated ``.ly`` file to render polyphonic voices
+    on a single jianpu staff instead of separate staves.
+
+    Parameters
+    ----------
+    ly_path
+        Path to the ``.ly`` file to modify **in-place**.
+    voice_groups
+        A list of section-index groups returned by
+        :func:`~core.music.jianpu_core.build_jianpu_ly_text` with
+        ``_return_groups=True``.  Each inner list contains the 0-based indices
+        of the sections that belong to the same musical Part.  Groups with only
+        one member are left unchanged.  Groups with 2–4 members have their
+        ``RhythmicStaff`` sections merged into a single polyphonic staff.
+    """
+    if not voice_groups or not any(len(g) > 1 for g in voice_groups):
+        return  # nothing to do
+
+    try:
+        content = ly_path.read_text(encoding='utf-8', errors='ignore')
+    except OSError:
+        return
+
+    SECTION_RE = re.compile(
+        r'(%+\s*===\s*BEGIN JIANPU STAFF\s*===)(.*?)(%+\s*===\s*END JIANPU STAFF\s*===)',
+        re.DOTALL,
+    )
+    sections = list(SECTION_RE.finditer(content))
+    if not sections:
+        return
+
+    # Build a mapping: section index → group containing it
+    section_to_group: dict[int, list[int]] = {}
+    for group in voice_groups:
+        for idx in group:
+            section_to_group[idx] = group
+
+    # Collect replacements (keyed by span in *content*) to apply from end to start.
+    replacements: list[tuple[int, int, str]] = []  # (start, end, new_text)
+    consumed: set[int] = set()
+
+    for sec_idx, match in enumerate(sections):
+        if sec_idx in consumed:
+            continue
+        group = section_to_group.get(sec_idx, [sec_idx])
+        if len(group) <= 1:
+            continue  # monophonic — no change
+
+        # Gather all matches for this group
+        group_matches = [sections[i] for i in group if i < len(sections)]
+        if len(group_matches) < 2:
+            continue
+
+        first_m = group_matches[0]
+        last_m = group_matches[-1]
+
+        merged = _merge_jianpu_voices(
+            [m.group(2) for m in group_matches],
+            first_m.group(1),
+            last_m.group(3),
+        )
+
+        # Replace from start of first section to end of last section
+        replacements.append((first_m.start(), last_m.end(), merged))
+        for i in group[1:]:
+            consumed.add(i)
+
+    if not replacements:
+        return
+
+    # Apply replacements from last to first to preserve string positions
+    result = content
+    for start, end, new_text in sorted(replacements, key=lambda t: t[0], reverse=True):
+        result = result[:start] + new_text + result[end:]
+
+    try:
+        ly_path.write_text(result, encoding='utf-8')
+        log_message(
+            f'[jianpu] 已合并 {sum(len(g) for g in voice_groups if len(g) > 1)} 个声道为'
+            f' {sum(1 for g in voice_groups if len(g) > 1)} 个多声部谱表',
+            logging.DEBUG,
+        )
+    except OSError as exc:
+        log_message(f'[jianpu] 多声部合并写入失败: {exc}', logging.WARNING)
+

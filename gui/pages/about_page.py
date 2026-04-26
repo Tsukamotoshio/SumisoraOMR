@@ -8,7 +8,7 @@ import webbrowser
 
 import flet as ft
 
-from ..theme import Palette
+from ..theme import Palette, with_alpha
 from core.config import APP_VERSION
 
 
@@ -65,13 +65,13 @@ class AboutPage(ft.Column):
         def _card(content: ft.Control) -> ft.Container:
             return ft.Container(
                 content=content,
-                bgcolor=Palette.BG_SURFACE,
+                bgcolor=ft.Colors.SURFACE,
                 border_radius=ft.BorderRadius.all(12),
                 padding=ft.Padding.all(24),
                 width=640,
                 shadow=ft.BoxShadow(
                     blur_radius=16,
-                    color='#00000033',
+                    color='#33000000',
                     offset=ft.Offset(0, 4),
                 ),
             )
@@ -82,12 +82,12 @@ class AboutPage(ft.Column):
                 [
                     ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, size=56, color=Palette.PRIMARY),
                     ft.Text('OMR 乐谱转换工具', size=22,
-                            weight=ft.FontWeight.BOLD, color=Palette.TEXT_PRIMARY),
-                    ft.Text('将五线谱 PDF 智能转换为简谱', size=14, color=Palette.TEXT_SECONDARY),
+                            weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE),
+                    ft.Text('将五线谱 PDF 智能转换为简谱', size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(f'v{APP_VERSION}', size=12, color=Palette.PRIMARY,
                                         weight=ft.FontWeight.W_500),
-                        bgcolor=Palette.PRIMARY + '22',
+                        bgcolor=with_alpha(Palette.PRIMARY, '22'),
                         border_radius=ft.BorderRadius.all(6),
                         padding=ft.Padding.symmetric(horizontal=10, vertical=3),
                     ),
@@ -102,17 +102,17 @@ class AboutPage(ft.Column):
             ft.Column(
                 [
                     ft.Text('作者', size=13, weight=ft.FontWeight.W_600,
-                            color=Palette.TEXT_SECONDARY),
+                            color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
                             ft.Icon(ft.Icons.PERSON_ROUNDED, size=18, color=Palette.PRIMARY),
-                            ft.Text('Tsukamotoshio', size=15, color=Palette.TEXT_PRIMARY),
+                            ft.Text('Tsukamotoshio', size=15, color=ft.Colors.ON_SURFACE),
                         ],
                         spacing=8,
                     ),
-                    ft.Divider(height=1, color=Palette.DIVIDER_DARK),
+                    ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
                     ft.Text('项目主页', size=13, weight=ft.FontWeight.W_600,
-                            color=Palette.TEXT_SECONDARY),
+                            color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
                             ft.Icon(ft.Icons.LINK_ROUNDED, size=18, color=Palette.PRIMARY),
@@ -139,16 +139,16 @@ class AboutPage(ft.Column):
             ft.Column(
                 [
                     ft.Text('开源许可证 (AGPL-3.0)', size=13, weight=ft.FontWeight.W_600,
-                            color=Palette.TEXT_SECONDARY),
+                            color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(
                             _AGPL_LICENSE,
                             size=11,
-                            color=Palette.TEXT_SECONDARY,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
                             font_family='Consolas',
                             selectable=True,
                         ),
-                        bgcolor=Palette.BG_DARK,
+                        bgcolor=ft.Colors.SURFACE_DIM,
                         border_radius=ft.BorderRadius.all(6),
                         padding=ft.Padding.all(12),
                     ),

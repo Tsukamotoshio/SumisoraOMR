@@ -95,7 +95,7 @@ if __name__ == '__main__' and '--worker' in sys.argv:
 import flet as ft
 
 from gui.app_state import AppState, Event
-from gui.theme import Palette, make_dark_theme, make_light_theme
+from gui.theme import Palette, with_alpha, make_dark_theme, make_light_theme
 from gui.pages.landing_page import LandingPage
 from gui.pages.editor_page import EditorPage
 from gui.pages.transposer_page import TransposerPage
@@ -122,12 +122,13 @@ _NAV_ITEMS = [
 async def main(page: ft.Page) -> None:
     # ── 页面基本配置 ──────────────────────────────────────────────────────────
     page.title       = 'OMR 乐谱转换工具'
-    page.window.min_width  = 900
-    page.window.min_height = 600
-    page.window.width      = 1280
-    page.window.height     = 820
-    page.padding     = 0
-    page.spacing     = 0
+    page.window.min_width        = 900
+    page.window.min_height       = 600
+    page.window.width            = 1280
+    page.window.height           = 820
+    page.window.title_bar_hidden = True
+    page.padding = 0
+    page.spacing = 0
 
     # ── 字体配置 ──────────────────────────────────────────────────────────────
     # 注册微软雅黑（绝对路径），为 CJK 字符提供无衬线字体，避免回退到宋体
@@ -214,8 +215,8 @@ async def main(page: ft.Page) -> None:
     nav_rail = ft.NavigationRail(
         selected_index=0,
         label_type=ft.NavigationRailLabelType.SELECTED,
-        bgcolor=Palette.BG_SURFACE,
-        indicator_color=Palette.PRIMARY + '44',
+        bgcolor=ft.Colors.SURFACE,
+        indicator_color=with_alpha(Palette.PRIMARY, '44'),
         on_change=_on_nav_change,
         destinations=[
             ft.NavigationRailDestination(
@@ -232,7 +233,7 @@ async def main(page: ft.Page) -> None:
     # ── 右上角：主题切换 ──────────────────────────────────────────────────────
     _theme_icon = ft.IconButton(
         icon=ft.Icons.DARK_MODE_ROUNDED,
-        icon_color=Palette.TEXT_SECONDARY,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
         tooltip='切换明暗主题',
         on_click=lambda _e: _toggle_theme(),
     )
@@ -253,17 +254,117 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-    # ── 顶部 AppBar ──────────────────────────────────────────────────────────
-    page.appbar = ft.AppBar(
-        title=ft.Text('OMR 乐谱转换工具  v0.2.4', size=15, weight=ft.FontWeight.W_600),
-        center_title=False,
-        bgcolor=Palette.BG_SURFACE,
-        leading=ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color=Palette.PRIMARY),
-        actions=[
-            ft.Container(width=8),
-        ],
-        elevation=0,
-        toolbar_height=48,
+    # ── 自定义标题栏（无边框模式）────────────────────────────────────────────
+    def _do_minimize():
+        page.window.minimized = True
+        page.window.update()
+
+    def _do_maximize_toggle():
+        page.window.maximized = not page.window.maximized
+        page.window.update()
+
+    _max_btn = ft.IconButton(
+        icon=ft.Icons.CROP_SQUARE,
+        icon_size=14,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
+        tooltip='最大化 / 还原',
+        width=32,
+        height=32,
+        style=ft.ButtonStyle(
+            padding=ft.Padding.all(0),
+            shape=ft.RoundedRectangleBorder(radius=4),
+            overlay_color={
+                ft.ControlState.HOVERED: ft.Colors.SURFACE_CONTAINER_HIGH,
+                ft.ControlState.PRESSED: ft.Colors.OUTLINE_VARIANT,
+            },
+        ),
+        on_click=lambda _: _do_maximize_toggle(),
+    )
+
+    def _on_window_event(e):
+        if e.type == ft.WindowEventType.MAXIMIZE:
+            _max_btn.icon = ft.Icons.FILTER_NONE
+            try:
+                _max_btn.update()
+            except Exception:
+                pass
+        elif e.type in (ft.WindowEventType.UNMAXIMIZE, ft.WindowEventType.RESTORE):
+            _max_btn.icon = ft.Icons.CROP_SQUARE
+            try:
+                _max_btn.update()
+            except Exception:
+                pass
+
+    page.window.on_event = _on_window_event
+
+    _wc_btn_style = ft.ButtonStyle(
+        padding=ft.Padding.all(0),
+        shape=ft.RoundedRectangleBorder(radius=4),
+        overlay_color={
+            ft.ControlState.HOVERED: ft.Colors.SURFACE_CONTAINER_HIGH,
+            ft.ControlState.PRESSED: ft.Colors.OUTLINE_VARIANT,
+        },
+    )
+
+    _titlebar = ft.Container(
+        content=ft.Row(
+            controls=[
+                ft.WindowDragArea(
+                    content=ft.Row(
+                        controls=[
+                            ft.Container(width=8),
+                            ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color=Palette.PRIMARY, size=16),
+                            ft.Container(width=6),
+                            ft.Text(
+                                'OMR 乐谱转换工具  v0.2.4',
+                                size=13,
+                                weight=ft.FontWeight.W_600,
+                                color=ft.Colors.ON_SURFACE,
+                            ),
+                        ],
+                        spacing=0,
+                    ),
+                    expand=True,
+                    maximizable=True,
+                ),
+                _theme_icon,
+                ft.Container(width=2),
+                ft.IconButton(
+                    icon=ft.Icons.REMOVE,
+                    icon_size=14,
+                    icon_color=ft.Colors.ON_SURFACE_VARIANT,
+                    tooltip='最小化',
+                    width=32,
+                    height=32,
+                    style=_wc_btn_style,
+                    on_click=lambda _: _do_minimize(),
+                ),
+                _max_btn,
+                ft.IconButton(
+                    icon=ft.Icons.CLOSE,
+                    icon_size=14,
+                    icon_color=ft.Colors.ON_SURFACE_VARIANT,
+                    tooltip='关闭',
+                    width=32,
+                    height=32,
+                    style=ft.ButtonStyle(
+                        padding=ft.Padding.all(0),
+                        shape=ft.RoundedRectangleBorder(radius=4),
+                        overlay_color={
+                            ft.ControlState.HOVERED: '#55F44336',
+                            ft.ControlState.PRESSED: '#AAF44336',
+                        },
+                    ),
+                    on_click=lambda _: page.run_task(page.window.close),
+                ),
+                ft.Container(width=4),
+            ],
+            spacing=0,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        height=40,
+        bgcolor=ft.Colors.SURFACE,
+        border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )
 
     # ── 通知（SnackBar）辅助 ─────────────────────────────────────────────────
@@ -292,19 +393,26 @@ async def main(page: ft.Page) -> None:
     # ── 页面布局 ─────────────────────────────────────────────────────────────
     left_rail_container = ft.Container(
         content=nav_rail,
-        bgcolor=Palette.BG_SURFACE,
-        border=ft.Border.only(right=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+        bgcolor=ft.Colors.SURFACE,
+        border=ft.Border.only(right=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )
 
     page.add(
-        ft.Row(
-            [
-                left_rail_container,
-                ft.Container(content=content_stack, expand=True),
+        ft.Column(
+            controls=[
+                _titlebar,
+                ft.Row(
+                    [
+                        left_rail_container,
+                        ft.Container(content=content_stack, expand=True),
+                    ],
+                    spacing=0,
+                    expand=True,
+                    vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                ),
             ],
             spacing=0,
             expand=True,
-            vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
     )
 

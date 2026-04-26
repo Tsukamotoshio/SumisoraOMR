@@ -10,7 +10,7 @@ from typing import Optional
 
 from ..app_state import AppState, Event
 from core.app.backend import app_base_dir
-from ..theme import Palette, section_title
+from ..theme import Palette, with_alpha, section_title
 
 
 class FileSidebar(ft.Column):
@@ -42,7 +42,7 @@ class FileSidebar(ft.Column):
         self._select_all_btn = ft.IconButton(
             icon=ft.Icons.CHECK_BOX_OUTLINE_BLANK,
             icon_size=17,
-            icon_color=Palette.TEXT_SECONDARY,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
             tooltip='全选 / 全不选',
             on_click=self._on_select_all_click,
             width=28,
@@ -63,7 +63,7 @@ class FileSidebar(ft.Column):
                         ft.IconButton(
                             icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED,
                             icon_size=18,
-                            icon_color=Palette.TEXT_SECONDARY,
+                            icon_color=ft.Colors.ON_SURFACE_VARIANT,
                             tooltip='添加文件夹',
                             on_click=self._on_add_folder_click,
                         ),
@@ -89,7 +89,7 @@ class FileSidebar(ft.Column):
             content=ft.Column(
                 [
                     ft.Container(content=title_row, padding=ft.Padding.only(left=12, right=4, top=8, bottom=4)),
-                    ft.Divider(height=1, color=Palette.DIVIDER_DARK, thickness=1),
+                    ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT, thickness=1),
                     ft.Container(
                         content=self._file_list_col,
                         expand=True,
@@ -99,9 +99,9 @@ class FileSidebar(ft.Column):
                 spacing=0,
                 expand=True,
             ),
-            bgcolor=Palette.BG_SURFACE,
+            bgcolor=ft.Colors.SURFACE,
             expand=True,
-            border=ft.Border.only(right=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            border=ft.Border.only(right=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
         self.controls = [container]
         self.expand = True
@@ -116,7 +116,7 @@ class FileSidebar(ft.Column):
     def _make_file_row(self, path: Path) -> ft.Container:
         is_selected = (path == self._state.current_file)
         is_checked  = path in self._state.checked_files
-        bg = Palette.PRIMARY + '33' if is_selected else 'transparent'
+        bg = with_alpha(Palette.PRIMARY, '33') if is_selected else 'transparent'
         icon = ft.Icons.PICTURE_AS_PDF if path.suffix.lower() == '.pdf' else ft.Icons.IMAGE_OUTLINED
 
         def _on_click(_e, p=path):
@@ -138,11 +138,11 @@ class FileSidebar(ft.Column):
                         width=28,
                         height=28,
                     ),
-                    ft.Icon(icon, size=14, color=Palette.PRIMARY_LIGHT),
+                    ft.Icon(icon, size=14, color=ft.Colors.SECONDARY),
                     ft.Text(
                         path.name,
                         size=12,
-                        color=Palette.TEXT_PRIMARY if self._state.dark_mode else Palette.TEXT_DARK_PRI,
+                        color=ft.Colors.ON_SURFACE,
                         expand=True,
                         overflow=ft.TextOverflow.ELLIPSIS,
                         tooltip=str(path),
@@ -150,7 +150,7 @@ class FileSidebar(ft.Column):
                     ft.IconButton(
                         icon=ft.Icons.CLOSE_ROUNDED,
                         icon_size=12,
-                        icon_color=Palette.TEXT_DISABLED,
+                        icon_color=ft.Colors.OUTLINE,
                         tooltip='从列表移除',
                         on_click=_on_remove,
                         width=24,
@@ -173,7 +173,7 @@ class FileSidebar(ft.Column):
         n_checked = len(self._state.checked_files)
         if n_pinned == 0 or n_checked == 0:
             self._select_all_btn.icon       = ft.Icons.CHECK_BOX_OUTLINE_BLANK
-            self._select_all_btn.icon_color = Palette.TEXT_DISABLED
+            self._select_all_btn.icon_color = ft.Colors.OUTLINE
         elif n_checked >= n_pinned:
             self._select_all_btn.icon       = ft.Icons.CHECK_BOX
             self._select_all_btn.icon_color = Palette.PRIMARY

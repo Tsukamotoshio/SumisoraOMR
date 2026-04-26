@@ -55,9 +55,9 @@ class _BinaryImageView(ft.Column):
                 ],
                 spacing=2,
             ),
-            bgcolor=Palette.BG_SURFACE,
+            bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-            border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         self._image = ft.Image(
@@ -84,9 +84,9 @@ class _BinaryImageView(ft.Column):
 
         self._placeholder_col = ft.Column(
             [
-                ft.Icon(ft.Icons.IMAGE_OUTLINED, size=40, color=Palette.TEXT_DISABLED),
+                ft.Icon(ft.Icons.IMAGE_OUTLINED, size=40, color=ft.Colors.OUTLINE),
                 ft.Text('请先在首页选择并转换文件，或在此页打开对应图像/简谱文件',
-                        size=12, color=Palette.TEXT_DISABLED, text_align=ft.TextAlign.CENTER),
+                        size=12, color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -100,7 +100,7 @@ class _BinaryImageView(ft.Column):
         self._view_container = ft.Container(
             content=ft.Stack([self._interactive, self._placeholder], expand=True),
             expand=True,
-            bgcolor=Palette.BG_CARD,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
             on_size_change=self._on_viewer_resize,
         )
@@ -312,8 +312,8 @@ class EditorPage(ft.Row):
             ),
             on_click=self._on_open_output_dir,
             style=ft.ButtonStyle(
-                color=Palette.TEXT_SECONDARY,
-                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.DIVIDER_DARK)},
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
@@ -321,7 +321,7 @@ class EditorPage(ft.Row):
             content=ft.Row(
                 [
                     ft.Text('简谱编辑套件', size=13, weight=ft.FontWeight.W_600,
-                            color=Palette.TEXT_SECONDARY),
+                            color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(expand=True),
                     open_btn,
                     open_output_btn,
@@ -329,11 +329,11 @@ class EditorPage(ft.Row):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=8,
             ),
-            bgcolor=Palette.BG_SURFACE,
+            bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=16, vertical=8),
-            border=ft.Border.only(bottom=ft.BorderSide(1, Palette.DIVIDER_DARK)),
+            border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
-        splitter = ft.VerticalDivider(width=1, color=Palette.DIVIDER_DARK, thickness=1)
+        splitter = ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT, thickness=1)
         body = ft.Row(
             [
                 ft.Container(content=self._img_view, expand=True),
