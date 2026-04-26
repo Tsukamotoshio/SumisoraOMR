@@ -1,3 +1,12 @@
-[submodule "omr_engine/realesrgan"]
-	path = omr_engine/realesrgan
+[submodule "upscaling_engine/realesrgan"]
+	path = upscaling_engine/realesrgan
 	url = https://github.com/xinntao/Real-ESRGAN
+[submodule "upscaling_engine/waifu2x"]
+	path = upscaling_engine/waifu2x
+	url = https://github.com/nagadomi/waifu2x
+[submodule "omr_engine/homr"]
+	path = omr_engine/homr
+	url = https://github.com/Tsukamotoshio/homr.git
+[submodule "omr_engine/oemer"]
+	path = omr_engine/oemer
+	url = https://github.com/BreezeWhite/oemer.git

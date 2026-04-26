@@ -10,6 +10,8 @@ lilypond-2.24.4/
 audiveris-5.10.2/
 omr_engine/audiveris/
 waifu2x-ncnn-vulkan/
+realesrgan-runtime/
+realesrgan-ncnn-vulkan/
 audiveris_job_*/
 
 # Build outputs and packaging artifacts

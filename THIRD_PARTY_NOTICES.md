@@ -92,6 +92,17 @@ This file provides license and attribution notices for third-party components di
   for low-resolution sheet music images. Invoked as an external subprocess;
   not linked or modified. License text is included in `waifu2x-runtime/LICENSE`.
 
+## Real-ESRGAN (realesrgan-ncnn-vulkan)
+- License: BSD-3-Clause
+- Copyright: © 2021 Xintao Wang, Liangbin Xie, Chao Dong, Ying Shan, Xiaohu Qie
+- Upstream (Python): <https://github.com/xinntao/Real-ESRGAN>
+- Upstream (ncnn-vulkan binary): <https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan>
+- Note: Optional GPU-accelerated super-resolution pre-processor bundled under
+  `realesrgan-runtime/`. Invoked as an external subprocess; not linked or modified.
+  Supports models: `realesrgan-x4plus`, `realesrgan-x4plus-anime`,
+  `realesr-animevideov3`. Used as an alternative to waifu2x for higher-fidelity
+  upscaling of sheet music images.
+
 ## Eclipse Temurin JDK
 - Version: `25.0.2+10` (Temurin-25.0.2+10)
 - Implementor: Eclipse Adoptium

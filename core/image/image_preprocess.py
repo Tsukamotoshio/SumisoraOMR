@@ -62,6 +62,79 @@ def set_sr_engine(engine: str) -> None:
     _current_sr_engine = engine
 
 
+# 缓存 ncnn-vulkan 应使用的 GPU 索引（首次探测后复用）
+_NCNN_GPU_ID: Optional[int] = None
+_NCNN_GPU_RESOLVED: bool = False
+
+
+def _detect_best_ncnn_gpu(exe: Path) -> Optional[int]:
+    """探测 ncnn-vulkan 列出的 Vulkan 设备，优先选择独立显卡（NVIDIA / AMD Radeon RX）。
+
+    设备 0 通常是 Intel 集显，会成为默认选择。本函数解析 -v 输出的
+    ``[N DeviceName]`` 列表，挑出第一个匹配独显关键字的索引返回。
+    探测失败或未找到独显时返回 None（沿用 ncnn 自动选择）。
+    """
+    global _NCNN_GPU_ID, _NCNN_GPU_RESOLVED
+    if _NCNN_GPU_RESOLVED:
+        return _NCNN_GPU_ID
+    _NCNN_GPU_RESOLVED = True
+
+    import re
+    import tempfile
+    try:
+        from PIL import Image as _PilImage
+    except ImportError:
+        return None
+
+    with tempfile.TemporaryDirectory() as td:
+        probe_in = Path(td) / '_probe.png'
+        probe_out = Path(td) / '_probe_out.png'
+        try:
+            _PilImage.new('RGB', (32, 32)).save(probe_in)
+            result = subprocess.run(
+                [str(exe), '-i', str(probe_in), '-o', str(probe_out), '-v'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+                check=False,
+                creationflags=_WIN_NO_WINDOW,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    text = (result.stderr or '') + '\n' + (result.stdout or '')
+    devices: list[tuple[int, str]] = []
+    for m in re.finditer(r'\[(\d+)\s+([^\]]+?)\]\s+queueC', text):
+        devices.append((int(m.group(1)), m.group(2).strip()))
+    if not devices:
+        return None
+
+    # 去重（同一设备会出现多行）
+    seen: set[int] = set()
+    unique: list[tuple[int, str]] = []
+    for idx, name in devices:
+        if idx in seen:
+            continue
+        seen.add(idx)
+        unique.append((idx, name))
+
+    discrete_keywords = ('NVIDIA', 'GeForce', 'RTX', 'Radeon RX', 'Radeon Pro', 'Arc')
+    integrated_keywords = ('Intel(R) Graphics', 'UHD', 'Iris', 'Vega', 'AMD Radeon Graphics')
+    for idx, name in unique:
+        if any(k in name for k in discrete_keywords) and not any(k in name for k in integrated_keywords):
+            _NCNN_GPU_ID = idx
+            log_message(f'ncnn-vulkan: 选用独显 GPU {idx} ({name})')
+            return idx
+    return None
+
+
+def _ncnn_gpu_args(exe: Path) -> list[str]:
+    """返回 ``['-g', '<id>']``（若探测到独显），否则返回空列表。"""
+    gpu_id = _detect_best_ncnn_gpu(exe)
+    return ['-g', str(gpu_id)] if gpu_id is not None else []
+
+
 # 图像最小边像素阈值：低于此值的图像使用超分辨率放大
 LOW_RES_PIXEL_THRESHOLD = 1200
 # Audiveris 允许处理的最大像素总数（超出则报 Too large image 并拒绝识别）
@@ -163,9 +236,9 @@ def find_realesrgan_executable() -> Optional[Path]:
 
 
 def _find_realesrgan_python_script() -> Optional[Path]:
-    """Find inference_realesrgan.py from the cloned Real-ESRGAN repo at omr_engine/realesrgan/."""
+    """Find inference_realesrgan.py from the cloned Real-ESRGAN repo at upscaling_engine/realesrgan/."""
     for base_dir in get_runtime_search_roots():
-        candidate = base_dir / 'omr_engine' / 'realesrgan' / 'inference_realesrgan.py'
+        candidate = base_dir / 'upscaling_engine' / 'realesrgan' / 'inference_realesrgan.py'
         if candidate.exists():
             return candidate
     return None
@@ -191,6 +264,7 @@ def upscale_with_realesrgan(input_path: Path, output_path: Path, scale: int = 4)
         ]
         if models_dir.is_dir():
             cmd += ['-m', str(models_dir)]
+        cmd += _ncnn_gpu_args(exe)
         log_message('使用 realesrgan-ncnn-vulkan 进行 4× 超分辨率处理 (anime 模型)...')
         try:
             result = subprocess.run(
@@ -251,7 +325,7 @@ def upscale_with_realesrgan(input_path: Path, output_path: Path, scale: int = 4)
         '  → 方案 A（推荐）：下载 realesrgan-ncnn-vulkan 二进制，\n'
         '    解压至 realesrgan-runtime/ 目录\n'
         '  → 方案 B：在 venv 中执行 pip install realesrgan，\n'
-        '    并确保 omr_engine/realesrgan/ 子模块已克隆。',
+        '    并确保 upscaling_engine/realesrgan/ 子模块已克隆。',
         logging.WARNING,
     )
     return False
@@ -293,6 +367,7 @@ def upscale_image_with_waifu2x(input_path: Path, output_path: Path, scale: int =
         )
         return False
     cmd = [str(waifu2x), '-i', str(input_path), '-o', str(output_path), '-s', str(scale), '-n', '1']
+    cmd += _ncnn_gpu_args(waifu2x)
     log_message(f'使用 waifu2x-ncnn-vulkan 进行 {scale}x GPU 超分辨率处理...')
     try:
         result = subprocess.run(

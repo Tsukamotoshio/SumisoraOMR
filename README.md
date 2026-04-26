@@ -1,6 +1,6 @@
 # OMR-to-Jianpu Conversion Tool / 简谱转换工具
 
-Version: v0.2.3
+Version: v0.2.4
 
 **Author / 作者：Tsukamotoshio**
 
@@ -17,6 +17,14 @@ A tool to batch-convert Western staff notation PDFs into Jianpu (numbered musica
 - Optional MIDI file generation / 可选同时生成 MIDI 文件
 - Already-converted files are skipped automatically / 已转换过的文件自动跳过，避免重复转换
 - Compatible with Chinese, Japanese, and other non-ASCII filenames / 支持中文、日文等文件名场景的兼容处理
+- Optional super-resolution upscaling before OMR recognition / 可选超分辨率预处理，提升低质量扫描件的识别率
+
+### Super-Resolution Engines / 超分辨率引擎
+
+| Engine | Notes |
+|--------|-------|
+| **waifu2x-ncnn-vulkan** | Default SR engine; GPU-accelerated via Vulkan / 默认超分引擎，Vulkan GPU 加速 |
+| **Real-ESRGAN** *(new in v0.2.4)* | Higher-fidelity upscaling using Real-ESRGAN anime models; selectable in UI / 更高质量的超分，支持 anime 模型，可在界面选择 |
 
 ### Supported OMR Engines / 支持的 OMR 引擎
 
@@ -80,6 +88,8 @@ You will also need the following local engine source/runtime directories:
 - `lilypond-2.24.4/` — LilyPond engraving engine
 - `jdk/` — Java runtime required by Audiveris
 - Optional: `omr_engine/homr/` — Homr source engine for Homr support
+- Optional: `waifu2x-ncnn-vulkan/` — waifu2x super-resolution binary
+- Optional: `realesrgan-runtime/` — Real-ESRGAN super-resolution binary and models
 
 Then run:
 
@@ -97,6 +107,8 @@ python app.py
 - `Output/` — Converted Jianpu PDFs and MIDIs are saved here / 保存生成的简谱 PDF / MIDI
 - `editor-workspace/` — Intermediate files for score proofreading and regeneration / 简谱校对与重新生成时的中间文件存放目录
 - `logs/` — Runtime logs / 自动记录运行日志
+- `waifu2x-ncnn-vulkan/` — waifu2x super-resolution runtime (optional) / waifu2x 超分运行时（可选）
+- `realesrgan-runtime/` — Real-ESRGAN super-resolution runtime and models (optional) / Real-ESRGAN 超分运行时及模型（可选）
 - `THIRD_PARTY_NOTICES.md` — Third-party component notices / 第三方组件许可证说明。仅列出最终分发给用户且其许可证要求附带声明的组件。
 
 ---
@@ -133,17 +145,12 @@ This project is licensed under the **GNU Affero General Public License v3.0 (AGP
 Key obligations / 主要义务：
 - You may use, modify, and redistribute this software under AGPL-3.0. /可以使用、修改和再分发，但必须遵守 AGPL-3.0 的条款。
 - Modified versions must also be released under AGPL-3.0. / 修改版本必须同样以 AGPL-3.0 发布。
-- If you run a modified version as a network service, you must make the source code available to users. / 若将修改版本作为网络服务提供，必须向用户开放源代码* 授权，详见 `LICENSE` 文件。
-
-Key obligations / 主要义务：
-- You may use, modify, and redistribute this software under AGPL-3.0. /可以使用、修改和再分发，但必须遵守 AGPL-3.0 的条款。
-- Modified versions must also be released under AGPL-3.0. / 修改版本必须同样以 AGPL-3.0 发布。
 - If you run a modified version as a network service, you must make the source code available to users. / 若将修改版本作为网络服务提供，必须向用户开放源代码。
 
-This tool bundles third-party components (Audiveris, LilyPond, music21, etc.).
+This tool bundles third-party components (Audiveris, LilyPond, music21, waifu2x-ncnn-vulkan, Real-ESRGAN, etc.).
 Their respective copyrights and licenses are listed in `THIRD_PARTY_NOTICES.md`.
 
-本工具包含第三方组件（如 Audiveris、LilyPond、music21 等），其各自的版权与许可证信息请参见 `THIRD_PARTY_NOTICES.md`。
+本工具包含第三方组件（如 Audiveris、LilyPond、music21、waifu2x-ncnn-vulkan、Real-ESRGAN 等），其各自的版权与许可证信息请参见 `THIRD_PARTY_NOTICES.md`。
 
 ---
 
