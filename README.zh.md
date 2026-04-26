@@ -24,10 +24,12 @@
 
 ### OMR（光学音乐识别）
 
-| 引擎 | 支持格式 | 说明 |
+| 引擎 | 适合场景 | 说明 |
 |------|---------|------|
-| **Audiveris** | PDF, PNG, JPG | 默认引擎，Java 实现，识别稳定 |
-| **Homr** *（实验性）* | PNG, JPG | 深度学习模型；Windows 下支持 CUDA / DirectML GPU 加速 |
+| **Audiveris** | 数字 PDF | 识别由记谱软件（MuseScore、Sibelius、Finale 等）导出的 PDF，速度快、准确率高，无需 GPU。 |
+| **Homr** | 扫描件与照片 | AI 驱动的引擎，处理印刷乐谱的 PNG/JPG 图像，能应对噪点与真实拍摄的各种干扰；GPU 加速（CUDA / DirectML）。 |
+
+> 自动模式下：PDF 文件使用 **Audiveris**，图片文件（PNG/JPG）使用 **Homr**，无需手动切换。
 
 ### 超分辨率（可选预处理）
 
@@ -52,15 +54,15 @@
 **前置条件**
 
 - Python 3.10+
-- JDK 17+（需在 `PATH` 中，Audiveris 依赖）
+- JDK 17+（仅 PDF 识别时需要，供 Audiveris 使用；识别图片时不需要）
 - 以下运行时目录需与仓库根目录并列放置：
 
   | 目录 | 用途 |
   |------|------|
-  | `omr_engine/audiveris/` | Audiveris OMR 引擎源码 |
+  | `omr_engine/audiveris/` | Audiveris OMR 引擎源码，用于 PDF 输入 |
   | `lilypond-2.24.4/` | LilyPond 排版引擎 |
   | `jdk/` | Audiveris 使用的 Java 运行时 |
-  | `omr_engine/homr/` *（可选）* | Homr 深度学习 OMR 引擎 |
+  | `omr_engine/homr/` | Homr 深度学习 OMR 引擎，用于 PNG/JPG 输入 |
   | `waifu2x-ncnn-vulkan/` *（可选）* | waifu2x 超分可执行文件 |
   | `realesrgan-runtime/` *（可选）* | Real-ESRGAN 可执行文件及模型 |
 
@@ -102,7 +104,7 @@ THIRD_PARTY_NOTICES.md   # 第三方组件许可证说明
 - **识别准确率受乐谱质量影响**：扫描模糊或排版复杂的乐谱可能出现错音、漏音。
 - **多声部支持有限**：多声部或和弦密集的乐谱可能只保留主旋律。
 - **不支持歌词输出**：仅输出音符，不含歌词。
-- **处理速度较慢**：Audiveris 启动耗时，多页 PDF 可能需要数分钟。
+- **处理速度**：Homr 处理图片通常只需数秒；Audiveris 启动较慢，多页 PDF 可能需要数分钟。
 - **边缘情况**：少数非常规拍号或中途变调的乐谱可能不准确。
 
 ---

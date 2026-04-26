@@ -24,10 +24,12 @@
 
 ### OMR (Optical Music Recognition)
 
-| Engine | Formats | Notes |
-|--------|---------|-------|
-| **Audiveris** | PDF, PNG, JPG | Default; Java-based, reliable accuracy |
-| **Homr** *(experimental)* | PNG, JPG | Deep-learning model; GPU-accelerated (CUDA / DirectML) on Windows |
+| Engine | Best for | Notes |
+|--------|----------|-------|
+| **Audiveris** | Digital PDFs | Reads PDFs exported from notation software (MuseScore, Sibelius, Finale, etc.). Fast and accurate on clean vector files — no GPU needed. |
+| **Homr** | Scans & photos | AI-powered engine for PNG/JPG images of printed or photographed sheet music. Handles noise and real-world imperfections; GPU-accelerated (CUDA / DirectML). |
+
+> Auto mode picks **Audiveris** for PDF files and **Homr** for images (PNG/JPG) automatically.
 
 ### Super-Resolution (optional pre-processing)
 
@@ -52,15 +54,15 @@
 **Prerequisites**
 
 - Python 3.10+
-- JDK 17+ on `PATH` (required by Audiveris)
+- JDK 17+ on `PATH` (required only for PDF recognition via Audiveris)
 - The following runtime directories alongside the repo root:
 
   | Directory | Purpose |
   |-----------|---------|
-  | `omr_engine/audiveris/` | Audiveris OMR engine source |
+  | `omr_engine/audiveris/` | Audiveris OMR engine — used for PDF inputs |
   | `lilypond-2.24.4/` | LilyPond engraving engine |
   | `jdk/` | Java runtime for Audiveris |
-  | `omr_engine/homr/` *(optional)* | Homr deep-learning OMR engine |
+  | `omr_engine/homr/` | Homr deep-learning OMR engine — used for PNG/JPG inputs |
   | `waifu2x-ncnn-vulkan/` *(optional)* | waifu2x SR binary |
   | `realesrgan-runtime/` *(optional)* | Real-ESRGAN binary and models |
 
@@ -102,7 +104,7 @@ THIRD_PARTY_NOTICES.md   # Third-party component licenses
 - **Recognition accuracy** depends heavily on scan quality. Blurry or complex scores may produce wrong or missing notes.
 - **Polyphony** — scores with many voices or dense chords may retain only the main melody.
 - **No lyrics** — only note data is exported.
-- **Processing speed** — Audiveris startup is slow; multi-page PDFs can take several minutes.
+- **Processing speed** — Homr processes images in seconds; Audiveris startup is slow and multi-page PDFs can take several minutes.
 - **Edge cases** — uncommon time signatures or mid-piece key changes may yield inaccurate results.
 
 ---
