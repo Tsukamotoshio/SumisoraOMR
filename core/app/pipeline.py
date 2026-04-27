@@ -57,8 +57,8 @@ def _report_subprogress(value: float, message: str = '') -> None:
 def _inject_musicxml_metadata(xml_path: Path, title: str = '', tempo_bpm: int = 0) -> None:
     """Inject title and tempo into an uncompressed MusicXML file via direct XML text editing.
 
-    Only modifies fields that are empty or hold generic placeholder values so that
-    meaningful metadata written by the OMR engine is never overwritten.
+    Always overwrites <work-title> and <movement-title> with the supplied title so that
+    OMR-generated filenames (e.g. "homr_input") are replaced by the source file stem.
     """
     import re as _re
     try:
@@ -66,7 +66,7 @@ def _inject_musicxml_metadata(xml_path: Path, title: str = '', tempo_bpm: int = 
 
         if title:
             safe = title.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            # Replace empty or missing <work-title>
+            # Always replace <work-title> content (or insert if missing)
             if _re.search(r'<work-title\s*>', raw):
                 raw = _re.sub(r'<work-title\s*>[^<]*</work-title>',
                               f'<work-title>{safe}</work-title>', raw, count=1)
@@ -77,6 +77,11 @@ def _inject_musicxml_metadata(xml_path: Path, title: str = '', tempo_bpm: int = 
                 if '<identification>' in raw:
                     raw = raw.replace('<identification>',
                                       f'<work>\n  <work-title>{safe}</work-title>\n</work>\n<identification>', 1)
+            # Also replace <movement-title> — music21 reads this field as score.metadata.title
+            # when <work-title> is absent, and OMR engines often write their input filename here.
+            if _re.search(r'<movement-title\s*>', raw):
+                raw = _re.sub(r'<movement-title\s*>[^<]*</movement-title>',
+                              f'<movement-title>{safe}</movement-title>', raw, count=1)
 
         if tempo_bpm > 0 and '<sound' not in raw:
             # Inject a minimal <direction> with <sound tempo="..."> into the first measure

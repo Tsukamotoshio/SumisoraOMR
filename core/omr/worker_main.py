@@ -177,7 +177,7 @@ def run_worker() -> None:
         _patch_log_message()
 
         # ── 注入超分辨率引擎选择 ───────────────────────────────────────────────
-        from core.image.image_preprocess import set_sr_engine  # noqa: PLC0415
+        from core.image.sr_upscale import set_sr_engine  # noqa: PLC0415
         set_sr_engine(sr_engine_str)
 
         # ── 导入（延迟，避免在修补前触发 import-time 副作用）──────────────────

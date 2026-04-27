@@ -288,6 +288,120 @@ def _strip_music21_creator(dst: Path) -> None:
         LOGGER.debug('已移除 music21 标识符 (mxl): %s', dst.name)
 
 
+def _transpose_xml_bytes(raw: bytes, semitones: int) -> bytes:
+    """在字节层级对 MusicXML 做移调，仅修改 <pitch> 和 <key>/<fifths> 元素。
+
+    完整保留原始文件结构（声部、休止符、布局、格式头、DOCTYPE 等），
+    不经过 music21 的序列化，从根本上消除 round-trip 对声部结构的破坏。
+    """
+    if semitones == 0:
+        return raw
+
+    _STEP_PC: dict[str, int] = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+    # 升号调优先用升号拼写
+    _SHARP: dict[int, tuple[str, int]] = {
+        0: ('C', 0), 1: ('C', 1), 2: ('D', 0), 3: ('D', 1), 4: ('E', 0),
+        5: ('F', 0), 6: ('F', 1), 7: ('G', 0), 8: ('G', 1), 9: ('A', 0),
+        10: ('A', 1), 11: ('B', 0),
+    }
+    # 降号调优先用降号拼写
+    _FLAT: dict[int, tuple[str, int]] = {
+        0: ('C', 0), 1: ('D', -1), 2: ('D', 0), 3: ('E', -1), 4: ('E', 0),
+        5: ('F', 0), 6: ('G', -1), 7: ('G', 0), 8: ('A', -1), 9: ('A', 0),
+        10: ('B', -1), 11: ('B', 0),
+    }
+    # 音级（0-11）→ 大调升降号数（五度圈）
+    _PC_TO_FIFTHS: dict[int, int] = {
+        0: 0, 7: 1, 2: 2, 9: 3, 4: 4, 11: 5, 6: 6, 1: 7,
+        5: -1, 10: -2, 3: -3, 8: -4,
+    }
+    # 升降号数 → 大调主音音级
+    _FIFTHS_TO_PC: dict[int, int] = {
+        0: 0, 1: 7, 2: 2, 3: 9, 4: 4, 5: 11, 6: 6, 7: 1,
+        -1: 5, -2: 10, -3: 3, -4: 8, -5: 1, -6: 6, -7: 11,
+    }
+    _ALTER_TO_ACC: dict[int, str] = {
+        0: 'natural', 1: 'sharp', -1: 'flat', 2: 'double-sharp', -2: 'flat-flat',
+    }
+
+    # ── 1. 确定目标调的升降号方向 ────────────────────────────────────────────
+    fifths_m = re.search(rb'<fifths>(-?\d+)</fifths>', raw)
+    orig_fifths = int(fifths_m.group(1)) if fifths_m else 0
+    new_tonic_pc = (_FIFTHS_TO_PC.get(orig_fifths, 0) + semitones) % 12
+    new_fifths_main = _PC_TO_FIFTHS.get(new_tonic_pc, 0)
+    # 原调用降号时，目标调在模糊音级（C#/Db, F#/Gb）优先选降号版本
+    if orig_fifths < 0 and new_fifths_main > 5:
+        new_fifths_main = {7: -5, 6: -6}.get(new_fifths_main, new_fifths_main)
+    new_fifths_main = max(-7, min(7, new_fifths_main))
+    use_flats = new_fifths_main < 0
+    spell = _FLAT if use_flats else _SHARP
+
+    def _calc_new_fifths(orig_f: int) -> int:
+        pc = (_FIFTHS_TO_PC.get(orig_f, 0) + semitones) % 12
+        nf = _PC_TO_FIFTHS.get(pc, 0)
+        if orig_f < 0 and nf > 5:
+            nf = {7: -5, 6: -6}.get(nf, nf)
+        return max(-7, min(7, nf))
+
+    # ── 2. 更新所有 <fifths> ─────────────────────────────────────────────────
+    result = re.sub(
+        rb'(<fifths>)(-?\d+)(</fifths>)',
+        lambda m: m.group(1) + str(_calc_new_fifths(int(m.group(2)))).encode() + m.group(3),
+        raw,
+    )
+
+    # ── 3. 移调所有 <pitch>…</pitch> 块（休止符无 <pitch>，安全跳过） ──────
+    def _shift_pitch_block(m: re.Match) -> bytes:
+        block = m.group(0)
+        step_m = re.search(rb'<step>([A-G])</step>', block)
+        oct_m  = re.search(rb'<octave>(\d+)</octave>', block)
+        if not step_m or not oct_m:
+            return block
+
+        step   = step_m.group(1).decode()
+        octave = int(oct_m.group(1))
+        alter_m = re.search(rb'<alter>([^<]*)</alter>', block)
+        alter = 0.0
+        if alter_m:
+            try:
+                alter = float(alter_m.group(1).strip())
+            except ValueError:
+                pass
+
+        pc   = int((_STEP_PC.get(step, 0) + round(alter)) % 12)
+        midi = (octave + 1) * 12 + pc + semitones
+        new_oct   = midi // 12 - 1
+        new_step, new_alter = spell[midi % 12]
+
+        nb = re.sub(rb'(<step>)[A-G](</step>)',
+                    lambda mm: mm.group(1) + new_step.encode() + mm.group(2), block)
+        nb = re.sub(rb'(<octave>)\d+(</octave>)',
+                    lambda mm: mm.group(1) + str(new_oct).encode() + mm.group(2), nb)
+
+        if new_alter == 0:
+            nb = re.sub(rb'\s*<alter>[^<]*</alter>', b'', nb)
+        else:
+            av = str(int(new_alter)).encode()
+            if alter_m:
+                nb = re.sub(rb'(<alter>)[^<]*(</alter>)',
+                            lambda mm: mm.group(1) + av + mm.group(2), nb)
+            else:
+                # 插入 <alter> 紧跟 </step>（符合 MusicXML 规范顺序）
+                nb = re.sub(rb'(</step>)',
+                            lambda mm: mm.group(1) + b'<alter>' + av + b'</alter>',
+                            nb, count=1)
+
+        # 更新 <accidental>（如有）
+        if b'<accidental' in nb:
+            acc = _ALTER_TO_ACC.get(int(new_alter), 'natural').encode()
+            nb = re.sub(rb'(<accidental[^>]*>)[^<]*(</accidental>)',
+                        lambda mm: mm.group(1) + acc + mm.group(2), nb)
+        return nb
+
+    result = re.sub(rb'<pitch>.*?</pitch>', _shift_pitch_block, result, flags=re.DOTALL)
+    return result
+
+
 def transpose_musicxml(
     src: Path,
     dst: Path,
@@ -300,22 +414,20 @@ def transpose_musicxml(
 ) -> Path:
     """将 MusicXML（.mxl / .musicxml）移调并写出到 dst。
 
-    优先级：semitones > (from_key, to_key)。
+    使用 XML 层级移调：仅修改 <pitch> 和 <key>/<fifths> 元素，
+    完整保留原始文件结构（声部、休止符位置、布局），不经过 music21 序列化。
 
     Parameters
     ----------
     src              : 原始 MusicXML 路径（.mxl 或 .musicxml）
-    dst              : 输出路径（建议 .musicxml 后缀）
+    dst              : 输出路径
     semitones        : 直接指定半音偏移（正数向上移调，负数向下）
     from_key / to_key: 从哪个调移到哪个调，例如 from_key='C', to_key='F'
     direction        : 'up' | 'down' | 'closest'（仅在由 from_key/to_key 推算时生效）
     progress_callback: 若提供，接受 (float 0.0-1.0) 的回调，用于进度更新
-
-    Returns
-    -------
-    dst (Path)，如果成功写出。失败时抛出异常。
     """
-    from music21 import converter, interval, pitch as m21pitch
+    import io
+    import zipfile
 
     if semitones is None:
         if from_key is None or to_key is None:
@@ -325,24 +437,30 @@ def transpose_musicxml(
     if progress_callback:
         progress_callback(0.1)
 
-    LOGGER.info('正在解析乐谱: %s', src)
-    score = converter.parse(str(src))
-
-    if progress_callback:
-        progress_callback(0.5)
-
-    LOGGER.info('移调 %+d 个半音…', semitones)
-    transposed = score.transpose(semitones)
-
-    if progress_callback:
-        progress_callback(0.8)
+    LOGGER.info('XML 层级移调 %+d 个半音: %s', semitones, src.name)
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    format_ = 'musicxml' if dst.suffix.lower() in ('.musicxml', '.xml') else 'mxl'
-    transposed.write(format_, fp=str(dst))
+    suffix = src.suffix.lower()
 
-    # 去掉 music21 自动注入的 "Music21" 作曲者标记，避免出现在 PDF 中
-    _strip_music21_creator(dst)
+    if progress_callback:
+        progress_callback(0.4)
+
+    if suffix in ('.musicxml', '.xml'):
+        raw = src.read_bytes()
+        out = _transpose_xml_bytes(raw, semitones)
+        dst.write_bytes(out)
+    elif suffix == '.mxl':
+        buf = io.BytesIO()
+        with zipfile.ZipFile(src, 'r') as zin, \
+             zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.lower().endswith('.xml'):
+                    data = _transpose_xml_bytes(data, semitones)
+                zout.writestr(item, data)
+        dst.write_bytes(buf.getvalue())
+    else:
+        raise ValueError(f'transpose_musicxml: 不支持的文件格式 {suffix}')
 
     if progress_callback:
         progress_callback(1.0)

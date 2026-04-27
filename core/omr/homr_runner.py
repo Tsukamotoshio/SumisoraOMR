@@ -330,9 +330,10 @@ def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
     from pathlib import Path
     from ..image.image_preprocess import (
         crop_white_border, detect_and_correct_rotation, correct_gradient,
-        upscale_image, fit_image_within_pixel_limit,
+        fit_image_within_pixel_limit,
         LOW_RES_PIXEL_THRESHOLD, AUDIVERIS_MAX_PIXELS, _measure_laplacian_stddev,
     )
+    from ..image.sr_upscale import upscale_image
     from PIL import Image
 
     try:

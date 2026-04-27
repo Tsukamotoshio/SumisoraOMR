@@ -728,13 +728,17 @@ def generate_jianpu_pdf_from_mxl(
     try:
         source_score = converter.parse(str(mxl_path))
 
-        # Prefer a meaningful title from score metadata; fall back to the caller-supplied name.
+        # Source file stem (preferred_title) is always authoritative — OMR engines write
+        # internal filenames like "homr_input" that must not leak into the PDF title.
         _score_meta = getattr(source_score, 'metadata', None)
-        _raw_title = (getattr(_score_meta, 'title', None) or '').strip()
-        if _raw_title.lower() not in _GENERIC_TITLES:
-            title = _raw_title
+        if preferred_title:
+            title = preferred_title.strip()
         else:
-            title = (preferred_title or output_pdf_path.stem.replace('.jianpu', '') or mxl_path.stem).strip()
+            _raw_title = (getattr(_score_meta, 'title', None) or '').strip()
+            if _raw_title and _raw_title.lower() not in _GENERIC_TITLES:
+                title = _raw_title
+            else:
+                title = (output_pdf_path.stem.replace('.jianpu', '') or mxl_path.stem).strip()
 
         apply_score_title(source_score, title)
 
