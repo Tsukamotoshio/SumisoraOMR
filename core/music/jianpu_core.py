@@ -541,27 +541,44 @@ MAX_SANE_BARS = 600
 
 
 def _get_voice_ids_in_part(part) -> list[str]:
-    """Return sorted voice IDs that contain at least one non-rest note in the given part."""
-    voice_ids: set[str] = set()
+    """Return sorted voice IDs that contain at least one non-rest note in 2+ measures.
+
+    A voice is only considered significant (warranting a separate staff) if it
+    appears with actual notes in at least 2 distinct measures.  This prevents
+    a single polyphonic measure in an otherwise monophonic piece (e.g. a brief
+    harmony chord) from triggering multi-voice extraction for the entire piece,
+    which would produce a nearly-identical duplicate staff.
+    """
+    voice_measure_count: dict[str, int] = {}
     for measure in part.getElementsByClass(stream.Measure):
         for voice in measure.voices:
             if any(isinstance(e, m21note.Note) for e in voice.flatten().notes):
-                voice_ids.add(str(voice.id))
-    return sorted(voice_ids)
+                vid = str(voice.id)
+                voice_measure_count[vid] = voice_measure_count.get(vid, 0) + 1
+    return sorted(vid for vid, count in voice_measure_count.items() if count >= 2)
 
 
 def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
-                             _part=None, _voice_id: str = '1') -> tuple[list[list[JianpuNote]], str]:
+                             _part=None, _voice_id: str = '1',
+                             _multi_voice_mode: bool = False,
+                             _is_primary_voice: bool = True) -> tuple[list[list[JianpuNote]], str]:
     """
     Extract jianpu measure list and time signature from a music21 score.
     Merges polyphony by offset; fills gaps and overflows with rests at bar boundaries.
 
     Parameters
     ----------
-    _part      : If provided, use this Part stream directly instead of score.parts[0].
-    _voice_id  : Which voice ID to extract when a measure contains multiple voices.
-                 Defaults to '1' (main melody).  Pass a different id to extract
-                 inner/bass voices from polyphonic parts.
+    _part              : If provided, use this Part stream directly instead of score.parts[0].
+    _voice_id          : Which voice ID to extract when a measure contains multiple voices.
+                         Defaults to '1' (main melody).
+    _multi_voice_mode  : When True (multi-voice extraction), a measure that lacks the
+                         requested voice emits a whole-measure rest instead of falling
+                         back to another voice's content.  This prevents secondary voices
+                         from duplicating the primary melody in monophonic measures.
+    _is_primary_voice  : When *_multi_voice_mode* is True, the primary voice still gets the
+                         flat measure content when the measure has no explicit voice
+                         containers.  Secondary voices (``_is_primary_voice=False``) emit
+                         rests in such measures.
     """
     from ..utils import log_message
     import logging as _logging
@@ -625,10 +642,23 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
         # 单声部模式下 _voice_id='1'，多声部渲染时由调用方传入具体 ID。
         _voices = list(measure_src.voices)
         if _voices:
-            _v1 = next((v for v in _voices if str(v.id) == _voice_id), _voices[0])
-            _flat_all = list(_v1.flatten().notesAndRests)
+            _matching_voice = next((v for v in _voices if str(v.id) == _voice_id), None)
+            if _matching_voice is not None:
+                _flat_all = list(_matching_voice.flatten().notesAndRests)
+            elif _multi_voice_mode:
+                # Multi-voice mode: this voice doesn't exist in this measure → whole-measure rest.
+                # Do NOT fall back to another voice's content.
+                _flat_all = []
+            else:
+                # Single-voice mode fallback: use first available voice
+                _flat_all = list(_voices[0].flatten().notesAndRests)
         else:
-            _flat_all = list(measure_src.flatten().notesAndRests)
+            if _multi_voice_mode and not _is_primary_voice:
+                # No voice containers in this measure + secondary voice → whole-measure rest.
+                # The flat content belongs to the primary voice only.
+                _flat_all = []
+            else:
+                _flat_all = list(measure_src.flatten().notesAndRests)
 
         for element in _flat_all:
             offset = float(element.offset)
@@ -1024,9 +1054,10 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                 f'[jianpu] 单声部多声道: {len(_v_ids)} 个声道 ({", ".join(str(v) for v in _v_ids[:4])})',
                 _logging.DEBUG,
             )
-            for vid in _v_ids[:4]:
+            for i, vid in enumerate(_v_ids[:4]):
                 measures, ts = extract_jianpu_measures(
-                    score, key_tonic_semitone, _part=part, _voice_id=vid)
+                    score, key_tonic_semitone, _part=part, _voice_id=vid,
+                    _multi_voice_mode=True, _is_primary_voice=(i == 0))
                 if not _ts_set:
                     _time_sig, _ts_set = ts, True
                 if measures:
@@ -1056,9 +1087,10 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                 else:
                     # Multiple voices: one section per voice (max 4)
                     group_indices: list[int] = []
-                    for vid in voice_ids[:4]:
+                    for i, vid in enumerate(voice_ids[:4]):
                         measures, ts = extract_jianpu_measures(
-                            score, key_tonic_semitone, _part=part, _voice_id=vid)
+                            score, key_tonic_semitone, _part=part, _voice_id=vid,
+                            _multi_voice_mode=True, _is_primary_voice=(i == 0))
                         if not _ts_set:
                             _time_sig, _ts_set = ts, True
                         if measures:

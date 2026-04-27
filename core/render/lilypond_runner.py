@@ -330,44 +330,75 @@ def find_python_script_command() -> Optional[list[str]]:
 
 def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
     """Convert a jianpu-ly text file to a LilyPond .ly file (tries command > module > local script)."""
+    import tempfile as _tempfile
+
     env = os.environ.copy()
     env['j2ly_sloppy_bars'] = '1'
     txt_path = txt_path.resolve()
     ly_path = ly_path.resolve()
 
-    cmd = find_jianpu_ly_command()
-    if cmd is not None:
-        try:
-            with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([cmd, str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
-            return True
-        except subprocess.CalledProcessError as exc:
-            log_message(f'jianpu-ly 命令执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
-
-    if find_jianpu_ly_module():
-        try:
-            with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
-            return True
-        except subprocess.CalledProcessError as exc:
-            log_message(f'jianpu_ly 模块执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
-
-    script_path = _ensure_jianpu_script()
-    if script_path is None:
-        return False
-
-    python_cmd = find_python_script_command()
-    if python_cmd is None:
-        log_message('未找到可用于执行 jianpu-ly.py 的 Python 解释器。', logging.WARNING)
-        return False
+    # jianpu-ly 不支持 # 开头的注释行（会报 "Unrecognised command #"），
+    # 预处理：将原文件的 # 注释行过滤掉，传一个临时干净版本给 jianpu-ly。
+    _clean_path = txt_path
+    _tmp_to_delete: Optional[Path] = None
+    try:
+        raw = txt_path.read_text(encoding='utf-8-sig', errors='replace')
+        cleaned = '\n'.join(
+            line for line in raw.splitlines()
+            if not line.lstrip().startswith('#')
+        )
+        _tmp = _tempfile.NamedTemporaryFile(
+            mode='w', suffix='.jianpu.txt', delete=False,
+            encoding='utf-8', dir=str(txt_path.parent),
+        )
+        _tmp.write(cleaned)
+        _tmp.close()
+        _clean_path = Path(_tmp.name)
+        _tmp_to_delete = _clean_path
+    except Exception as exc:
+        log_message(f'预处理 jianpu.txt 失败，使用原文件: {exc}', logging.WARNING)
 
     try:
-        with ly_path.open('w', encoding='utf-8') as out:
-            subprocess.run([*python_cmd, str(script_path), str(txt_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
-        return True
-    except subprocess.CalledProcessError as exc:
-        log_message(f'jianpu-ly 脚本执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
-        return False
+        cmd = find_jianpu_ly_command()
+        if cmd is not None:
+            try:
+                with ly_path.open('w', encoding='utf-8') as out:
+                    subprocess.run([cmd, str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                return True
+            except subprocess.CalledProcessError as exc:
+                log_message(f'jianpu-ly 命令执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
+
+        if find_jianpu_ly_module():
+            try:
+                with ly_path.open('w', encoding='utf-8') as out:
+                    subprocess.run([sys.executable, '-m', 'jianpu_ly', str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                return True
+            except subprocess.CalledProcessError as exc:
+                log_message(f'jianpu_ly 模块执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
+
+        script_path = _ensure_jianpu_script()
+        if script_path is None:
+            return False
+
+        python_cmd = find_python_script_command()
+        if python_cmd is None:
+            log_message('未找到可用于执行 jianpu-ly.py 的 Python 解释器。', logging.WARNING)
+            return False
+
+        try:
+            with ly_path.open('w', encoding='utf-8') as out:
+                subprocess.run([*python_cmd, str(script_path), str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+            return True
+        except subprocess.CalledProcessError as exc:
+            log_message(f'jianpu-ly 脚本执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
+            return False
+    finally:
+        if _tmp_to_delete is not None:
+            try:
+                _tmp_to_delete.unlink(missing_ok=True)
+            except Exception:
+                pass
+
 
 
 def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:

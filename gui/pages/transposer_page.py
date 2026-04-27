@@ -47,6 +47,7 @@ class TransposerPage(ft.Column):
         self._export_token: int = 0
         self._export_orig_token: int = 0
         self._file_picker = ft.FilePicker()
+        self._export_dir_picker = ft.FilePicker()
         self._xml_dir = self._ensure_xml_dir()
         self._build_ui()
         state.on(Event.MXL_READY, self._on_mxl_ready)
@@ -59,6 +60,7 @@ class TransposerPage(ft.Column):
 
     def did_mount(self):
         self.page._services.register_service(self._file_picker)
+        self.page._services.register_service(self._export_dir_picker)
         self._trigger_key_change()  # 页面挂载后初始化半音标签（后台线程）
 
     # ── 构建 UI ──────────────────────────────────────────────────────────────
@@ -73,7 +75,7 @@ class TransposerPage(ft.Column):
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             text_size=13,
-            border_color=Palette.BORDER_PURPLE,
+            border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
         )
         self._to_key_dd = ft.Dropdown(
@@ -84,7 +86,7 @@ class TransposerPage(ft.Column):
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             text_size=13,
-            border_color=Palette.BORDER_PURPLE,
+            border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
         )
         self._direction_dd = ft.Dropdown(
@@ -96,7 +98,7 @@ class TransposerPage(ft.Column):
             color=ft.Colors.ON_SURFACE,
             text_size=13,
             tooltip='最近：自动选择半音距离更近的上/下行（同调时不动）',
-            border_color=Palette.BORDER_PURPLE,
+            border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
         )
         self._semitone_label = ft.Text('', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
@@ -465,19 +467,24 @@ class TransposerPage(ft.Column):
         if self._transposed_mxl is None:
             self._set_status('请先点击「移调预览」。')
             return
+        self.page.run_task(self._export_ask_dir)
+
+    async def _export_ask_dir(self) -> None:
+        dest_str = await self._export_dir_picker.get_directory_path(dialog_title='选择移调版 PDF 导出目录')
+        if not dest_str:
+            return
         self._export_token += 1
         current_token = self._export_token
-        threading.Thread(target=self._export_async, args=(current_token,), daemon=True).start()
+        threading.Thread(target=self._export_async, args=(current_token, Path(dest_str)), daemon=True).start()
 
-    def _export_async(self, token: int) -> None:
+    def _export_async(self, token: int, dest_dir: Path) -> None:
         if token != self._export_token:
             return
         self._set_busy(True)
         try:
+            import shutil
             from core.render.lilypond_runner import render_musicxml_staff_pdf
 
-            base = output_dir(None)
-            out_pdf = base / f'{self._transposed_mxl.stem}_staff.pdf'
             tmp = build_dir() / f'_trans_export_{self._transposed_mxl.stem}'
             tmp.mkdir(exist_ok=True)
 
@@ -485,9 +492,9 @@ class TransposerPage(ft.Column):
             if token != self._export_token:
                 return
             if pdf and pdf.exists():
-                import shutil
+                out_pdf = dest_dir / f'{self._transposed_mxl.stem}_staff.pdf'
                 shutil.copy2(str(pdf), str(out_pdf))
-                self._set_status(f'导出完成 → {out_pdf.name}')
+                self._set_status(f'导出完成 → {out_pdf}')
                 self._state.output_pdf = out_pdf
             else:
                 self._set_status('导出失败：无法生成五线谱 PDF，请检查 LilyPond / musicxml2ly 是否可用。')
@@ -503,19 +510,24 @@ class TransposerPage(ft.Column):
         if self._orig_mxl is None:
             self._set_status('请先打开乐谱文件。')
             return
+        self.page.run_task(self._export_orig_ask_dir)
+
+    async def _export_orig_ask_dir(self) -> None:
+        dest_str = await self._export_dir_picker.get_directory_path(dialog_title='选择原谱 PDF 导出目录')
+        if not dest_str:
+            return
         self._export_orig_token += 1
         current_token = self._export_orig_token
-        threading.Thread(target=self._export_orig_async, args=(current_token,), daemon=True).start()
+        threading.Thread(target=self._export_orig_async, args=(current_token, Path(dest_str)), daemon=True).start()
 
-    def _export_orig_async(self, token: int) -> None:
+    def _export_orig_async(self, token: int, dest_dir: Path) -> None:
         if token != self._export_orig_token:
             return
         self._set_busy(True)
         try:
+            import shutil
             from core.render.lilypond_runner import render_musicxml_staff_pdf
 
-            base = output_dir(None)
-            out_pdf = base / f'{self._orig_mxl.stem}_staff.pdf'
             tmp = build_dir() / f'_orig_export_{self._orig_mxl.stem}'
             tmp.mkdir(exist_ok=True)
 
@@ -523,9 +535,9 @@ class TransposerPage(ft.Column):
             if token != self._export_orig_token:
                 return
             if pdf and pdf.exists():
-                import shutil
+                out_pdf = dest_dir / f'{self._orig_mxl.stem}_staff.pdf'
                 shutil.copy2(str(pdf), str(out_pdf))
-                self._set_status(f'原谱导出完成 → {out_pdf.name}')
+                self._set_status(f'原谱导出完成 → {out_pdf}')
                 self._state.output_pdf = out_pdf
             else:
                 self._set_status('导出失败：无法生成五线谱 PDF，请检查 LilyPond / musicxml2ly 是否可用。')

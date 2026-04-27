@@ -57,7 +57,7 @@ class LandingPage(ft.Row):
             text_size=13,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
-            border_color=Palette.BORDER_PURPLE,
+            border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
         )
 
@@ -73,7 +73,7 @@ class LandingPage(ft.Row):
             text_size=13,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
-            border_color=Palette.BORDER_PURPLE,
+            border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
         )
 
@@ -91,7 +91,7 @@ class LandingPage(ft.Row):
             text_size=13,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
-            border_color=Palette.BORDER_PURPLE,
+            border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
         )
 
@@ -143,23 +143,38 @@ class LandingPage(ft.Row):
         options_panel = ft.Container(
             content=ft.Column(
                 [
-                    ft.Text('转换选项', size=14, weight=ft.FontWeight.W_600,
-                            color=ft.Colors.ON_SURFACE),
-                    self._engine_dd,
-                    self._sr_engine_dd,
-                    self._parallel_dd,
-                    ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
-                    output_row,
-                    ft.Container(height=8),
-                    self._convert_btn,
-                    open_output_btn,
+                    ft.Container(
+                        content=ft.Text('转换选项', size=14, weight=ft.FontWeight.W_600,
+                                        color=ft.Colors.ON_SURFACE),
+                        height=48,
+                        padding=ft.Padding.only(left=16, right=16),
+                        alignment=ft.Alignment(-1, 0),
+                        border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
+                    ),
+                    ft.Container(
+                        content=ft.Column(
+                            [
+                                self._engine_dd,
+                                self._sr_engine_dd,
+                                self._parallel_dd,
+                                ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
+                                output_row,
+                                ft.Container(height=8),
+                                self._convert_btn,
+                                open_output_btn,
+                            ],
+                            spacing=10,
+                        ),
+                        padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+                        expand=True,
+                    ),
                 ],
-                spacing=10,
+                spacing=0,
+                expand=True,
             ),
             bgcolor=ft.Colors.SURFACE,
-            padding=ft.Padding.all(16),
             width=250,
-            border=ft.Border.only(left=ft.BorderSide(2, with_alpha(Palette.BORDER_PURPLE, '99'))),
+            border=ft.Border.only(left=ft.BorderSide(2, with_alpha(Palette.BORDER_BLUE, '99'))),
         )
 
         self.controls = [
@@ -518,21 +533,27 @@ class LandingPage(ft.Row):
                                 self._state.current_mxl = archived
                                 self._state.emit(Event.MXL_READY, path=archived)
                             if _current_processing_file:
-                                _conversion_results['success'].append(_current_processing_file)
+                                _conversion_results['success'].append({
+                                    'file': _current_processing_file,
+                                    'engine_used': msg.get('engine_used', ''),
+                                    'image_type': msg.get('image_type', ''),
+                                })
                         else:
                             if _current_processing_file:
                                 if not any(f['file'] == _current_processing_file for f in _conversion_results['failed']):
                                     _conversion_results['failed'].append({
                                         'file': _current_processing_file,
-                                        'reason': '未知原因'
+                                        'reason': msg.get('reason') or '未知原因',
                                     })
                     elif mtype == 'done':
                         _done_or_error_received = True
                         self._state.conversion_summary = {
                             'success_count': len(_conversion_results['success']),
                             'failed_count': len(_conversion_results['failed']),
+                            'success_files': _conversion_results['success'],
                             'failed_files': _conversion_results['failed'],
-                            'message': msg.get('message', '完成。')
+                            'message': msg.get('message', '完成。'),
+                            'total': len(_conversion_results['success']) + len(_conversion_results['failed']),
                         }
                         self._state.set_done(msg.get('message', '完成。'))
                     elif mtype == 'error':
@@ -751,11 +772,18 @@ class LandingPage(ft.Row):
                             self._state.current_mxl = archived
                             self._state.emit(Event.MXL_READY, path=archived)
                         if _current_files[worker_id]:
-                            _all_results['success'].append(_current_files[worker_id])
+                            _all_results['success'].append({
+                                'file': _current_files[worker_id],
+                                'engine_used': msg.get('engine_used', ''),
+                                'image_type': msg.get('image_type', ''),
+                            })
                     else:
                         cf = _current_files[worker_id]
                         if cf and not any(f['file'] == cf for f in _all_results['failed']):
-                            _all_results['failed'].append({'file': cf, 'reason': '未知原因'})
+                            _all_results['failed'].append({
+                                'file': cf,
+                                'reason': msg.get('reason') or '未知原因',
+                            })
 
                 elif mtype == 'done':
                     _worker_done[worker_id] = True
@@ -814,7 +842,9 @@ class LandingPage(ft.Row):
                 self._state.conversion_summary = {
                     'success_count': n_success,
                     'failed_count': n_failed,
+                    'success_files': _all_results['success'],
                     'failed_files': _all_results['failed'],
+                    'total': n_success + n_failed,
                     'message': '',
                 }
                 if n_success == 0 and _any_error:
@@ -853,7 +883,7 @@ class LandingPage(ft.Row):
             self._show_conversion_results()
 
     def _show_conversion_results(self) -> None:
-        """显示转换结果详情（成功数、失败数、失败文件列表）。"""
+        """显示转换结果详情（总览 + 每文件成功/失败信息，滚动列表）。"""
         try:
             if self.page is None:
                 return
@@ -863,82 +893,140 @@ class LandingPage(ft.Row):
                 return
 
             success_count = summary.get('success_count', 0)
-            failed_count = summary.get('failed_count', 0)
-            failed_files = summary.get('failed_files', [])
+            failed_count  = summary.get('failed_count', 0)
+            total         = summary.get('total', success_count + failed_count)
+            success_files = summary.get('success_files', [])
+            failed_files  = summary.get('failed_files', [])
 
-            # 如果没有失败文件，不需要显示详细对话框
-            if failed_count == 0:
-                return
-
-            # 构建失败详情内容
-            details_items: list[ft.Control] = []
-
-            # 摘要行
-            summary_text = f'✓ 成功 {success_count} 个'
-            if failed_count > 0:
-                summary_text += f'  ✗ 失败 {failed_count} 个'
-            details_items.append(
-                ft.Text(summary_text, size=13, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE)
-            )
-            details_items.append(ft.Container(height=8))
-
-            # 失败文件列表
-            if failed_files:
-                details_items.append(
-                    ft.Text('失败文件：', size=12, weight=ft.FontWeight.W_500, color=Palette.ERROR)
+            # ── 标题行：总共 X 文件，成功 Y，失败 Z ──
+            def _stat_chip(label: str, color: str) -> ft.Container:
+                return ft.Container(
+                    content=ft.Text(label, size=12, color=color, weight=ft.FontWeight.W_600),
+                    padding=ft.padding.symmetric(horizontal=10, vertical=4),
+                    border_radius=12,
+                    bgcolor=ft.Colors.with_opacity(0.12, color),
                 )
-                for idx, item in enumerate(failed_files[:10]):  # 最多显示前 10 个
+
+            header_row = ft.Row(
+                [
+                    ft.Text(f'总共 {total} 个文件', size=13, color=ft.Colors.ON_SURFACE),
+                    _stat_chip(f'✓ 成功 {success_count}', Palette.SUCCESS),
+                    _stat_chip(f'✗ 失败 {failed_count}', Palette.ERROR) if failed_count else ft.Container(),
+                ],
+                spacing=8,
+                wrap=True,
+            )
+
+            list_items: list[ft.Control] = []
+
+            # ── 成功条目 ──
+            if success_files:
+                list_items.append(
+                    ft.Container(
+                        ft.Text('成功', size=11, weight=ft.FontWeight.W_600, color=Palette.SUCCESS),
+                        padding=ft.padding.only(top=8, bottom=2),
+                    )
+                )
+                for item in success_files:
+                    if isinstance(item, dict):
+                        file_name   = item.get('file', '未知')
+                        engine_used = item.get('engine_used', '')
+                        image_type  = item.get('image_type', '')
+                    else:
+                        file_name, engine_used, image_type = item, '', ''
+
+                    detail_parts: list[str] = []
+                    if image_type:
+                        detail_parts.append(f'识别为{image_type}')
+                    if engine_used:
+                        detail_parts.append(f'使用 {engine_used} 引擎')
+                    detail_str = '，'.join(detail_parts) if detail_parts else '转换成功'
+
+                    list_items.append(
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    ft.Text(
+                                        f'  ✓  {file_name}',
+                                        size=11,
+                                        color=ft.Colors.ON_SURFACE,
+                                        no_wrap=False,
+                                    ),
+                                    ft.Text(
+                                        f'       {detail_str}',
+                                        size=10,
+                                        color=ft.Colors.ON_SURFACE_VARIANT,
+                                    ),
+                                ],
+                                spacing=1,
+                                tight=True,
+                            ),
+                            padding=ft.padding.symmetric(vertical=3),
+                        )
+                    )
+
+            # ── 失败条目 ──
+            if failed_files:
+                list_items.append(
+                    ft.Container(
+                        ft.Text('失败', size=11, weight=ft.FontWeight.W_600, color=Palette.ERROR),
+                        padding=ft.padding.only(top=10, bottom=2),
+                    )
+                )
+                for item in failed_files:
                     file_name = item.get('file', '未知') if isinstance(item, dict) else item
-                    reason = item.get('reason', '') if isinstance(item, dict) else ''
-                    details_items.append(
-                        ft.Column(
-                            [
-                                ft.Text(f'  • {file_name}', size=11, color=ft.Colors.ON_SURFACE),
-                                ft.Text(
-                                    f'    原因：{reason}',
-                                    size=10,
-                                    color=ft.Colors.ON_SURFACE_VARIANT,
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                ),
-                            ],
-                            spacing=2,
+                    reason    = (item.get('reason', '') if isinstance(item, dict) else '') or '未知原因'
+                    list_items.append(
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    ft.Text(
+                                        f'  ✗  {file_name}',
+                                        size=11,
+                                        color=ft.Colors.ON_SURFACE,
+                                        no_wrap=False,
+                                    ),
+                                    ft.Text(
+                                        f'       原因：{reason}',
+                                        size=10,
+                                        color=Palette.ERROR,
+                                        no_wrap=False,
+                                    ),
+                                ],
+                                spacing=1,
+                                tight=True,
+                            ),
+                            padding=ft.padding.symmetric(vertical=3),
                         )
                     )
 
-                if len(failed_files) > 10:
-                    details_items.append(
-                        ft.Text(
-                            f'  …以及另外 {len(failed_files)-10} 个失败的文件',
-                            size=10,
-                            color=ft.Colors.OUTLINE,
-                        )
-                    )
-
-            # 显示对话框
             def _close_dialog(_ev=None):
                 if self.page:
                     self.page.pop_dialog()
 
             dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text('转换结果详情', size=15, weight=ft.FontWeight.W_600),
-                content=ft.Container(
-                    content=ft.Column(
-                        details_items,
-                        tight=True,
-                        spacing=6,
-                        scroll=ft.ScrollMode.AUTO,
-                    ),
-                    padding=ft.Padding.only(top=6),
-                    width=450,
-                    height=300,
-                    max_height=400,
+                title=ft.Text('识别结果', size=15, weight=ft.FontWeight.W_600),
+                content=ft.Column(
+                    [
+                        header_row,
+                        ft.Divider(height=1, thickness=1),
+                        ft.Container(
+                            content=ft.Column(
+                                list_items,
+                                tight=True,
+                                spacing=0,
+                                scroll=ft.ScrollMode.AUTO,
+                            ),
+                            height=320,
+                            width=460,
+                        ),
+                    ],
+                    tight=True,
+                    spacing=8,
                 ),
                 actions=[
-                    ft.TextButton(
-                        '关闭',
-                        on_click=_close_dialog,
-                    ),
+                    ft.TextButton('关闭', on_click=_close_dialog),
                 ],
                 actions_alignment=ft.MainAxisAlignment.END,
             )

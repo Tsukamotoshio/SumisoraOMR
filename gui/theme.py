@@ -1,12 +1,12 @@
-# gui/theme.py — 扁平化深色/浅色主题常量
-# 不依赖任何实例化的 Flet 对象，仅导出颜色字符串与 ft.Theme 工厂函数。
+# gui/theme.py — Flat dark/light theme constants
+# No instantiated Flet objects; exports only colour strings and ft.Theme factory functions.
 
 from __future__ import annotations
 import flet as ft
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 调色板 — 具名十六进制值，仅在 ColorScheme 定义和语义色中直接引用。
-# UI 组件应优先使用 ft.Colors.* M3 语义 token，而非直接引用此类。
+# Colour palette — named hex values, referenced only in ColorScheme and semantic colours.
+# UI components should prefer ft.Colors.* M3 semantic tokens over direct references here.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def with_alpha(color: str, alpha: str) -> str:
@@ -17,27 +17,27 @@ def with_alpha(color: str, alpha: str) -> str:
 
 
 class Palette:
-    # 主色调（靛蓝-紫罗兰）
-    PRIMARY        = '#7C4DFF'
-    PRIMARY_DIM    = '#512DA8'
-    PRIMARY_LIGHT  = '#B39DDB'
+    # Primary (sapphire-blue) — SumisoraOMR
+    PRIMARY        = '#2979FF'   # Material Blue A400 — vivid electric blue
+    PRIMARY_DIM    = '#1565C0'   # Material Blue 800  — deep ocean blue
+    PRIMARY_LIGHT  = '#90CAF9'   # Material Blue 200  — sky blue
 
-    # 语义色（不随主题变化）
+    # Semantic colours (theme-invariant)
     SUCCESS        = '#4CAF50'
     WARNING        = '#FF9800'
     ERROR          = '#F44336'
     INFO           = '#2196F3'
 
-    # 控件边框（中调紫，在深浅两个主题的背景下均清晰可见）
-    BORDER_PURPLE  = '#8870C4'
+    # Widget border (mid-blue, legible on both dark and light backgrounds)
+    BORDER_BLUE    = '#5590CC'
 
-    # 行高亮（简谱）
-    HIGHLIGHT      = with_alpha('#7C4DFF', '44')
+    # Row highlight (jianpu editor)
+    HIGHLIGHT      = with_alpha('#2979FF', '44')
     MAGNIFIER_BG   = with_alpha('#000000', 'CC')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Flet Theme 工厂
+# Flet Theme factories
 # ─────────────────────────────────────────────────────────────────────────────
 
 def make_dark_theme(font_family: str = 'YaHei') -> ft.Theme:
@@ -51,20 +51,20 @@ def make_dark_theme(font_family: str = 'YaHei') -> ft.Theme:
             on_secondary='#FFFFFF',
             error=Palette.ERROR,
             on_error='#FFFFFF',
-            surface='#1E1E2E',
-            surface_dim='#121212',
-            surface_bright='#2A2A3E',
-            surface_container_lowest='#121212',
-            surface_container_low='#1E1E2E',
-            surface_container='#252538',
-            surface_container_high='#2A2A3E',
-            surface_container_highest='#323248',
-            on_surface='#E8E8F0',
-            on_surface_variant='#9E9EB8',
-            outline='#555568',
-            outline_variant='#2E2E48',
-            inverse_surface='#E8E8F0',
-            on_inverse_surface='#1E1E2E',
+            surface='#0D1829',
+            surface_dim='#080F1A',
+            surface_bright='#182338',
+            surface_container_lowest='#080F1A',
+            surface_container_low='#0D1829',
+            surface_container='#152030',
+            surface_container_high='#1A2840',
+            surface_container_highest='#22334E',
+            on_surface='#E0ECFF',
+            on_surface_variant='#8AAAC8',
+            outline='#3A5575',
+            outline_variant='#1A2E48',
+            inverse_surface='#E0ECFF',
+            on_inverse_surface='#0D1829',
         ),
     )
 
@@ -80,30 +80,30 @@ def make_light_theme(font_family: str = 'YaHei') -> ft.Theme:
             on_secondary='#FFFFFF',
             error=Palette.ERROR,
             on_error='#FFFFFF',
-            surface='#F8F7FF',
-            surface_dim='#ECEAF5',
-            surface_bright='#FDFCFF',
-            surface_container_lowest='#FAF8FF',
-            surface_container_low='#F3F0FF',
-            surface_container='#EDE9FF',
-            surface_container_high='#E6E1F5',
-            surface_container_highest='#DDD8EF',
-            on_surface='#1A1A2E',
-            on_surface_variant='#4A4A6A',
-            outline='#8080A0',
-            outline_variant='#CCC8DF',
-            inverse_surface='#1A1A2E',
+            surface='#F5F8FF',
+            surface_dim='#E0EAFA',
+            surface_bright='#FBFCFF',
+            surface_container_lowest='#F5F8FF',
+            surface_container_low='#EBF1FF',
+            surface_container='#DEEAFF',
+            surface_container_high='#D2E2F5',
+            surface_container_highest='#C4D8EE',
+            on_surface='#0A1929',
+            on_surface_variant='#2A4060',
+            outline='#507090',
+            outline_variant='#B8CEDF',
+            inverse_surface='#0A1929',
             on_inverse_surface='#FFFFFF',
         ),
     )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 常用控件样式辅助
+# Common widget style helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def card_style(dark: bool = True) -> dict:
-    """返回 ft.Container 的常用卡片样式参数字典。"""
+    """Return a dict of common card-style kwargs for ft.Container."""
     return dict(
         bgcolor=ft.Colors.SURFACE_CONTAINER,
         border_radius=ft.BorderRadius.all(8),

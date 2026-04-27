@@ -23,7 +23,7 @@ class ProgressOverlay(ft.Stack):
         # 避免工作线程在 Flet/Flutter 侧暂停时被 ctrl.update() 阻塞。
         self._log_auto_scroll: bool = True   # smart scroll 状态：True=跟随底部
         self._pending_logs: collections.deque[tuple[str, str]] = collections.deque()  # (line, color)
-        self._pending_progress: tuple[float, str] | None = None  # (value, message)
+        self._pending_progress: collections.deque[tuple[float, str]] = collections.deque()  # (value, message)
         self._pending_sub_progress: tuple[float, str] | None = None  # 子步骤进度
         # 计时器线程在此时刻后自动隐藏浮层（_on_done 设置，避免额外线程）
         self._should_hide_after: float | None = None
@@ -154,10 +154,10 @@ class ProgressOverlay(ft.Stack):
             mm, ss = divmod(elapsed, 60)
             self._elapsed_text.value = f'{mm:02d}:{ss:02d}'
 
-            # 消费待处理的进度更新（工作线程非阻塞写入）
-            pending = self._pending_progress
-            if pending is not None:
-                self._pending_progress = None
+            # 消费待处理的进度更新（FIFO，每次处理一条，保证顺序显示）
+            pending = None
+            if self._pending_progress:
+                pending = self._pending_progress.popleft()
                 self._progress_bar.value = pending[0]
                 if pending[1]:
                     self._status_text.value = pending[1]
@@ -217,9 +217,8 @@ class ProgressOverlay(ft.Stack):
                 await asyncio.sleep(0)
                 break
 
-            # 0.5s 睡眠取代原来的 2.0s：更频繁地让出事件循环给 Flet 心跳任务，
-            # 防止 ONNX 推理占满 CPU 时 asyncio 被 OS 调度器长时间饿死。
-            await asyncio.sleep(0.5)
+            # 0.1s 睐眠：更高频地让出事件循环给 Flet 心跳任务，同时保证进度更新响应灵敏。
+            await asyncio.sleep(0.1)
 
     # ── 显示 / 隐藏 ──────────────────────────────────────────────────────────
 
@@ -232,7 +231,7 @@ class ProgressOverlay(ft.Stack):
         self._elapsed_text.value = '00:00'
         self._log_list.controls.clear()
         self._pending_logs.clear()
-        self._pending_progress = None
+        self._pending_progress.clear()
         self._pending_sub_progress = None
         self._log_auto_scroll = True
         self._log_list.auto_scroll = True
@@ -288,12 +287,12 @@ class ProgressOverlay(ft.Stack):
         self._pending_sub_progress = (max(0.0, min(1.0, value)), message)
 
     def _on_progress(self, value: float, message: str = '', **_kw) -> None:
-        # 工作线程非阻塞：只写入 pending，由 _timer_loop 统一刷新
-        self._pending_progress = (value, message)
+        # 工作线程非阻塞：追加到队列，由 _timer_task 按序刷新
+        self._pending_progress.append((value, message))
 
     def _on_done(self, message: str = '完成', **_kw) -> None:
-        # 写入待处理队列，由计时器线程统一渲染，避免工作线程直接调用 page.update()
-        self._pending_progress = (1.0, message)
+        # 追加到队列，由计时器线程统一渲染，避免工作线程直接调用 page.update()
+        self._pending_progress.append((1.0, message))
         self._spinner.visible = False  # 属性修改，计时器下次刷新时生效
         # 在计时器线程内延迟 2.5 秒自动隐藏，无需额外的 threading.Timer 线程
         self._should_hide_after = time.monotonic() + 2.5

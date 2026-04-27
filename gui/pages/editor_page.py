@@ -431,6 +431,10 @@ class EditorPage(ft.Row):
                 self._state.current_jianpu_txt = path
 
     def _on_file_selected(self, path: Path, **_kw) -> None:
+        # 只响应用户在编辑器页面内主动触发的选择；
+        # 来自识别页等其他页面的选择事件不应联动到编辑器。
+        if getattr(self._state, 'current_page', 'editor') != 'editor':
+            return
         ws = editor_workspace_dir()
         suffix_lo = path.suffix.lower()
 

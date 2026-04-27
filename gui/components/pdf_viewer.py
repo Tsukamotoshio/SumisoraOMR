@@ -74,6 +74,7 @@ class PdfViewer(ft.Column):
         toolbar_bar = ft.Container(
             content=toolbar,
             bgcolor=ft.Colors.SURFACE,
+            height=48,
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )

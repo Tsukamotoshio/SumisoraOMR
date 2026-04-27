@@ -88,8 +88,13 @@ class FileSidebar(ft.Column):
         container = ft.Container(
             content=ft.Column(
                 [
-                    ft.Container(content=title_row, padding=ft.Padding.only(left=12, right=4, top=8, bottom=4)),
-                    ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT, thickness=1),
+                    ft.Container(
+                        content=title_row,
+                        height=48,
+                        padding=ft.Padding.only(left=12, right=4),
+                        alignment=ft.Alignment(-1, 0),
+                        border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
+                    ),
                     ft.Container(
                         content=self._file_list_col,
                         expand=True,

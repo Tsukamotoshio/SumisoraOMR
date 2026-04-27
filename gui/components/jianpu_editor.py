@@ -31,8 +31,12 @@ class JianpuEditor(ft.Column):
         self._lines: list[str] = []
         self._load_token: int = 0
         self._file_lock = threading.Lock()
+        self._export_dir_picker = ft.FilePicker()
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_external_select)
+
+    def did_mount(self) -> None:
+        self.page._services.register_service(self._export_dir_picker)
 
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
@@ -180,6 +184,10 @@ class JianpuEditor(ft.Column):
     # ── 导出 PDF ─────────────────────────────────────────────────────────────
 
     def _on_export_pdf(self, _e) -> None:
+        # 弹出目录选择对话框（异步），选好后在后台线程渲染并复制
+        self.page.run_task(self._export_pdf_ask_dir)
+
+    async def _export_pdf_ask_dir(self) -> None:
         if self._path is None:
             self._state.append_log('导出失败：请先加载简谱文件')
             return
@@ -191,10 +199,17 @@ class JianpuEditor(ft.Column):
         except Exception as exc:
             self._state.append_log(f'保存失败（导出前）: {exc}')
             return
-        threading.Thread(target=self._export_pdf_thread, daemon=True).start()
+        dest_str = await self._export_dir_picker.get_directory_path(dialog_title='选择 PDF 导出目录')
+        if not dest_str:
+            return
+        dest_dir = Path(dest_str)
+        threading.Thread(target=self._export_pdf_thread, args=(dest_dir,), daemon=True).start()
 
-    def _export_pdf_thread(self) -> None:
+    def _export_pdf_thread(self, dest_dir: Path) -> None:
+        ly_path: Optional[Path] = None
+        pdf_path: Optional[Path] = None
         try:
+            import shutil
             from core.render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
             txt_path = self._path
             ly_path  = txt_path.with_suffix('.ly')
@@ -204,14 +219,28 @@ class JianpuEditor(ft.Column):
             if not ok:
                 self._state.append_log('jianpu-ly 转换失败，请确认 LilyPond 与 jianpu-ly.py 已安装')
                 return
-            self._state.append_log(f'正在渲染 PDF…')
+            self._state.append_log('正在渲染 PDF…')
             pdf_path = render_lilypond_pdf(ly_path)
             if pdf_path and pdf_path.exists():
-                self._state.append_log(f'PDF 已生成: {pdf_path}')
+                dest_pdf = dest_dir / pdf_path.name
+                shutil.copy2(str(pdf_path), str(dest_pdf))
+                self._state.append_log(f'PDF 已导出: {dest_pdf}')
             else:
                 self._state.append_log('PDF 渲染失败，请检查 LilyPond 安装')
         except Exception as exc:
             self._state.append_log(f'导出 PDF 出错: {exc}')
+        finally:
+            # 清理中间文件：.ly、LilyPond 顺带生成的 .midi、以及已复制到目标目录的 .pdf
+            for _tmp in (
+                ly_path,
+                ly_path.with_suffix('.midi') if ly_path is not None else None,
+                pdf_path,
+            ):
+                if _tmp is not None:
+                    try:
+                        _tmp.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
     def _on_external_select(self, line_no: int, **_kw) -> None:
         """由图像区触发：当前不再显示行号，因此无需处理。"""

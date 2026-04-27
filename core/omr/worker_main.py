@@ -20,6 +20,7 @@ from typing import Any, Optional
 # 所以此处 sys.stdout 就是与 GUI 通信的管道。
 # 获取二进制流，方便写入 UTF-8 JSON 行。
 _ipc_out: Optional[Any] = None
+_current_file_detail: dict[str, str] = {}  # 每文件重置，由 _log_ipc 填充
 
 
 def _send(msg: dict[str, Any]) -> None:
@@ -78,6 +79,19 @@ def _patch_log_message() -> None:
 
     def _log_ipc(message: str, level: int = logging.INFO) -> None:
         _send({'type': 'log', 'text': message})
+        # 从日志文本中提取当前文件的引擎和图像类型信息
+        if '[引擎]' in message:
+            if 'Homr' in message:
+                _current_file_detail['engine_used'] = 'Homr'
+            elif 'Audiveris' in message:
+                _current_file_detail['engine_used'] = 'Audiveris'
+        if '[自动选择]' in message:
+            if '矢量' in message:
+                _current_file_detail['image_type'] = '矢量图'
+            elif '位图' in message:
+                _current_file_detail['image_type'] = '位图'
+            elif '图片格式' in message:
+                _current_file_detail['image_type'] = '位图'
         # 继续写入日志文件
         if not _utils.LOGGER.handlers:
             try:
@@ -161,7 +175,11 @@ def run_worker() -> None:
             _send({'type': 'error', 'message': 'Worker 未收到任务，stdin 为空'})
             sys.exit(1)
 
-        task = json.loads(raw)
+        try:
+            task = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            _send({'type': 'error', 'message': f'Worker 任务 JSON 格式错误: {exc}（前 200 字节: {raw[:200]!r}）'})
+            sys.exit(1)
 
         files = [Path(f) for f in task.get('files', [])]
         engine_str = task.get('engine', 'auto')
@@ -222,6 +240,7 @@ def run_worker() -> None:
             out_pdf = output_dir_path / (src.stem + '_jianpu.pdf')
             out_midi: Optional[Path] = (output_dir_path / (src.stem + '.mid')) if gen_midi else None
 
+            _current_file_detail.clear()
             try:
                 ok = process_single_input_to_jianpu(
                     source_file=src,
@@ -235,8 +254,10 @@ def run_worker() -> None:
                 )
             except Exception as exc:
                 fail_count += 1
+                reason = str(exc)[:150]
                 _send({'type': 'log', 'text': f'  ✗ 异常: {exc}'})
-                _send({'type': 'result', 'success': False, 'output_pdf': None, 'archived_mxl': None})
+                _send({'type': 'result', 'success': False, 'output_pdf': None, 'archived_mxl': None,
+                       'reason': f'异常: {reason}'})
                 continue
 
             if ok:
@@ -262,11 +283,14 @@ def run_worker() -> None:
                     'success': True,
                     'output_pdf': str(out_pdf),
                     'archived_mxl': str(archived_mxl) if archived_mxl else None,
+                    'engine_used': _current_file_detail.get('engine_used', ''),
+                    'image_type': _current_file_detail.get('image_type', ''),
                 })
             else:
                 fail_count += 1
                 _send({'type': 'log', 'text': f'  ✗ 失败: {src.name}'})
-                _send({'type': 'result', 'success': False, 'output_pdf': None, 'archived_mxl': None})
+                _send({'type': 'result', 'success': False, 'output_pdf': None, 'archived_mxl': None,
+                       'reason': '转换失败'})
 
         # ── 发送最终完成消息 ──────────────────────────────────────────────────
         parts: list[str] = []

@@ -1,11 +1,11 @@
-﻿# app.py — Flet GUI 主程序入口
-# OMR 转换工具 — 现代扁平化 GUI（深色模式优先）
+﻿# app.py — Flet GUI entry point
+# OMR Sheet Music Conversion Tool — modern flat GUI (dark-first)
 #
-# 启动方式：
+# Usage:
 #   python app.py
-#   或（开发模式热重载）：flet run app.py
+#   or (dev mode with hot-reload): flet run app.py
 #
-# 依赖：
+# Dependencies:
 #   pip install -r requirements.txt
 
 
@@ -19,7 +19,7 @@ warnings.filterwarnings(
     category=RuntimeWarning,
 )
 
-# ─── SSL 证书：解决打包后部分环境证书验证失败问题 ─────────────────────────────
+# ─── SSL certificates: fix cert-validation failures in packaged builds ───────
 # 在所有网络请求（flet / urllib / requests / httpx）之前设置，
 # 强制使用随包附带的 certifi 证书，避免旧版 Windows 根证书缺失或 SSL 中间人干扰。
 #   SSL_CERT_FILE    — Python ssl 模块 / urllib / httpx
@@ -43,7 +43,7 @@ if getattr(sys, 'frozen', False):
         if sys.stderr is None:
             sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
 
-# ─── ONNX / OpenMP 线程限制：为 asyncio 事件循环保留 CPU 资源 ────────────────
+# ─── ONNX / OpenMP thread cap: reserve CPU headroom for asyncio event loop ───
 # homr 使用 ONNX Runtime 进行神经网络推理，默认会占满所有 CPU 核心。
 # 在打包版中，CPU 满载导致 asyncio 事件循环长时间得不到调度，
 # Flet WebSocket 心跳超时，Flutter 端显示 "Working..." 重连画面。
@@ -56,7 +56,7 @@ os.environ.setdefault('MKL_NUM_THREADS',          _onnx_threads)
 os.environ.setdefault('VECLIB_MAXIMUM_THREADS',   _onnx_threads)
 os.environ.setdefault('NUMEXPR_NUM_THREADS',      _onnx_threads)
 
-# ─── Bootstrap：确保在正确的虚拟环境中运行 ──────────────────────────────────
+# ─── Bootstrap: ensure correct virtual environment ───────────────────────────
 def _bootstrap_venv() -> None:
     try:
         import flet  # noqa: F401
@@ -83,7 +83,7 @@ def _bootstrap_venv() -> None:
 _bootstrap_venv()
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Worker 子进程早退出：在导入 flet / GUI 模块之前分流，节省内存和启动时间
+# Worker subprocess early exit: branch before flet/GUI imports, saving memory and startup time
 if __name__ == '__main__' and '--worker' in sys.argv:
     import multiprocessing
     multiprocessing.freeze_support()
@@ -104,7 +104,7 @@ from gui.components.progress_overlay import ProgressOverlay
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 导航项定义
+# Navigation destinations
 # ─────────────────────────────────────────────────────────────────────────────
 
 _NAV_ITEMS = [
@@ -116,11 +116,11 @@ _NAV_ITEMS = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 主应用
+# Main application
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def main(page: ft.Page) -> None:
-    # ── 页面基本配置 ──────────────────────────────────────────────────────────
+    # ── Page base configuration ───────────────────────────────────────────────
     page.title       = 'OMR 乐谱转换工具'
     page.window.min_width        = 900
     page.window.min_height       = 600
@@ -130,7 +130,7 @@ async def main(page: ft.Page) -> None:
     page.padding = 0
     page.spacing = 0
 
-    # ── 字体配置 ──────────────────────────────────────────────────────────────
+    # ── Font configuration ────────────────────────────────────────────────────
     # 注册微软雅黑（绝对路径），为 CJK 字符提供无衬线字体，避免回退到宋体
     import os as _os
     _yahe_path = r'C:\Windows\Fonts\msyh.ttc'
@@ -145,7 +145,7 @@ async def main(page: ft.Page) -> None:
     page.theme       = make_dark_theme(font_family=_font_key)
     page.dark_theme  = make_dark_theme(font_family=_font_key)
 
-    # ── 全局状态 ──────────────────────────────────────────────────────────────
+    # ── Global state ──────────────────────────────────────────────────────────
     state = AppState()
 
     # 将 core/utils.log_message 重定向到 GUI 日志流
@@ -160,10 +160,10 @@ async def main(page: ft.Page) -> None:
     except Exception:
         pass
 
-    # ── 进度浮层（全局共享）──────────────────────────────────────────────────
+    # ── Progress overlay (shared) ─────────────────────────────────────────────
     overlay = ProgressOverlay(state)
 
-    # ── 四页面 ────────────────────────────────────────────────────────────────
+    # ── Pages ─────────────────────────────────────────────────────────────────
     landing_page    = LandingPage(state, overlay)
     editor_page     = EditorPage(state)
     transposer_page = TransposerPage(state)
@@ -176,7 +176,7 @@ async def main(page: ft.Page) -> None:
         'about':      about_page,
     }
 
-    # ── 内容区（ft.Stack 允许浮层覆盖）──────────────────────────────────────
+    # ── Content area (ft.Stack with overlay support) ──────────────────────────
     content_stack = ft.Stack(
         [
             ft.Container(content=landing_page,    expand=True, visible=True),
@@ -204,7 +204,7 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-    # ── NavigationRail（左侧导航） ────────────────────────────────────────────
+    # ── NavigationRail (left sidebar) ────────────────────────────────────────
 
     def _on_nav_change(e) -> None:
         name = _NAV_ITEMS[e.control.selected_index][0]
@@ -230,7 +230,7 @@ async def main(page: ft.Page) -> None:
         min_extended_width=150,
     )
 
-    # ── 右上角：主题切换 ──────────────────────────────────────────────────────
+    # ── Theme toggle (top-right) ──────────────────────────────────────────────
     _theme_icon = ft.IconButton(
         icon=ft.Icons.DARK_MODE_ROUNDED,
         icon_color=ft.Colors.ON_SURFACE_VARIANT,
@@ -254,7 +254,7 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-    # ── 自定义标题栏（无边框模式）────────────────────────────────────────────
+    # ── Custom title bar (borderless) ────────────────────────────────────────
     def _do_minimize():
         page.window.minimized = True
         page.window.update()
@@ -367,7 +367,7 @@ async def main(page: ft.Page) -> None:
         border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )
 
-    # ── 通知（SnackBar）辅助 ─────────────────────────────────────────────────
+    # ── Notification helpers (SnackBar) ──────────────────────────────────────
     def _show_snack(msg: str, color: str = Palette.INFO) -> None:
         page.show_dialog(ft.SnackBar(
             content=ft.Text(msg, color='#FFFFFF'),
@@ -390,7 +390,7 @@ async def main(page: ft.Page) -> None:
     state.on(Event.PROGRESS_ERROR, _on_error)
     state.on(Event.PROGRESS_DONE,  _on_done)
 
-    # ── 页面布局 ─────────────────────────────────────────────────────────────
+    # ── Page layout ───────────────────────────────────────────────────────────
     left_rail_container = ft.Container(
         content=nav_rail,
         bgcolor=ft.Colors.SURFACE,
@@ -416,7 +416,7 @@ async def main(page: ft.Page) -> None:
         )
     )
 
-    # ── 窗口关闭：终止进行中的 Worker 子进程 ────────────────────────────────
+    # ── Window close: terminate active Worker subprocess ─────────────────────
     # 不设置 prevent_close，让 Flutter 在用户点 X 后立即自然关闭窗口（无延迟、
     # 无 "Working..." 重连画面）。
     # page.on_close 在 Flutter 断开 WebSocket 后由 session.close() 异步触发，
@@ -433,12 +433,12 @@ async def main(page: ft.Page) -> None:
 
     page.on_close = _on_app_close
 
-    # ── 初始化完成 ────────────────────────────────────────────────────────────
+    # ── Initialisation complete ───────────────────────────────────────────────
     _show_page('landing')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 【开发模式 & 分发版】让任务管理器显示 "ConvertTool" 而非 "flet"
+# [Dev & packaged] Make Task Manager show "ConvertTool" instead of "flet"
 # ─────────────────────────────────────────────────────────────────────────────
 # flet_desktop 通过 open_flet_view_async 启动 Flutter 窗口进程。
 # 此函数确保使用重命名后的 ConvertTool.exe 作为 Flutter 运行时，
@@ -473,7 +473,7 @@ def _setup_flet_view_name() -> None:
                     _shutil.rmtree(_f) if _f.is_dir() else _f.unlink(missing_ok=True)
 
             if getattr(sys, 'frozen', False):
-                # 打包版：从随包附带的 flet-windows.zip 解压
+                # Packaged build: extract bundled flet-windows.zip
                 _meipass = getattr(sys, '_MEIPASS', None)
                 if _meipass is None:
                     return
@@ -493,7 +493,7 @@ def _setup_flet_view_name() -> None:
                                 _dst.parent.mkdir(parents=True, exist_ok=True)
                                 _dst.write_bytes(_zf.read(_m))
             else:
-                # 开发模式：从用户 flet 缓存复制
+                # Dev mode: copy from user flet cache
                 _cache = (_Path.home() / '.flet' / 'client'
                           / f'flet-desktop-full-{_ver}' / 'flet')
                 if not _cache.exists():

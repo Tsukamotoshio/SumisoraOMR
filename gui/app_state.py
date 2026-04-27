@@ -1,6 +1,6 @@
-﻿# gui/app_state.py — 应用全局状态 + 事件总线
-# 不依赖任何 GUI 库实现，可被任意模块安全导入。
-# 使用观察者模式：订阅者通过 on(event, callback) 注册回调。
+﻿# gui/app_state.py — Global application state + event bus
+# No GUI library dependency; safe to import from any module.
+# Observer pattern: subscribers register via on(event, callback).
 
 from __future__ import annotations
 
@@ -11,74 +11,75 @@ from typing import Any, Callable, Optional
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 事件名称常量（避免魔法字符串）
+# Event name constants (no magic strings)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Event:
-    FILES_CHANGED       = 'files_changed'       # 钉选文件列表发生变化
-    FILES_CHECK_CHANGED = 'files_check_changed' # 文件勾选状态变化 (checked: set[Path])
-    FILE_SELECTED       = 'file_selected'       # 用户选中某文件
-    PAGE_CHANGED        = 'page_changed'        # 导航页切换
-    PROGRESS_UPDATE     = 'progress_update'     # 进度更新 (value: float 0-1)
-    PROGRESS_DONE       = 'progress_done'       # 处理完成
-    PROGRESS_ERROR      = 'progress_error'      # 处理出错 (message: str)
-    LOG_LINE            = 'log_line'            # 新日志行 (line: str)
-    MXL_READY           = 'mxl_ready'          # MusicXML 文件就绪 (path: Path)
-    TRANSPOSED_READY    = 'transposed_ready'    # 移调结果就绪 (path: Path)
-    JIANPU_TXT_SELECTED = 'jianpu_txt_selected' # 编辑器选中某行简谱 (line_no: int)
-    THEME_CHANGED       = 'theme_changed'       # 主题切换 (dark: bool)
+    FILES_CHANGED       = 'files_changed'       # pinned file list changed
+    FILES_CHECK_CHANGED = 'files_check_changed' # file check state changed (checked: set[Path])
+    FILE_SELECTED       = 'file_selected'       # user selected a file
+    PAGE_CHANGED        = 'page_changed'        # navigation page switched
+    PROGRESS_UPDATE     = 'progress_update'     # progress update (value: float 0-1)
+    PROGRESS_DONE       = 'progress_done'       # processing finished
+    PROGRESS_ERROR      = 'progress_error'      # processing error (message: str)
+    LOG_LINE            = 'log_line'            # new log line (line: str)
+    MXL_READY           = 'mxl_ready'          # MusicXML ready (path: Path)
+    TRANSPOSED_READY    = 'transposed_ready'    # transposition result ready (path: Path)
+    JIANPU_TXT_SELECTED = 'jianpu_txt_selected' # editor selected a jianpu row (line_no: int)
+    THEME_CHANGED       = 'theme_changed'       # theme toggled (dark: bool)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 应用状态
+# Application state
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class AppState:
-    """线程安全的全局应用状态。
+    """Thread-safe global application state.
 
-    UI 组件通过 state.on(Event.XXX, callback) 订阅变更通知，
-    通过 state.emit(Event.XXX, **kwargs) 发布事件。
+    UI components subscribe to changes via state.on(Event.XXX, callback)
+    and publish events via state.emit(Event.XXX, **kwargs).
 
-    所有字段都是普通 Python 对象；Flet 控件不应存入此类。
+    All fields are plain Python objects; Flet controls must not be stored here.
     """
 
-    # 文件管理
+    # File management
     pinned_files: list[Path]        = field(default_factory=list)
-    checked_files: set[Path]        = field(default_factory=set)   # 勾选用于转换的文件
+    checked_files: set[Path]        = field(default_factory=set)   # files checked for conversion
     current_file: Optional[Path]    = None
 
-    # 中间产物路径
-    current_mxl:       Optional[Path] = None   # 最近识别到的 MusicXML
-    transposed_mxl:    Optional[Path] = None   # 移调结果
-    current_jianpu_txt: Optional[Path] = None  # 当前编辑的简谱文本
-    output_pdf:        Optional[Path] = None   # 已生成的简谱 PDF
+    # Intermediate output paths
+    current_mxl:       Optional[Path] = None   # most recent OMR-recognised MusicXML
+    transposed_mxl:    Optional[Path] = None   # transposition result
+    current_jianpu_txt: Optional[Path] = None  # jianpu text file open in editor
+    output_pdf:        Optional[Path] = None   # generated jianpu PDF
 
-    # 移调参数
+    # Transposition parameters
     transpose_from_key: str = 'C'
     transpose_to_key:   str = 'C'
 
-    # UI 状态
+    # UI state
     current_page:  str  = 'landing'  # 'landing' | 'editor' | 'transposer'
     dark_mode:     bool = True
     is_processing: bool = False
     progress:      float = 0.0
 
-    # 日志
+    # Log
     log_lines: list[str] = field(default_factory=list)
     max_log_lines: int = 500
 
-    # 转换结果记录
+    # Conversion result record
     conversion_summary: dict[str, Any] = field(default_factory=dict)
 
-    # 内部：事件总线
+    # Internal: event bus
     _listeners: dict[str, list[Callable]] = field(default_factory=dict)
     _lock: threading.Lock                 = field(default_factory=threading.Lock)
 
-    # ── 事件总线 ────────────────────────────────────────────────────────────
+    # ── Event bus ───────────────────────────────────────────────────────────
 
     def on(self, event: str, callback: Callable, *, once: bool = False) -> None:
-        """订阅事件。callback 在 emit 时同步调用（需注意在线程中 update UI）。"""
+        """Subscribe to an event. The callback is called synchronously on emit
+        (take care with UI updates from non-main threads)."""
         with self._lock:
             if event not in self._listeners:
                 self._listeners[event] = []
@@ -110,10 +111,10 @@ class AppState:
             except Exception:
                 pass  # GUI 回调不应让核心逻辑崩溃
 
-    # ── 状态变更辅助 ─────────────────────────────────────────────────────────
+    # ── State mutation helpers ──────────────────────────────────────────────
 
     def add_file(self, path: Path) -> None:
-        """添加文件到列表（只允许支持的格式）。"""
+        """Add a file to the pinned list (supported formats only)."""
         path = path.resolve()
         # 验证文件类型（只允许 pdf, png, jpg, jpeg）
         supported_suffixes = {'.pdf', '.png', '.jpg', '.jpeg'}
@@ -133,7 +134,7 @@ class AppState:
         self.emit(Event.FILES_CHANGED, files=list(self.pinned_files))
 
     def toggle_check(self, path: Path) -> None:
-        """切换单个文件的勾选状态。"""
+        """Toggle the checked state of a single file."""
         path = path.resolve()
         if path in self.checked_files:
             self.checked_files.discard(path)
@@ -142,12 +143,12 @@ class AppState:
         self.emit(Event.FILES_CHECK_CHANGED, checked=set(self.checked_files))
 
     def check_all(self) -> None:
-        """勾选所有已加载的文件。"""
+        """Check all loaded files."""
         self.checked_files = set(self.pinned_files)
         self.emit(Event.FILES_CHECK_CHANGED, checked=set(self.checked_files))
 
     def uncheck_all(self) -> None:
-        """取消勾选所有文件。"""
+        """Uncheck all files."""
         self.checked_files = set()
         self.emit(Event.FILES_CHECK_CHANGED, checked=set(self.checked_files))
 
@@ -183,5 +184,5 @@ class AppState:
         self.emit(Event.THEME_CHANGED, dark=self.dark_mode)
 
 
-# 全局单例（app.py 初始化后应替换为此实例）
+# Module-level singleton; app.py replaces this with the live instance at startup.
 state = AppState()
