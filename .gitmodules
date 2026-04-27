@@ -10,3 +10,6 @@
 [submodule "omr_engine/oemer"]
 	path = omr_engine/oemer
 	url = https://github.com/BreezeWhite/oemer.git
+[submodule "omr_engine/audiveris"]
+	path = omr_engine/audiveris
+	url = https://github.com/audiveris/audiveris.git
