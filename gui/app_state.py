@@ -60,7 +60,7 @@ class AppState:
 
     # UI state
     current_page:  str  = 'landing'  # 'landing' | 'editor' | 'transposer'
-    dark_mode:     bool = True
+    dark_mode:     bool = False
     is_processing: bool = False
     progress:      float = 0.0
 

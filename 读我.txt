@@ -1,7 +1,7 @@
 简谱转换工具
 ============
 
-版本：v0.2.4
+版本：v0.3.0
 
 author：Tsukamotoshio
 
@@ -11,7 +11,7 @@ author：Tsukamotoshio
 版本更新
 --------
 
-0.2.4（当前版本）
+0.3.0（当前版本）
   - OMR 引擎下拉菜单：新增「自动选择（推荐）」选项，程序自动根据输入
     格式与图像质量将任务路由至 Audiveris 或 Homr；Homr GPU 模式崩溃
     时自动回退到 CPU 模式重试，无需手动干预
@@ -79,7 +79,7 @@ author：Tsukamotoshio
 --------
 
 1. 将五线谱文件（PDF / PNG / JPG）放入 Input 文件夹，或直接拖入左侧文件侧边栏
-2. 双击桌面快捷方式"简谱转换工具"，或运行安装目录下的 ConvertTool.exe
+2. 双击桌面快捷方式"简谱转换工具"，或运行安装目录下的 SumisoraOMR.exe
 3. 在文件侧边栏中选中要转换的文件
 4. 选择 OMR 引擎：
      自动选择（推荐）— 程序自动判断，矢量 PDF 走 Audiveris，图片或
@@ -148,7 +148,7 @@ author：Tsukamotoshio
 - 处理速度较慢：Audiveris/Homr 启动耗时较长，识别速度取决于机器性能
 - 调号 / 拍号边缘情况：少数非常规调号或变拍子乐谱可能不准确
 - OMR 引擎自动路由暂时不可用：需手动选择引擎（Audiveris 或 Homr）
-- Homr 为实验性引擎：对印刷五线谱的识别质量可能低于 Audiveris
+- Homr 对印刷五线谱的识别质量可能低于 Audiveris
 - Homr 仅识别高音 / 低音谱表上的音高与节奏，忽略强弱记号、演奏法、
   重升号 / 重降号以及其他音乐记号
 

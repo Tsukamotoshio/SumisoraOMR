@@ -2,7 +2,7 @@ OMR-to-Jianpu Conversion Tool
 ==============================
 
 Author:  Tsukamotoshio
-Version: v0.2.4
+Version: v0.3.0
 
 Batch-convert Western staff notation PDFs into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
@@ -11,7 +11,7 @@ notation) PDFs, with optional MIDI output.
 What's New
 ----------
 
-0.2.4 (current)
+0.3.0 (current)
   - OMR engine dropdown: a new "Auto (Recommended)" option automatically
     routes each file to Audiveris or Homr based on input format and image
     quality; if Homr crashes in GPU mode it falls back to CPU and retries
@@ -108,7 +108,7 @@ Usage
 1. Place sheet music files (PDF / PNG / JPG) into the Input folder, or drag
    them directly into the file sidebar.
 2. Double-click the "Jianpu Conversion Tool" desktop shortcut, or run
-   ConvertTool.exe in the installation directory.
+   SumisoraOMR.exe in the installation directory.
 3. In the file sidebar, select the files you want to convert.
 4. Choose the OMR engine:
      Auto (Recommended)  — the app decides automatically; vector PDFs go
@@ -184,8 +184,7 @@ Known Limitations
   key changes may yield inaccurate results.
 - Automatic OMR engine routing is temporarily unavailable. The engine must
   be selected manually (Audiveris or Homr).
-- Homr is experimental. Recognition quality may be lower than Audiveris
-  for printed scores.
+- Homr recognition quality for printed scores may be lower than Audiveris.
 - Homr only captures pitch and rhythm on treble/bass clef. Dynamics,
   articulation, double sharps/flats, and other musical symbols are ignored.
 

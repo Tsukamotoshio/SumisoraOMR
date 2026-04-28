@@ -43,7 +43,7 @@
 ## Usage
 
 1. Drop your staff notation files (`.pdf`, `.png`, `.jpg`) into the `Input` folder.
-2. Launch the app — double-click the **简谱转换工具** shortcut or run `ConvertTool.exe`.
+2. Launch the app — double-click the **简谱转换工具** shortcut or run `SumisoraOMR.exe`.
 3. Follow the prompts to start conversion and choose whether to generate MIDI.
 4. Converted files appear in the `Output` folder.
 

@@ -55,7 +55,7 @@ AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris', 'audiveris-5.10.2')
 HOMR_SOURCE_DIR_NAME = 'homr'
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 7
-APP_VERSION = '0.2.4'
+APP_VERSION = '0.3.0'
 AUDIVERIS_MSI_NAMES = [
     'Audiveris-5.10.2-windows-x86_64.msi',
     'Audiveris.msi',
@@ -78,7 +78,7 @@ class SREngine(Enum):
 
 
 # ──────────────────────────────────────────────
-# OMR 引擎枚举（experimental-v0.2.0 新增）
+# OMR 引擎枚举
 # ──────────────────────────────────────────────
 class OMREngine(Enum):
     """可选的光学乐谱识别 (OMR) 引擎。

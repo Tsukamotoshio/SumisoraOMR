@@ -5,7 +5,7 @@ chcp 65001 >nul
 set "BASE_DIR=%~dp0"
 cd /d "%BASE_DIR%.."
 set "BASE_DIR=%CD%\"
-set "APP_VERSION=0.2.4"
+set "APP_VERSION=0.3.0"
 
 set "AUDIVERIS_SOURCE=%BASE_DIR%omr_engine\audiveris"
 set "AUDIVERIS_RUNTIME_SRC=%AUDIVERIS_SOURCE%\app\build\install\app"
@@ -90,7 +90,7 @@ if not exist "%PYTHON_CMD%" (
 echo [TRACE] PYTHON_CMD final=%PYTHON_CMD%
 
 echo [2/3] Building executable...
-call %PYTHON_CMD% -m PyInstaller --noconfirm --clean ConvertTool.spec
+call %PYTHON_CMD% -m PyInstaller --noconfirm --clean SumisoraOMR.spec
 if errorlevel 1 ( echo [ERROR] PyInstaller build failed. & exit /b 1 )
 
 set "ISCC_EXE="
@@ -114,5 +114,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo [OK] Installer created: %BASE_DIR%installer-dist\ConvertTool-Setup-%APP_VERSION%.exe
+echo [OK] Installer created: %BASE_DIR%installer-dist\SumisoraOMR-Setup-%APP_VERSION%.exe
 exit /b 0

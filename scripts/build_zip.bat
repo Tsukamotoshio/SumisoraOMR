@@ -15,11 +15,11 @@ echo [DEBUG] BASE_DIR=%BASE_DIR%
 
 
 
-set "APP_VERSION=0.2.4"
+set "APP_VERSION=0.3.0"
 
 
 
-set "APP_NAME=ConvertTool"
+set "APP_NAME=SumisoraOMR"
 
 set "ZIP_NAME=%APP_NAME%-Portable-%APP_VERSION%"
 
@@ -113,7 +113,7 @@ echo [WARN] waifu2x-ncnn-vulkan not found, skipping super-resolution module.
 
     echo [2/3] Building executable...
 
-    "%BASE_DIR%.venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean ConvertTool.spec
+    "%BASE_DIR%.venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean SumisoraOMR.spec
 
     if errorlevel 1 ( echo [ERROR] PyInstaller build failed. ^& exit /b 1 )
 

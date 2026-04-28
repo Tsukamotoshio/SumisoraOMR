@@ -170,7 +170,7 @@ class TUI:
             self.console.print(Panel(
                 f'[yellow]程序安装路径：[/yellow]{base_dir}\n\n'
                 '[bold white]解决方法：[/bold white]\n'
-                '  右键点击 [cyan]ConvertTool.exe[/cyan]\n'
+                '  右键点击 [cyan]SumisoraOMR.exe[/cyan]\n'
                 '  选择 [bold cyan]"以管理员身份运行"[/bold cyan]\n\n'
                 '[dim]按任意键关闭...[/dim]',
                 title='[bold red]  权限不足，无法写入程序目录  [/bold red]',
@@ -308,7 +308,7 @@ class TUI:
         gpu_available = _homr_gpu_available()
         gpu_info = '已检测到 GPU（DirectML/CUDA）' if gpu_available else 'CPU（未检测到可用 GPU）'
         self.console.print(
-            '  [bold]3[/bold]  [cyan]Homr[/cyan]  [dim]（实验性，手动指定，强制用于所有格式）[/dim]'
+            '  [bold]3[/bold]  [cyan]Homr[/cyan]  [dim]（手动指定，强制用于所有格式）[/dim]'
         )
         self.console.print(
             '         [dim]对拍照乐谱（手机拍摄、光线不均匀、低对比度图像）效果更好[/dim]'
@@ -606,7 +606,7 @@ class TUI:
             '  • [green]自动（推荐）[/green] — PDF + 图片（PNG/JPG）→ Audiveris\n'
             '  • [cyan]Audiveris[/cyan] — 手动指定，强制用于所有格式\n'
             '    基于规则的传统 OMR 引擎，对高对比度印刷乐谱和 PDF 效果最佳\n'
-            '  • [cyan]Homr[/cyan]      — 实验性，基于深度学习\n'
+            '  • [cyan]Homr[/cyan]      — 基于深度学习\n'
             '    对手机拍摄或光线不均匀图像效果更好，使用前请确认 homr 运行环境安装完成\n\n'
             '[bold]简谱编辑器说明[/bold]\n'
             '  • 每次转换后，工具自动保留 OMR 识别的中间文件到 [cyan]editor-workspace[/cyan] 目录\n'

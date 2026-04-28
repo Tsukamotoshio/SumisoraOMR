@@ -106,6 +106,9 @@ hiddenimports += collect_submodules('flet_desktop')
 hiddenimports += collect_submodules('gui')
 datas += [('gui', 'gui')]
 
+# ── 应用图标及静态资源 ──────────────────────────────────────────────────────────
+datas += [('assets', 'assets')]
+
 
 a = Analysis(
     ['app.py'],
@@ -147,7 +150,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ConvertTool',
+    name='SumisoraOMR',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -158,6 +161,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='assets/icon.ico',
 )
 coll = COLLECT(
     exe,
@@ -166,5 +170,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ConvertTool',
+    name='SumisoraOMR',
 )

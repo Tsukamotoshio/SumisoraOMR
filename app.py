@@ -122,6 +122,10 @@ _NAV_ITEMS = [
 async def main(page: ft.Page) -> None:
     # ── Page base configuration ───────────────────────────────────────────────
     page.title       = 'OMR 乐谱转换工具'
+    _base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    _ico_path = os.path.join(_base_dir, 'assets', 'icon.ico')
+    if os.path.isfile(_ico_path):
+        page.window.icon = _ico_path
     page.window.min_width        = 900
     page.window.min_height       = 600
     page.window.width            = 1280
@@ -141,8 +145,8 @@ async def main(page: ft.Page) -> None:
         # macOS / Linux 回退：直接用系统字体名（无需 page.fonts 注册）
         _font_key = 'PingFang SC' if _os.path.isfile('/System/Library/Fonts/PingFang.ttc') else 'Noto Sans CJK SC'
 
-    page.theme_mode  = ft.ThemeMode.DARK
-    page.theme       = make_dark_theme(font_family=_font_key)
+    page.theme_mode  = ft.ThemeMode.LIGHT
+    page.theme       = make_light_theme(font_family=_font_key)
     page.dark_theme  = make_dark_theme(font_family=_font_key)
 
     # ── Global state ──────────────────────────────────────────────────────────
@@ -232,7 +236,7 @@ async def main(page: ft.Page) -> None:
 
     # ── Theme toggle (top-right) ──────────────────────────────────────────────
     _theme_icon = ft.IconButton(
-        icon=ft.Icons.DARK_MODE_ROUNDED,
+        icon=ft.Icons.LIGHT_MODE_ROUNDED,
         icon_color=ft.Colors.ON_SURFACE_VARIANT,
         tooltip='切换明暗主题',
         on_click=lambda _e: _toggle_theme(),
@@ -313,10 +317,10 @@ async def main(page: ft.Page) -> None:
                     content=ft.Row(
                         controls=[
                             ft.Container(width=8),
-                            ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, color=Palette.PRIMARY, size=16),
+                            ft.Image(src='Sumisora.png', width=18, height=18),
                             ft.Container(width=6),
                             ft.Text(
-                                'OMR 乐谱转换工具  v0.2.4',
+                                'OMR 乐谱转换工具  v0.3.0',
                                 size=13,
                                 weight=ft.FontWeight.W_600,
                                 color=ft.Colors.ON_SURFACE,
@@ -438,16 +442,16 @@ async def main(page: ft.Page) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# [Dev & packaged] Make Task Manager show "ConvertTool" instead of "flet"
+# [Dev & packaged] Make Task Manager show "SumisoraOMR" instead of "flet"
 # ─────────────────────────────────────────────────────────────────────────────
 # flet_desktop 通过 open_flet_view_async 启动 Flutter 窗口进程。
-# 此函数确保使用重命名后的 ConvertTool.exe 作为 Flutter 运行时，
+# 此函数确保使用重命名后的 SumisoraOMR.exe 作为 Flutter 运行时，
 # 并 monkey-patch open_flet_view_async 直接指定该 exe，
 # 不依赖 os.getcwd()/build/windows/ 发现机制。
 #
 # 开发模式：从 ~/.flet/client/flet-desktop-full-X.Y.Z/flet/ 复制并重命名
 # 打包版  ：从 _MEIPASS/flet_desktop/app/flet-windows.zip 解压并重命名
-#           目标目录均为 ~/.flet/ConvertTool/<version>/，首次运行后缓存，不重复操作。
+#           目标目录均为 ~/.flet/SumisoraOMR/<version>/，首次运行后缓存，不重复操作。
 def _setup_flet_view_name() -> None:
     if sys.platform != 'win32':
         return
@@ -459,9 +463,9 @@ def _setup_flet_view_name() -> None:
         import flet_desktop.version as _fdv
         from flet.utils.strings import random_string as _rstr
 
-        _EXE   = 'ConvertTool.exe'
+        _EXE   = 'SumisoraOMR.exe'
         _ver   = _fdv.version
-        _dir   = _Path.home() / '.flet' / 'ConvertTool' / _ver
+        _dir   = _Path.home() / '.flet' / 'SumisoraOMR' / _ver
         _exe   = _dir / _EXE
         _stamp = _dir / '.stamp'
 
@@ -507,7 +511,7 @@ def _setup_flet_view_name() -> None:
                     else:
                         _shutil.copy2(_item, _dst)
 
-            # flet.exe → ConvertTool.exe（两种来源均适用）
+            # flet.exe → SumisoraOMR.exe（两种来源均适用）
             _flet_exe = _dir / 'flet.exe'
             if _flet_exe.exists():
                 _flet_exe.rename(_exe)
@@ -517,7 +521,7 @@ def _setup_flet_view_name() -> None:
             return  # 设置失败，回退到默认 flet.exe
 
         # ── monkey-patch open_flet_view_async ────────────────────────────────
-        # 直接指定 ConvertTool.exe，跳过 flet_desktop 内部的路径发现逻辑，
+        # 直接指定 SumisoraOMR.exe，跳过 flet_desktop 内部的路径发现逻辑，
         # 避免对 os.getcwd() / build/windows/ 的依赖
         _exe_str = str(_exe)
 

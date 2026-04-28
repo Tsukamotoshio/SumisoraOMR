@@ -1,5 +1,6 @@
 # core/utils.py — 基础工具函数
 # 拆分自 convert.py
+import hashlib
 import json
 import logging
 import os
@@ -16,9 +17,9 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 
 try:
-    from pypdf import PdfReader
+    import fitz as _fitz  # PyMuPDF
 except Exception:
-    PdfReader = None  # type: ignore
+    _fitz = None  # type: ignore
 
 from .config import (
     AUDIVERIS_RUNTIME_DIR_NAME,
@@ -37,7 +38,7 @@ from .config import (
 # 可变全局：由 setup_logging 在首次调用时赋值
 LOG_FILE_PATH: Optional[Path] = None
 
-USER_CONFIG_DIR_NAME = 'ConvertTool'
+USER_CONFIG_DIR_NAME = 'SumisoraOMR'
 
 
 def get_app_base_dir() -> Path:
@@ -91,13 +92,13 @@ def _get_logs_dir(base_dir: Path) -> Path:
     """Return the logs directory.
 
     When frozen (installed under a protected path such as C:\\Program Files),
-    redirect logs to %LOCALAPPDATA%\\ConvertTool\\logs so that normal users can
+    redirect logs to %LOCALAPPDATA%\\SumisoraOMR\\logs so that normal users can
     write log files without requiring administrator privileges.
     """
     if getattr(sys, 'frozen', False):
         local_app_data = os.environ.get('LOCALAPPDATA', '')
         if local_app_data:
-            return Path(local_app_data) / 'ConvertTool' / AppConfig().logs_dir_name
+            return Path(local_app_data) / 'SumisoraOMR' / AppConfig().logs_dir_name
     return base_dir / AppConfig().logs_dir_name
 
 
@@ -155,10 +156,11 @@ def safe_remove_tree(path: Path) -> None:
 
 def get_pdf_page_count(pdf_path: Path) -> int:
     """Return the page count of a PDF, or 0 if unreadable."""
-    if PdfReader is None or pdf_path.suffix.lower() != '.pdf' or not pdf_path.exists():
+    if _fitz is None or pdf_path.suffix.lower() != '.pdf' or not pdf_path.exists():
         return 0
     try:
-        return len(PdfReader(str(pdf_path)).pages)
+        with _fitz.open(str(pdf_path)) as doc:
+            return doc.page_count
     except Exception:
         return 0
 
@@ -315,7 +317,7 @@ def find_local_tessdata_dir() -> Optional[Path]:
     candidates: list[Path] = []
     for base_dir in get_runtime_search_roots():
         omr_engine_dir = base_dir / OMR_ENGINE_DIR_NAME
-    candidates.extend([
+        candidates.extend([
             base_dir / 'tessdata',
             base_dir / RUNTIME_ASSETS_DIR_NAME / 'tessdata',
             base_dir / 'audiveris-5.10.2' / 'app' / 'dev' / 'tessdata',
@@ -503,28 +505,25 @@ def extract_lyrics_lines_from_score(score) -> list[str]:
 
 def extract_lyrics_lines_from_pdf(pdf_path: Path) -> list[str]:
     """Extract lyric lines from the embedded text of a PDF."""
-    if PdfReader is None or pdf_path.suffix.lower() != '.pdf' or not pdf_path.exists():
+    if _fitz is None or pdf_path.suffix.lower() != '.pdf' or not pdf_path.exists():
         return []
     lyric_lines: list[str] = []
     seen: set[str] = set()
     try:
-        reader = PdfReader(str(pdf_path))
-        for page in reader.pages:
-            try:
-                text = page.extract_text(extraction_mode='layout') or page.extract_text() or ''
-            except TypeError:
-                text = page.extract_text() or ''
-            for raw_line in text.splitlines():
-                cleaned = clean_lyrics_line(raw_line)
-                if len(cleaned) < 6:
-                    continue
-                letter_count = sum(ch.isalpha() or ('\u4e00' <= ch <= '\u9fff') for ch in cleaned)
-                if letter_count < 4:
-                    continue
-                if cleaned.lower() in seen:
-                    continue
-                seen.add(cleaned.lower())
-                lyric_lines.append(cleaned)
+        with _fitz.open(str(pdf_path)) as doc:
+            for page in doc:
+                text: str = page.get_text('text') or ''  # type: ignore[assignment]
+                for raw_line in text.splitlines():
+                    cleaned = clean_lyrics_line(raw_line)
+                    if len(cleaned) < 6:
+                        continue
+                    letter_count = sum(ch.isalpha() or ('\u4e00' <= ch <= '\u9fff') for ch in cleaned)
+                    if letter_count < 4:
+                        continue
+                    if cleaned.lower() in seen:
+                        continue
+                    seen.add(cleaned.lower())
+                    lyric_lines.append(cleaned)
     except Exception:
         return []
     return lyric_lines[:40]

@@ -1,11 +1,11 @@
 #define MyAppName "简谱转换工具"
-#define MyAppVersion "0.2.4"
+#define MyAppVersion "0.3.0"
 
-#define MyAppVersionNumeric "0.2.4.0"
+#define MyAppVersionNumeric "0.3.0.0"
 #define MyAppPublisher "Tsukamotoshio"
-#define MyAppExeName "ConvertTool.exe"
+#define MyAppExeName "SumisoraOMR.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
-#define MyAppURL "https://github.com/Tsukamotoshio/OMR-to-Jianpu-Conversion-Tool"
+#define MyAppURL "https://github.com/Tsukamotoshio/SumisoraOMR"
 
 [Setup]
 AppId={{D5D0D1C4-0E83-4A2E-BE8E-3D5A0A93F101}
@@ -13,11 +13,12 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-DefaultDirName={autopf}\ConvertTool-{#MyAppVersion}
+DefaultDirName={autopf}\SumisoraOMR-{#MyAppVersion}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer-dist
-OutputBaseFilename=ConvertTool-Setup-{#MyAppVersion}
+OutputBaseFilename=SumisoraOMR-Setup-{#MyAppVersion}
+SetupIconFile=assets\icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -47,7 +48,7 @@ Name: "{app}\Input"
 Name: "{app}\Output"
 
 [Files]
-Source: "dist\ConvertTool\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\SumisoraOMR\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\lilypond-runtime\*"; DestDir: "{app}\lilypond-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\audiveris-runtime\*"; DestDir: "{app}\audiveris-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\tessdata\*"; DestDir: "{app}\tessdata"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
@@ -264,9 +265,9 @@ begin
   if InstallMode = MODE_UPGRADE then
   begin
     if OldInstallDir <> '' then
-      WizardForm.DirEdit.Text := ExtractFileDir(OldInstallDir) + '\ConvertTool-{#MyAppVersion}'
+      WizardForm.DirEdit.Text := ExtractFileDir(OldInstallDir) + '\SumisoraOMR-{#MyAppVersion}'
     else
-      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\ConvertTool-{#MyAppVersion}');
+      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\SumisoraOMR-{#MyAppVersion}');
   end;
 
   if InstallMode = MODE_FRESH then Exit;
