@@ -76,6 +76,19 @@ if exist "%BASE_DIR%waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
 )
 :waifu2x_done
 
+if exist "%BASE_DIR%package-assets\realesrgan-runtime\realesrgan-ncnn-vulkan.exe" (
+    echo [INFO] realesrgan-runtime already exists, skipping.
+    goto :realesrgan_done
+)
+if exist "%BASE_DIR%realesrgan-runtime\realesrgan-ncnn-vulkan.exe" (
+    mkdir "%PACKAGE_ASSETS%\realesrgan-runtime"
+    robocopy "%BASE_DIR%realesrgan-runtime" "%PACKAGE_ASSETS%\realesrgan-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+    echo [INFO] realesrgan-runtime copied.
+    goto :realesrgan_done
+)
+echo [WARN] realesrgan-runtime not found, skipping Real-ESRGAN module.
+:realesrgan_done
+
 echo [DEBUG] skipping homr config check
 
 echo [DEBUG] after homr config

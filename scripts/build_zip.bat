@@ -43,6 +43,12 @@ if exist "%BASE_DIR%waifu2x-ncnn-vulkan\waifu2x-ncnn-vulkan.exe" (
 
 )
 
+if exist "%BASE_DIR%realesrgan-runtime\realesrgan-ncnn-vulkan.exe" (
+
+    if not exist "%BASE_DIR%package-assets\realesrgan-runtime\realesrgan-ncnn-vulkan.exe" set "ASSETS_READY=0"
+
+)
+
 if "%ASSETS_READY%"=="1" (
 
 echo [SKIP] package-assets already exists, skipping preparation.
@@ -102,7 +108,22 @@ echo [1/3] Preparing runtime assets...
     echo [INFO] waifu2x-runtime copied.
     ) else (
 
-echo [WARN] waifu2x-ncnn-vulkan not found, skipping super-resolution module.
+echo [WARN] waifu2x-ncnn-vulkan not found, skipping waifu2x module.
+    )
+
+    if exist "!BASE_DIR!package-assets\realesrgan-runtime\realesrgan-ncnn-vulkan.exe" (
+
+        echo [INFO] realesrgan-runtime already exists, skipping.
+    ) else if exist "!BASE_DIR!realesrgan-runtime\realesrgan-ncnn-vulkan.exe" (
+
+        mkdir "!PACKAGE_ASSETS!\realesrgan-runtime"
+
+        robocopy "!BASE_DIR!realesrgan-runtime" "!PACKAGE_ASSETS!\realesrgan-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+
+    echo [INFO] realesrgan-runtime copied.
+    ) else (
+
+echo [WARN] realesrgan-runtime not found, skipping Real-ESRGAN module.
     )
 
 )
@@ -142,6 +163,8 @@ robocopy "%BASE_DIR%package-assets\audiveris-runtime" "%STAGE_DIR%\audiveris-run
 if exist "%BASE_DIR%package-assets\tessdata"        robocopy "%BASE_DIR%package-assets\tessdata"        "%STAGE_DIR%\tessdata"        /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
 if exist "%BASE_DIR%package-assets\waifu2x-runtime" robocopy "%BASE_DIR%package-assets\waifu2x-runtime" "%STAGE_DIR%\waifu2x-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
+
+if exist "%BASE_DIR%package-assets\realesrgan-runtime" robocopy "%BASE_DIR%package-assets\realesrgan-runtime" "%STAGE_DIR%\realesrgan-runtime" /E /NFL /NDL /NJH /NJS /NC /NS >nul
 
 if exist "%BASE_DIR%jdk" (
     robocopy "%BASE_DIR%jdk" "%STAGE_DIR%\jdk" /E /NFL /NDL /NJH /NJS /NC /NS >nul

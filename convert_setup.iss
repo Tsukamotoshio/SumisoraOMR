@@ -13,7 +13,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-DefaultDirName={autopf}\SumisoraOMR-{#MyAppVersion}
+DefaultDirName={autopf}\SumisoraOMR
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer-dist
@@ -53,10 +53,9 @@ Source: "package-assets\lilypond-runtime\*"; DestDir: "{app}\lilypond-runtime"; 
 Source: "package-assets\audiveris-runtime\*"; DestDir: "{app}\audiveris-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\tessdata\*"; DestDir: "{app}\tessdata"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "package-assets\waifu2x-runtime\*"; DestDir: "{app}\waifu2x-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "package-assets\realesrgan-runtime\*"; DestDir: "{app}\realesrgan-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "jdk\*"; DestDir: "{app}\jdk"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "scripts\jianpu-ly.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Input\Do_You_Hear_the_People_Sing.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
-Source: "Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf"; DestDir: "{app}\Input"; Flags: ignoreversion
 Source: "README_EN.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
 Source: "读我.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -265,9 +264,9 @@ begin
   if InstallMode = MODE_UPGRADE then
   begin
     if OldInstallDir <> '' then
-      WizardForm.DirEdit.Text := ExtractFileDir(OldInstallDir) + '\SumisoraOMR-{#MyAppVersion}'
+      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\SumisoraOMR')
     else
-      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\SumisoraOMR-{#MyAppVersion}');
+      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\SumisoraOMR');
   end;
 
   if InstallMode = MODE_FRESH then Exit;
