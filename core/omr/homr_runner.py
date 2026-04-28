@@ -1,5 +1,5 @@
 # core/homr_runner.py — homr OMR 引擎封装
-# 本模块将本地 homr 仓库目录作为可选 OMR 引擎，支持图片输入和 PDF 首页。
+# 本模块将本地 homr 仓库目录作为可选 OMR 引擎，支持图片输入和 PDF（多页）输入。
 
 import logging
 import io
@@ -89,33 +89,38 @@ def _suppress_homr_output():
             root_logger.addHandler(h)
 
 
-def _pdf_first_page_to_png(
+def _pdf_pages_to_png(
     pdf_path: Path,
     output_dir: Path,
     engine_label: str = 'homr',
-) -> Optional[Path]:
-    """Convert the first page of a PDF to a PNG file using PyMuPDF.
+) -> list[Path]:
+    """Convert all pages of a PDF to PNG files using PyMuPDF.
 
-    Returns the PNG path on success, or None if conversion fails.
+    Returns a list of PNG paths (one per page) on success, or an empty list on failure.
     """
     try:
         import fitz  # PyMuPDF
     except ImportError:
         log_message(f'[{engine_label}] PyMuPDF (fitz) 未安装，无法处理 PDF 输入。', logging.WARNING)
-        return None
+        return []
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
         doc = fitz.open(str(pdf_path))
-        page = doc.load_page(0)
-        mat = fitz.Matrix(2.0, 2.0)  # 2× zoom → ~144 DPI from 72 DPI base
-        pix = page.get_pixmap(matrix=mat, alpha=False)
+        page_count = doc.page_count
+        png_paths: list[Path] = []
+        for i in range(page_count):
+            page = doc.load_page(i)
+            mat = fitz.Matrix(2.0, 2.0)  # 2× zoom → ~144 DPI from 72 DPI base
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            png_path = output_dir / f'{pdf_path.stem}_page{i + 1}.png'
+            pix.save(str(png_path))
+            png_paths.append(png_path)
         doc.close()
-        png_path = output_dir / (pdf_path.stem + '_page1.png')
-        pix.save(str(png_path))
-        return png_path
+        log_message(f'[{engine_label}] PDF 共 {page_count} 页，已导出为 PNG。')
+        return png_paths
     except Exception as exc:
-        log_message(f'[{engine_label}] PDF 首页转 PNG 失败：{exc}', logging.WARNING)
-        return None
+        log_message(f'[{engine_label}] PDF 转 PNG 失败：{exc}', logging.WARNING)
+        return []
 
 
 def _add_nvidia_cuda_dll_dirs() -> None:
@@ -222,7 +227,7 @@ def find_homr_source_dir() -> Optional[Path]:
 def _homr_api_available() -> bool:
     """Check whether homr can be imported from the local repository or installed package."""
     try:
-        import homr.main  # noqa: F401
+        import homr.main  # noqa: F401  # type: ignore[import-not-found]
         return True
     except Exception:
         source_dir = find_homr_source_dir()
@@ -233,7 +238,7 @@ def _homr_api_available() -> bool:
             if added:
                 sys.path.insert(0, str(source_dir))
         try:
-            import homr.main  # noqa: F401
+            import homr.main  # noqa: F401  # type: ignore[import-not-found]
             return True
         except Exception:
             return False
@@ -271,10 +276,6 @@ def _ensure_homr_import_path() -> Optional[Path]:
             sys.path.insert(0, str(source_dir))
             return source_dir
     return None
-
-
-def _add_nvidia_cuda_dll_dirs() -> None:
-    pass  # already called at module level above; kept for explicit call sites
 
 
 def _cuda_dlls_available() -> bool:
@@ -391,26 +392,247 @@ def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
         return None
 
 
+def _merge_homr_musicxml_pages(page_mxl_files: list[Path], output_path: Path) -> bool:
+    """将多个逐页 MusicXML 文件合并为单个 MusicXML 文件。
+
+    使用 music21 解析每页，将后续页的小节（deepcopy）追加到第一页对应声部末尾，
+    并按页偏移小节编号。
+    """
+    import copy
+    try:
+        from music21 import converter as m21conv, stream as m21stream
+
+        merged = m21conv.parse(str(page_mxl_files[0]))
+
+        for mxl_path in page_mxl_files[1:]:
+            page_score = m21conv.parse(str(mxl_path))
+            num_parts = min(len(merged.parts), len(page_score.parts))  # type: ignore[union-attr]
+            for part_i in range(num_parts):
+                target_part = merged.parts[part_i]  # type: ignore[union-attr]
+                page_part = page_score.parts[part_i]  # type: ignore[union-attr]
+
+                existing_measures = list(target_part.getElementsByClass(m21stream.Measure))
+                m_offset = max((m.number for m in existing_measures), default=0)
+
+                for measure in page_part.getElementsByClass(m21stream.Measure):
+                    new_m = copy.deepcopy(measure)
+                    new_m.number = m_offset + measure.number
+                    target_part.append(new_m)
+
+        merged.write('musicxml', fp=str(output_path))
+        return True
+    except Exception as exc:
+        log_message(f'[homr] 多页 MusicXML 合并失败: {exc}', logging.WARNING)
+        return False
+
+
+def _run_homr_multipage_pdf(
+    source_pdf: Path,
+    page_png_paths: list[Path],
+    output_dir: Path,
+    use_gpu_inference: Optional[bool] = None,
+    progress_fn=None,
+) -> Optional[Path]:
+    """逐页运行 Homr 推理并合并结果，用于多页 PDF 输入。
+
+    模型权重仅下载一次；GPU→CPU 回退后，后续页也切换为 CPU 模式。
+    """
+    total_pages = len(page_png_paths)
+    log_message(f'[homr] 多页 PDF，共 {total_pages} 页，逐页识别…')
+
+    if use_gpu_inference is None:
+        use_gpu_inference = _homr_gpu_available()
+
+    _avail_mb = _get_available_memory_mb()
+    _batch_size = _compute_segnet_batch_size(_avail_mb)
+    if _avail_mb is not None:
+        log_message(f'[homr] 可用内存 {_avail_mb} MB，SegNet 批大小: {_batch_size}。')
+
+    # ── 一次性初始化：导入、下载权重 ─────────────────────────────────────────
+    source_dir = _ensure_homr_import_path()
+    _add_nvidia_cuda_dll_dirs()
+    try:
+        import homr.main as homr_main  # type: ignore[import-not-found]
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
+        with ThreadPoolExecutor(max_workers=1) as _dl_ex:
+            log_message('[homr] 检查模型权重…')
+            with _suppress_homr_output():
+                _dl_future = _dl_ex.submit(homr_main.download_weights, use_gpu_inference)
+                try:
+                    _dl_future.result(timeout=120)
+                except _TimeoutError:
+                    log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
+                    return None
+                except Exception as _dl_exc:
+                    log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
+                    return None
+    except Exception as exc:
+        log_message(f'[homr] homr 模块初始化失败: {exc}')
+        if source_dir is not None:
+            with _PATH_LOCK:
+                if str(source_dir) in sys.path:
+                    sys.path.remove(str(source_dir))
+        return None
+
+    page_mxl_files: list[Path] = []
+    _gpu_mode = use_gpu_inference  # 可能在首次 GPU 失败后切换为 False
+
+    try:
+        for page_idx, page_png in enumerate(page_png_paths):
+            page_num = page_idx + 1
+            log_message(f'[homr] 正在处理第 {page_num}/{total_pages} 页…')
+
+            if progress_fn:
+                frac = page_idx / total_pages
+                progress_fn(0.05 + frac * 0.55, f'[homr] 正在处理第 {page_num}/{total_pages} 页…')
+
+            page_out_dir = output_dir / f'_page_{page_num}'
+            page_out_dir.mkdir(parents=True, exist_ok=True)
+
+            # 预处理
+            preprocess_dir = page_out_dir / '_homr_preprocessed'
+            log_message(f'[homr] 第 {page_num} 页：正在进行图像预处理…')
+            preprocessed = _preprocess_for_homr(page_png, preprocess_dir)
+            image_path = preprocessed if preprocessed is not None else page_png
+
+            safe_image_path = page_out_dir / f'homr_input{image_path.suffix.lower()}'
+            if not safe_image_path.exists() or safe_image_path.stat().st_size != image_path.stat().st_size:
+                shutil.copy2(str(image_path), str(safe_image_path))
+            image_path = safe_image_path
+
+            # 第 1 页参考图写入顶层 output_dir（供 editor-workspace 展示）
+            if page_num == 1:
+                try:
+                    shutil.copy2(str(safe_image_path), str(output_dir / '_omr_reference.png'))
+                except OSError:
+                    pass
+
+            # 进度心跳回调（按页分配进度区间）
+            _pn, _tf, _pfn = page_num, total_pages, progress_fn
+
+            def _make_heartbeat(pn, tf, pfn):
+                def _on_heartbeat(elapsed: int) -> None:
+                    if pfn is None:
+                        return
+                    base = 0.05 + ((pn - 1) / tf) * 0.55
+                    per_page = 0.55 / tf
+                    frac = min(elapsed / MAX_HOMR_SECONDS, 1.0)
+                    try:
+                        pfn(base + frac * per_page, f'[homr] 第 {pn} 页识别中…已耗时 {elapsed}s')
+                    except Exception:
+                        pass
+                return _on_heartbeat
+
+            _heartbeat_fn = _make_heartbeat(_pn, _tf, _pfn)
+
+            def _make_config(gpu):
+                return homr_main.ProcessingConfig(
+                    enable_debug=False, enable_cache=False,
+                    write_staff_positions=False, read_staff_positions=False,
+                    selected_staff=-1, use_gpu_inference=gpu,
+                    segnet_batch_size=_batch_size,
+                )
+
+            xml_args = homr_main.XmlGeneratorArguments(False, None, None)
+            mode_label = 'GPU' if _gpu_mode else 'CPU'
+            log_message(f'[homr] 第 {page_num} 页：开始识别（{mode_label} 模式）…')
+
+            _captured_image_path = image_path  # 闭包捕获当前页的路径
+            _page_ok = False
+            try:
+                _cfg = _make_config(_gpu_mode)
+                _run_with_heartbeat(
+                    lambda p=_captured_image_path, c=_cfg: homr_main.process_image(str(p), c, xml_args),
+                    label=f'[homr] 第 {page_num}/{total_pages} 页 ',
+                    on_heartbeat=_heartbeat_fn,
+                )
+                _page_ok = True
+                log_message(f'[homr] 第 {page_num} 页识别完成。')
+            except Exception as exc:
+                _exc_str = str(exc)
+                _is_gpu_err = _gpu_mode and (
+                    'cuda' in _exc_str.lower()
+                    or 'CUDAExecutionProvider' in _exc_str
+                    or 'DmlExecutionProvider' in _exc_str
+                    or 'not active after session creation' in _exc_str
+                )
+                if _is_gpu_err:
+                    log_message(f'[homr] 第 {page_num} 页 GPU 失败，切换为 CPU 模式（后续页同步切换）…')
+                    _gpu_mode = False
+                    try:
+                        _cpu_cfg = _make_config(False)
+                        _run_with_heartbeat(
+                            lambda p=_captured_image_path, c=_cpu_cfg: homr_main.process_image(str(p), c, xml_args),
+                            label=f'[homr] 第 {page_num}/{total_pages} 页(CPU) ',
+                            on_heartbeat=_heartbeat_fn,
+                        )
+                        _page_ok = True
+                        log_message(f'[homr] 第 {page_num} 页识别完成（CPU 模式）。')
+                    except Exception as cpu_exc:
+                        log_message(f'[homr] 第 {page_num} 页 CPU 回退也失败: {cpu_exc}', logging.WARNING)
+                else:
+                    log_message(f'[homr] 第 {page_num} 页识别失败: {exc}', logging.WARNING)
+
+            if _page_ok:
+                mxl = find_first_musicxml_file(page_out_dir, image_path.stem)
+                if mxl is not None:
+                    page_mxl_files.append(mxl)
+                    log_message(f'[homr] 第 {page_num} 页输出: {mxl.name}')
+                else:
+                    log_message(f'[homr] 第 {page_num} 页未找到 MusicXML。', logging.WARNING)
+    finally:
+        if source_dir is not None:
+            with _PATH_LOCK:
+                if str(source_dir) in sys.path:
+                    sys.path.remove(str(source_dir))
+
+    if not page_mxl_files:
+        log_message('[homr] 所有页面识别均失败。')
+        return None
+
+    # ── 合并所有页的 MusicXML ──────────────────────────────────────────────────
+    merged_mxl_path = output_dir / f'{source_pdf.stem}.musicxml'
+    if len(page_mxl_files) == 1:
+        shutil.copy2(str(page_mxl_files[0]), str(merged_mxl_path))
+        log_message(f'[homr] 单页结果输出: {merged_mxl_path.name}')
+    else:
+        log_message(f'[homr] 正在合并 {len(page_mxl_files)} 页 MusicXML…')
+        if not _merge_homr_musicxml_pages(page_mxl_files, merged_mxl_path):
+            shutil.copy2(str(page_mxl_files[0]), str(merged_mxl_path))
+            log_message('[homr] 合并失败，降级使用第 1 页结果。', logging.WARNING)
+        else:
+            log_message(f'[homr] 合并完成: {merged_mxl_path.name}')
+
+    return output_dir
+
+
 def run_homr_batch(
     source_image: Path,
     output_dir: Path,
     use_gpu_inference: Optional[bool] = None,
     progress_fn=None,
 ) -> Optional[Path]:
-    """Run homr on a single image file or a PDF's first page, returning the output directory.
+    """Run homr on a single image file or a multi-page PDF, returning the output directory.
 
     Homr should receive the whole page after preprocessing, not per-line slices.
     progress_fn: 可选进度回调，签名 progress_fn(value: float 0.0-1.0, message: str)。
     """
     if source_image.suffix.lower() == '.pdf':
-        image_path = _pdf_first_page_to_png(source_image, output_dir, engine_label='homr')
-        if image_path is None:
+        pages_dir = output_dir / '_pdf_pages'
+        page_png_paths = _pdf_pages_to_png(source_image, pages_dir, engine_label='homr')
+        if not page_png_paths:
             return None
+        if len(page_png_paths) > 1:
+            return _run_homr_multipage_pdf(
+                source_image, page_png_paths, output_dir, use_gpu_inference, progress_fn
+            )
+        # 单页 PDF：沿用原始单图流程
+        image_path = page_png_paths[0]
     else:
         image_path = source_image
 
     if image_path.suffix.lower() not in {'.png', '.jpg', '.jpeg'}:
-        log_message(f'[homr] 仅支持图片输入或 PDF 首页，跳过: {source_image.name}', )
+        log_message(f'[homr] 仅支持图片或 PDF 输入，跳过: {source_image.name}')
         return None
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -469,7 +691,7 @@ def run_homr_batch(
     source_dir = _ensure_homr_import_path()
     _add_nvidia_cuda_dll_dirs()
     try:
-        import homr.main as homr_main
+        import homr.main as homr_main  # type: ignore[import-not-found]
         # download_weights 需要联网，在弱网/限速环境下可能长时间挂起，限制为 120s
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
         with ThreadPoolExecutor(max_workers=1) as _dl_ex:

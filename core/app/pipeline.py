@@ -179,7 +179,7 @@ def process_single_input_to_jianpu(
     ----------------
     AUTO (default)  :  PDF + images → Audiveris.
     AUDIVERIS       :  Always use Audiveris (PDF and images).
-    HOMR            :  Use Homr (images and PDF first page, experimental).
+    HOMR            :  Use Homr (images and multi-page PDF).
 
     For all image inputs a display-friendly reference image (white-border crop +
     rotation correction + light contrast, RGB color) is saved to the editor
@@ -469,7 +469,7 @@ def process_bulk_input_to_jianpu(
             log_message('已取消转换。')
             return summary
 
-        generate_midi = _prompt('是否同时生成 MIDI 文件？（Y/N）')
+        generate_midi = _prompt('是否同时生成 MIDI 文件？（Y/N）') or False
     except SystemExit:
         return summary
 

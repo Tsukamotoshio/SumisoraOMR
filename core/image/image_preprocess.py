@@ -30,7 +30,8 @@ try:
     import cv2 as _cv2
     _HAS_CV2 = True
 except ImportError:
-    _cv2 = None  # type: ignore[assignment]
+    import types as _types
+    _cv2 = _types.ModuleType('cv2')  # type: ignore[assignment]
     _HAS_CV2 = False
 
 
