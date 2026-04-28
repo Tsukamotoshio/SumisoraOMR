@@ -121,7 +121,7 @@ _NAV_ITEMS = [
 
 async def main(page: ft.Page) -> None:
     # ── Page base configuration ───────────────────────────────────────────────
-    page.title       = 'OMR 乐谱转换工具'
+    page.title       = 'SumisoraOMR'
     _base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     _ico_path = os.path.join(_base_dir, 'assets', 'icon.ico')
     if os.path.isfile(_ico_path):
@@ -320,7 +320,7 @@ async def main(page: ft.Page) -> None:
                             ft.Image(src='Sumisora.png', width=18, height=18),
                             ft.Container(width=6),
                             ft.Text(
-                                'OMR 乐谱转换工具  v0.3.0',
+                                'SumisoraOMR  v0.3.0',
                                 size=13,
                                 weight=ft.FontWeight.W_600,
                                 color=ft.Colors.ON_SURFACE,
@@ -442,6 +442,126 @@ async def main(page: ft.Page) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PE resource helpers: patch icon + VERSIONINFO in the child Flutter exe
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_versioninfo_bytes(
+    major: int, minor: int, patch_: int, build: int,
+    file_desc: str, product_name: str, company: str, copyright_str: str,
+) -> bytes:
+    """Build a binary RT_VERSION resource from scratch (no external deps)."""
+    import struct as _s
+
+    def _enc(s: str) -> bytes:
+        return s.encode('utf-16-le') + b'\x00\x00'
+
+    def _kpad(k: bytes) -> bytes:
+        r = (6 + len(k)) % 4
+        return b'\x00' * ((4 - r) % 4)
+
+    def _str_entry(key: str, value: str) -> bytes:
+        k, v = _enc(key), _enc(value)
+        body = k + _kpad(k) + v
+        n = 6 + len(body)
+        tail = (4 - n % 4) % 4
+        return _s.pack('<HHH', n + tail, len(v) // 2, 1) + body + b'\x00' * tail
+
+    def _node(key: str, vbytes: bytes, wtype: int, children: bytes) -> bytes:
+        k = _enc(key)
+        body = k + _kpad(k) + vbytes + children
+        n = 6 + len(body)
+        tail = (4 - n % 4) % 4
+        wval = len(vbytes) if wtype == 0 else len(vbytes) // 2
+        return _s.pack('<HHH', n + tail, wval, wtype) + body + b'\x00' * tail
+
+    ffi = _s.pack('<IIIIIIIIIIIII',
+        0xFEEF04BD, 0x00010000,
+        (major << 16) | minor,  (patch_ << 16) | build,
+        (major << 16) | minor,  (patch_ << 16) | build,
+        0x3F, 0, 0x00040004, 1, 0, 0, 0,
+    )
+    vs = f'{major}.{minor}.{patch_}.{build}'
+    str_data = b''.join([
+        _str_entry('CompanyName',      company),
+        _str_entry('FileDescription',  file_desc),
+        _str_entry('FileVersion',      vs),
+        _str_entry('InternalName',     file_desc),
+        _str_entry('LegalCopyright',   copyright_str),
+        _str_entry('OriginalFilename', file_desc + '.exe'),
+        _str_entry('ProductName',      product_name),
+        _str_entry('ProductVersion',   vs),
+    ])
+    str_fi = _node('StringFileInfo', b'', 1, _node('040904b0', b'', 1, str_data))
+    import struct as _s2
+    var_fi = _node('VarFileInfo', b'', 1,
+                   _node('Translation', _s2.pack('<HH', 0x0409, 0x04B0), 0, b''))
+    root_k   = _enc('VS_VERSION_INFO')
+    root_pad = _kpad(root_k)
+    body     = root_k + root_pad + ffi + str_fi + var_fi
+    n        = 6 + len(body)
+    tail     = (4 - n % 4) % 4
+    return _s.pack('<HHH', n + tail, len(ffi), 0) + body + b'\x00' * tail
+
+
+def _patch_exe_resources(
+    exe_path: str, ico_path: str,
+    file_desc: str, product_name: str, company: str, copyright_str: str,
+    major: int, minor: int, patch_: int, build: int,
+) -> bool:
+    """Replace icon (RT_ICON/RT_GROUP_ICON) and VERSIONINFO in a PE exe."""
+    import struct as _s, ctypes as _ct
+    from ctypes import wintypes as _wt
+
+    if not os.path.isfile(ico_path):
+        return False
+
+    with open(ico_path, 'rb') as _f:
+        ico = _f.read()
+    _, _, cnt = _s.unpack_from('<HHH', ico, 0)
+    icons = []
+    for _i in range(cnt):
+        w, h, cc, _, pl, bpp, sz, off = _s.unpack_from('<BBBBHHII', ico, 6 + _i * 16)
+        icons.append((w or 256, h or 256, cc, pl, bpp, ico[off:off + sz]))
+
+    grp = _s.pack('<HHH', 0, 1, cnt)
+    for _i, (w, h, cc, pl, bpp, data) in enumerate(icons):
+        grp += _s.pack('<BBBBHHiH',
+                       0 if w == 256 else w, 0 if h == 256 else h,
+                       cc, 0, pl, bpp, len(data), _i + 1)
+
+    ver = _build_versioninfo_bytes(major, minor, patch_, build,
+                                    file_desc, product_name, company, copyright_str)
+
+    k32 = _ct.windll.kernel32
+    k32.BeginUpdateResourceW.restype  = _wt.HANDLE
+    k32.BeginUpdateResourceW.argtypes = [_wt.LPCWSTR, _wt.BOOL]
+    k32.UpdateResourceW.restype       = _wt.BOOL
+    k32.UpdateResourceW.argtypes      = [_wt.HANDLE, _wt.LPCWSTR, _wt.LPCWSTR,
+                                          _wt.WORD, _ct.c_void_p, _wt.DWORD]
+    k32.EndUpdateResourceW.restype    = _wt.BOOL
+    k32.EndUpdateResourceW.argtypes   = [_wt.HANDLE, _wt.BOOL]
+
+    def _mir(n):
+        return _ct.cast(_ct.c_size_t(n), _wt.LPCWSTR)
+
+    h = k32.BeginUpdateResourceW(exe_path, False)
+    if not h:
+        return False
+    try:
+        for _i, (_, _, _, _, _, data) in enumerate(icons):
+            _buf = (_ct.c_char * len(data)).from_buffer_copy(data)
+            k32.UpdateResourceW(h, _mir(3), _mir(_i + 1), 0x0409, _buf, len(data))
+        _gb = (_ct.c_char * len(grp)).from_buffer_copy(grp)
+        k32.UpdateResourceW(h, _mir(14), _mir(1), 0x0409, _gb, len(grp))
+        _vb = (_ct.c_char * len(ver)).from_buffer_copy(ver)
+        k32.UpdateResourceW(h, _mir(16), _mir(1), 0x0409, _vb, len(ver))
+        return bool(k32.EndUpdateResourceW(h, False))
+    except Exception:
+        k32.EndUpdateResourceW(h, True)
+        return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # [Dev & packaged] Make Task Manager show "SumisoraOMR" instead of "flet"
 # ─────────────────────────────────────────────────────────────────────────────
 # flet_desktop 通过 open_flet_view_async 启动 Flutter 窗口进程。
@@ -463,17 +583,30 @@ def _setup_flet_view_name() -> None:
         import flet_desktop.version as _fdv
         from flet.utils.strings import random_string as _rstr
 
-        _EXE   = 'SumisoraOMR.exe'
-        _ver   = _fdv.version
-        _dir   = _Path.home() / '.flet' / 'SumisoraOMR' / _ver
-        _exe   = _dir / _EXE
-        _stamp = _dir / '.stamp'
+        _EXE    = 'SumisoraOMR.exe'
+        _ver    = _fdv.version
+        _dir    = _Path.home() / '.flet' / 'SumisoraOMR' / _ver
+        _exe    = _dir / _EXE
+        _stamp  = _dir / '.stamp'
+        _rstamp = _dir / '.rstamp'   # 资源补丁戳（图标 + 版本信息）
+
+        def _do_patch():
+            _base = _Path(getattr(sys, '_MEIPASS',
+                          os.path.dirname(os.path.abspath(__file__))))
+            _ico  = _base / 'assets' / 'icon.ico'
+            _patch_exe_resources(
+                str(_exe), str(_ico),
+                'SumisoraOMR', 'SumisoraOMR',
+                'Tsukamotoshio', 'Copyright (C) 2026 Tsukamotoshio',
+                0, 3, 0, 0,
+            )
+            _rstamp.touch()
 
         if not (_stamp.exists() and _exe.exists()):
             _dir.mkdir(parents=True, exist_ok=True)
             # 清理旧文件（flet 版本升级时重新解压）
             for _f in list(_dir.iterdir()):
-                if _f.name != '.stamp':
+                if _f.name not in ('.stamp', '.rstamp'):
                     _shutil.rmtree(_f) if _f.is_dir() else _f.unlink(missing_ok=True)
 
             if getattr(sys, 'frozen', False):
@@ -515,7 +648,11 @@ def _setup_flet_view_name() -> None:
             _flet_exe = _dir / 'flet.exe'
             if _flet_exe.exists():
                 _flet_exe.rename(_exe)
+            _do_patch()   # 替换图标与版本信息
             _stamp.touch()
+        elif not _rstamp.exists() and _exe.exists():
+            # 已有安装但尚未打补丁（首次运行新版本代码）
+            _do_patch()
 
         if not _exe.exists():
             return  # 设置失败，回退到默认 flet.exe

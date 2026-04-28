@@ -185,7 +185,7 @@ class _BinaryImageView(ft.Column):
             self._apply_image_load(raw_b64, token)
             return
         try:
-            self.page.run_task(self._async_apply_image_load, raw_b64, token)
+            self.page.run_task(self._async_apply_image_load, raw_b64, token)  # type: ignore[attr-defined]
         except Exception:
             self._apply_image_load(raw_b64, token)
 
@@ -194,7 +194,7 @@ class _BinaryImageView(ft.Column):
             self._apply_load_error(message, token)
             return
         try:
-            self.page.run_task(self._async_apply_load_error, message, token)
+            self.page.run_task(self._async_apply_load_error, message, token)  # type: ignore[attr-defined]
         except Exception:
             self._apply_load_error(message, token)
 
@@ -242,7 +242,7 @@ class _BinaryImageView(ft.Column):
         """将点击的 Y 坐标映射为简谱行号并广播事件。"""
         if self._raw_b64 is None:
             return
-        ly = e.local_position.y if hasattr(e, 'local_position') else 0
+        ly = e.local_position.y if hasattr(e, 'local_position') else 0  # type: ignore[union-attr]
         try:
             num_lines = max(len(self._state.log_lines), 1)
             if self._state.current_jianpu_txt and self._state.current_jianpu_txt.exists():
@@ -290,7 +290,7 @@ class EditorPage(ft.Row):
         state.on(Event.MXL_READY,     self._on_mxl_ready)
 
     def did_mount(self):
-        self.page._services.register_service(self._open_picker)
+        self.page._services.register_service(self._open_picker)  # type: ignore[attr-defined]
 
     def _build_ui(self) -> None:
         open_btn = ft.Button(
@@ -355,7 +355,7 @@ class EditorPage(ft.Row):
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
 
     def _on_open_click(self, _e) -> None:
-        self.page.run_task(self._pick_open_async)
+        self.page.run_task(self._pick_open_async)  # type: ignore[attr-defined]
 
     def _on_open_output_dir(self, _e) -> None:
         try:
@@ -373,7 +373,7 @@ class EditorPage(ft.Row):
         )
         if not files:
             return
-        path = Path(files[0].path)
+        path = Path(files[0].path)  # type: ignore[arg-type]
         self._open_file(path)
 
     def _normalize_editor_stem(self, stem: str) -> str:

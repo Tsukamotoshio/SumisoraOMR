@@ -186,7 +186,7 @@ class LandingPage(ft.Row):
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
 
     def did_mount(self):
-        self.page._services.register_service(self._output_dir_picker)
+        self.page._services.register_service(self._output_dir_picker)  # type: ignore[attr-defined]
         # 延迟扫描：让 did_mount 先返回、Flet 内部锁释放后再推送 UI 更新
         self._scan_token += 1
         current_token = self._scan_token
@@ -229,7 +229,7 @@ class LandingPage(ft.Row):
                     self.page.update()
                 except Exception:
                     pass
-            self.page.run_task(_do_page_update)
+            self.page.run_task(_do_page_update)  # type: ignore[attr-defined]
         except Exception:
             pass
 
@@ -257,7 +257,7 @@ class LandingPage(ft.Row):
                 pass
 
     def _on_choose_output(self, _e) -> None:
-        self.page.run_task(self._pick_output_dir_async)
+        self.page.run_task(self._pick_output_dir_async)  # type: ignore[attr-defined]
 
     async def _pick_output_dir_async(self) -> None:
         path = await self._output_dir_picker.get_directory_path(dialog_title='选择输出目录')
@@ -472,10 +472,10 @@ class LandingPage(ft.Row):
 
                 def _read_stderr() -> None:
                     try:
-                        for raw_line in proc.stderr:
+                        for raw_line in proc.stderr:  # type: ignore[union-attr]
                             if not self._state.is_processing:
                                 break
-                            line_str = raw_line.decode('utf-8', errors='replace')
+                            line_str = raw_line.decode('utf-8', errors='replace')  # type: ignore[attr-defined]
                             line_str = _ANSI_ESCAPE_RE.sub('', line_str).strip()
                             if line_str:
                                 err_lines.append(line_str)
@@ -484,19 +484,19 @@ class LandingPage(ft.Row):
 
                 threading.Thread(target=_read_stderr, daemon=True).start()
 
-                proc.stdin.write((json.dumps(task, ensure_ascii=False) + '\n').encode('utf-8'))
-                proc.stdin.flush()
-                proc.stdin.close()
+                proc.stdin.write((json.dumps(task, ensure_ascii=False) + '\n').encode('utf-8'))  # type: ignore[union-attr, arg-type]
+                proc.stdin.flush()  # type: ignore[union-attr]
+                proc.stdin.close()  # type: ignore[union-attr]
 
                 _files_done_this_run = 0
-                for raw_line in proc.stdout:
+                for raw_line in proc.stdout:  # type: ignore[union-attr]
                     if not self._state.is_processing:
                         try:
                             proc.kill()
                         except Exception:
                             pass
                         break
-                    line_str = raw_line.decode('utf-8', errors='replace').strip()
+                    line_str = raw_line.decode('utf-8', errors='replace').strip()  # type: ignore[attr-defined]
                     if not line_str:
                         continue
                     try:
@@ -639,8 +639,8 @@ class LandingPage(ft.Row):
 
             def _read_worker(worker_id: int, proc: subprocess.Popen) -> None:
                 try:
-                    for raw_line in proc.stdout:
-                        line_str = raw_line.decode('utf-8', errors='replace').strip()
+                    for raw_line in proc.stdout:  # type: ignore[union-attr]
+                        line_str = raw_line.decode('utf-8', errors='replace').strip()  # type: ignore[attr-defined]
                         if not line_str:
                             continue
                         try:
@@ -654,8 +654,8 @@ class LandingPage(ft.Row):
 
             def _capture_stderr(worker_id: int, proc: subprocess.Popen) -> None:
                 try:
-                    for raw_line in proc.stderr:
-                        line_str = raw_line.decode('utf-8', errors='replace').rstrip()
+                    for raw_line in proc.stderr:  # type: ignore[union-attr]
+                        line_str = raw_line.decode('utf-8', errors='replace').rstrip()  # type: ignore[attr-defined]
                         if line_str:
                             tail = _stderr_tails[worker_id]
                             tail.append(line_str)
@@ -691,9 +691,9 @@ class LandingPage(ft.Row):
                     **extra_kwargs,
                 )
                 procs.append(proc)
-                proc.stdin.write((json.dumps(task, ensure_ascii=False) + '\n').encode('utf-8'))
-                proc.stdin.flush()
-                proc.stdin.close()
+                proc.stdin.write((json.dumps(task, ensure_ascii=False) + '\n').encode('utf-8'))  # type: ignore[union-attr, arg-type]
+                proc.stdin.flush()  # type: ignore[union-attr]
+                proc.stdin.close()  # type: ignore[union-attr]
 
                 # 每个 Worker 启动后立即开启 reader/stderr 线程，
                 # 避免多个 Worker 同时积压输出导致管道缓冲区溢出而阻塞。
@@ -740,7 +740,7 @@ class LandingPage(ft.Row):
                     _w_progress[worker_id] = v
                     # 整体进度 = 各 worker 相对其起始值的增量之和
                     overall = sum(
-                        _w_progress[i] - _w_start[i]
+                        _w_progress[i] - float(_w_start[i])  # type: ignore[arg-type]
                         for i in range(n_actual)
                         if _w_start[i] is not None
                     )
@@ -878,7 +878,7 @@ class LandingPage(ft.Row):
         if p is not None:
             async def _do():
                 self._show_conversion_results()
-            p.run_task(_do)
+            p.run_task(_do)  # type: ignore[attr-defined]
         else:
             self._show_conversion_results()
 

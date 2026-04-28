@@ -113,8 +113,8 @@ class FileSidebar(ft.Column):
 
     def did_mount(self):
         """在页面挂载后将 FilePicker 注册到 ServiceRegistry。"""
-        self.page._services.register_service(self._file_picker)
-        self.page._services.register_service(self._folder_picker)
+        self.page._services.register_service(self._file_picker)  # type: ignore[attr-defined]
+        self.page._services.register_service(self._folder_picker)  # type: ignore[attr-defined]
 
     # ── 文件行渲染 ───────────────────────────────────────────────────────────
 
@@ -189,10 +189,10 @@ class FileSidebar(ft.Column):
     # ── 事件处理 ─────────────────────────────────────────────────────────────
 
     def _on_add_click(self, _e) -> None:
-        self.page.run_task(self._pick_files_async)
+        self.page.run_task(self._pick_files_async)  # type: ignore[attr-defined]
 
     def _on_add_folder_click(self, _e) -> None:
-        self.page.run_task(self._pick_folder_async)
+        self.page.run_task(self._pick_folder_async)  # type: ignore[attr-defined]
 
     async def _pick_files_async(self) -> None:
         input_dir = app_base_dir() / 'Input'
@@ -262,7 +262,7 @@ class FileSidebar(ft.Column):
                     self._select_all_btn.update()
                 except Exception:
                     pass
-            p.run_task(_do)
+            p.run_task(_do)  # type: ignore[attr-defined]
         else:
             # 尚未挂载；先写入数据，did_mount 后会再次触发刷新
             self._file_list_col.controls = [

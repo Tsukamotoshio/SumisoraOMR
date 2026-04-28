@@ -59,9 +59,9 @@ class TransposerPage(ft.Column):
         return xml_scores_dir()
 
     def did_mount(self):
-        self.page._services.register_service(self._file_picker)
-        self.page._services.register_service(self._export_dir_picker)
-        self._trigger_key_change()  # 页面挂载后初始化半音标签（后台线程）
+        self.page._services.register_service(self._file_picker)  # type: ignore[attr-defined]
+        self.page._services.register_service(self._export_dir_picker)  # type: ignore[attr-defined]
+        self.page.run_task(self._trigger_key_change)  # type: ignore[attr-defined]
 
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
@@ -283,7 +283,7 @@ class TransposerPage(ft.Column):
     # ── 事件 ─────────────────────────────────────────────────────────────────
 
     def _on_open_click(self, _e) -> None:
-        self.page.run_task(self._pick_file_async)
+        self.page.run_task(self._pick_file_async)  # type: ignore[attr-defined]
 
     def _on_open_output_dir(self, _e) -> None:
         try:
@@ -302,7 +302,7 @@ class TransposerPage(ft.Column):
         )
         if not files:
             return
-        path = Path(files[0].path)
+        path = Path(files[0].path)  # type: ignore[arg-type]
         suffix = path.suffix.lower()
         if suffix in ('.mxl', '.musicxml', '.xml'):
             self._clear_transposed_preview()
@@ -373,7 +373,7 @@ class TransposerPage(ft.Column):
         self._compute_semitone_label()
         p = self.page
         if p is not None:
-            p.loop.call_soon_threadsafe(p.update, self._semitone_label)
+            p.loop.call_soon_threadsafe(p.update, self._semitone_label)  # type: ignore[attr-defined]
 
     def _on_auto_detect(self, _e) -> None:
         self._auto_detect_token += 1
@@ -395,7 +395,7 @@ class TransposerPage(ft.Column):
                 p = self.page
                 if p is not None:
                     # 同时刷新 from_key 下拉框和半音标签
-                    p.loop.call_soon_threadsafe(p.update, self._from_key_dd, self._semitone_label)
+                    p.loop.call_soon_threadsafe(p.update, self._from_key_dd, self._semitone_label)  # type: ignore[attr-defined]
                 if token != self._auto_detect_token:
                     return
                 self._set_status(f'检测到原调: {key}，已计算偏移')
@@ -426,7 +426,7 @@ class TransposerPage(ft.Column):
             import tempfile
 
             base = build_dir()
-            dst = base / f'{self._orig_mxl.stem}_transposed_{self._to_key_dd.value}.musicxml'
+            dst = base / f'{self._orig_mxl.stem}_transposed_{self._to_key_dd.value}.musicxml'  # type: ignore[union-attr]
 
             def _progress(v: float):
                 if token != self._transpose_token:
@@ -434,10 +434,10 @@ class TransposerPage(ft.Column):
                 self._progress.value = v
                 pp = self.page
                 if pp is not None:
-                    pp.loop.call_soon_threadsafe(pp.update, self._progress)
+                    pp.loop.call_soon_threadsafe(pp.update, self._progress)  # type: ignore[attr-defined]
 
             transposed = transpose_musicxml(
-                self._orig_mxl, dst,
+                self._orig_mxl, dst,  # type: ignore[arg-type]
                 from_key=self._from_key_dd.value  or 'C',
                 to_key=self._to_key_dd.value      or 'C',
                 direction=self._direction_dd.value or 'closest',
@@ -467,7 +467,7 @@ class TransposerPage(ft.Column):
         if self._transposed_mxl is None:
             self._set_status('请先点击「移调预览」。')
             return
-        self.page.run_task(self._export_ask_dir)
+        self.page.run_task(self._export_ask_dir)  # type: ignore[attr-defined]
 
     async def _export_ask_dir(self) -> None:
         dest_str = await self._export_dir_picker.get_directory_path(dialog_title='选择移调版 PDF 导出目录')
@@ -485,14 +485,14 @@ class TransposerPage(ft.Column):
             import shutil
             from core.render.lilypond_runner import render_musicxml_staff_pdf
 
-            tmp = build_dir() / f'_trans_export_{self._transposed_mxl.stem}'
+            tmp = build_dir() / f'_trans_export_{self._transposed_mxl.stem}'  # type: ignore[union-attr]
             tmp.mkdir(exist_ok=True)
 
-            pdf = render_musicxml_staff_pdf(self._transposed_mxl, tmp)
+            pdf = render_musicxml_staff_pdf(self._transposed_mxl, tmp)  # type: ignore[arg-type]
             if token != self._export_token:
                 return
             if pdf and pdf.exists():
-                out_pdf = dest_dir / f'{self._transposed_mxl.stem}_staff.pdf'
+                out_pdf = dest_dir / f'{self._transposed_mxl.stem}_staff.pdf'  # type: ignore[union-attr]
                 shutil.copy2(str(pdf), str(out_pdf))
                 self._set_status(f'导出完成 → {out_pdf}')
                 self._state.output_pdf = out_pdf
@@ -510,7 +510,7 @@ class TransposerPage(ft.Column):
         if self._orig_mxl is None:
             self._set_status('请先打开乐谱文件。')
             return
-        self.page.run_task(self._export_orig_ask_dir)
+        self.page.run_task(self._export_orig_ask_dir)  # type: ignore[attr-defined]
 
     async def _export_orig_ask_dir(self) -> None:
         dest_str = await self._export_dir_picker.get_directory_path(dialog_title='选择原谱 PDF 导出目录')
@@ -528,14 +528,14 @@ class TransposerPage(ft.Column):
             import shutil
             from core.render.lilypond_runner import render_musicxml_staff_pdf
 
-            tmp = build_dir() / f'_orig_export_{self._orig_mxl.stem}'
+            tmp = build_dir() / f'_orig_export_{self._orig_mxl.stem}'  # type: ignore[union-attr]
             tmp.mkdir(exist_ok=True)
 
-            pdf = render_musicxml_staff_pdf(self._orig_mxl, tmp)
+            pdf = render_musicxml_staff_pdf(self._orig_mxl, tmp)  # type: ignore[arg-type]
             if token != self._export_orig_token:
                 return
             if pdf and pdf.exists():
-                out_pdf = dest_dir / f'{self._orig_mxl.stem}_staff.pdf'
+                out_pdf = dest_dir / f'{self._orig_mxl.stem}_staff.pdf'  # type: ignore[union-attr]
                 shutil.copy2(str(pdf), str(out_pdf))
                 self._set_status(f'原谱导出完成 → {out_pdf}')
                 self._state.output_pdf = out_pdf
@@ -580,7 +580,7 @@ class TransposerPage(ft.Column):
         self._trans_viewer.reset()
         p = self.page
         if p is not None:
-            p.loop.call_soon_threadsafe(p.update, self._trans_viewer)
+            p.loop.call_soon_threadsafe(p.update, self._trans_viewer)  # type: ignore[attr-defined]
 
     def _mxl_to_preview_pdf(self, mxl_path: Path, suffix: str) -> Optional[Path]:
         """将 MusicXML 渲染为五线谱 PDF（用于预览）。优先用 musicxml2ly 渲染标准五线谱，
@@ -611,7 +611,7 @@ class TransposerPage(ft.Column):
         self._status.value = '请先打开乐谱文件。'
         p = self.page
         if p is not None:
-            p.loop.call_soon_threadsafe(
+            p.loop.call_soon_threadsafe(  # type: ignore[attr-defined]
                 p.update, self._orig_viewer, self._trans_viewer, self._status
             )
 
@@ -621,11 +621,11 @@ class TransposerPage(ft.Column):
         self._status.value = msg
         p = self.page
         if p is not None:
-            p.loop.call_soon_threadsafe(p.update, self._status)
+            p.loop.call_soon_threadsafe(p.update, self._status)  # type: ignore[attr-defined]
 
     def _set_busy(self, busy: bool) -> None:
         self._progress.visible = busy
         self._progress.value   = None if busy else 0
         p = self.page
         if p is not None:
-            p.loop.call_soon_threadsafe(p.update, self._progress)
+            p.loop.call_soon_threadsafe(p.update, self._progress)  # type: ignore[attr-defined]

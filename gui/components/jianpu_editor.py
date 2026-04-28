@@ -36,7 +36,7 @@ class JianpuEditor(ft.Column):
         state.on(Event.JIANPU_TXT_SELECTED, self._on_external_select)
 
     def did_mount(self) -> None:
-        self.page._services.register_service(self._export_dir_picker)
+        self.page._services.register_service(self._export_dir_picker)  # type: ignore[attr-defined]
 
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ class JianpuEditor(ft.Column):
             multiline=True,
             expand=True,
             text_size=13,
-            text_style=ft.TextStyle(font_family='Consolas', font_family_fallback='YaHei'),
+            text_style=ft.TextStyle(font_family='Consolas', font_family_fallback=['YaHei']),
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color='transparent',
@@ -123,7 +123,7 @@ class JianpuEditor(ft.Column):
             self._apply_loaded_content(text, token)
             return
         try:
-            self.page.run_task(self._async_apply_loaded_content, text, token)
+            self.page.run_task(self._async_apply_loaded_content, text, token)  # type: ignore[attr-defined]
         except Exception:
             self._apply_loaded_content(text, token)
 
@@ -132,7 +132,7 @@ class JianpuEditor(ft.Column):
             self._apply_load_error(message, token)
             return
         try:
-            self.page.run_task(self._async_apply_load_error, message, token)
+            self.page.run_task(self._async_apply_load_error, message, token)  # type: ignore[attr-defined]
         except Exception:
             self._apply_load_error(message, token)
 
@@ -162,7 +162,7 @@ class JianpuEditor(ft.Column):
             pass
         if hasattr(self, 'page') and self.page is not None:
             try:
-                self.page.schedule_update()
+                self.page.schedule_update()  # type: ignore[attr-defined]
             except Exception:
                 pass
 
@@ -185,7 +185,7 @@ class JianpuEditor(ft.Column):
 
     def _on_export_pdf(self, _e) -> None:
         # 弹出目录选择对话框（异步），选好后在后台线程渲染并复制
-        self.page.run_task(self._export_pdf_ask_dir)
+        self.page.run_task(self._export_pdf_ask_dir)  # type: ignore[attr-defined]
 
     async def _export_pdf_ask_dir(self) -> None:
         if self._path is None:
@@ -212,6 +212,8 @@ class JianpuEditor(ft.Column):
             import shutil
             from core.render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
             txt_path = self._path
+            if txt_path is None:
+                return
             ly_path  = txt_path.with_suffix('.ly')
             self._state.append_log(f'正在生成 LilyPond 中间文件: {ly_path.name}')
             with self._file_lock:
@@ -254,10 +256,10 @@ class JianpuEditor(ft.Column):
         if not hasattr(self, 'page') or self.page is None:
             return
         try:
-            self.page.run_task(self._async_refresh)
+            self.page.run_task(self._async_refresh)  # type: ignore[attr-defined]
         except Exception:
             try:
-                self.page.schedule_update()
+                self.page.schedule_update()  # type: ignore[attr-defined]
             except Exception:
                 pass
 
