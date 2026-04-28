@@ -1,5 +1,5 @@
-简谱转换工具
-============
+SumisoraOMR
+===========
 
 版本：v0.3.0
 
@@ -79,7 +79,7 @@ author：Tsukamotoshio
 --------
 
 1. 将五线谱文件（PDF / PNG / JPG）放入 Input 文件夹，或直接拖入左侧文件侧边栏
-2. 双击桌面快捷方式"简谱转换工具"，或运行安装目录下的 SumisoraOMR.exe
+2. 双击桌面快捷方式“SumisoraOMR”，或运行安装目录下的 SumisoraOMR.exe
 3. 在文件侧边栏中选中要转换的文件
 4. 选择 OMR 引擎：
      自动选择（推荐）— 程序自动判断，矢量 PDF 走 Audiveris，图片或

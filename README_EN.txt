@@ -1,5 +1,5 @@
-OMR-to-Jianpu Conversion Tool
-==============================
+SumisoraOMR
+===========
 
 Author:  Tsukamotoshio
 Version: v0.3.0
@@ -107,7 +107,7 @@ Usage
 
 1. Place sheet music files (PDF / PNG / JPG) into the Input folder, or drag
    them directly into the file sidebar.
-2. Double-click the "Jianpu Conversion Tool" desktop shortcut, or run
+2. Double-click the "SumisoraOMR" desktop shortcut, or run
    SumisoraOMR.exe in the installation directory.
 3. In the file sidebar, select the files you want to convert.
 4. Choose the OMR engine:

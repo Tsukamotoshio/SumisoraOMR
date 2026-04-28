@@ -1,4 +1,4 @@
-# OMR-to-Jianpu
+# SumisoraOMR
 
 > Batch-convert Western staff notation (PDF / PNG / JPG) to Jianpu (numbered musical notation) PDFs, with optional MIDI output.
 
@@ -43,7 +43,7 @@
 ## Usage
 
 1. Drop your staff notation files (`.pdf`, `.png`, `.jpg`) into the `Input` folder.
-2. Launch the app — double-click the **简谱转换工具** shortcut or run `SumisoraOMR.exe`.
+2. Launch the app — double-click the **SumisoraOMR** shortcut or run `SumisoraOMR.exe`.
 3. Follow the prompts to start conversion and choose whether to generate MIDI.
 4. Converted files appear in the `Output` folder.
 

@@ -1,4 +1,4 @@
-# OMR-to-Jianpu 简谱转换工具
+# SumisoraOMR
 
 > 将五线谱（PDF / PNG / JPG）批量转换为简谱 PDF，并可按需同时生成 MIDI 文件。
 
@@ -43,7 +43,7 @@
 ## 使用方法
 
 1. 将五线谱文件（`.pdf`、`.png`、`.jpg`）放入 `Input` 文件夹。
-2. 启动程序：双击桌面快捷方式**简谱转换工具**，或直接运行 `SumisoraOMR.exe`。
+2. 启动程序：双击桂面快捷方式 **SumisoraOMR**，或直接运行 `SumisoraOMR.exe`。
 3. 按提示确认开始转换，并选择是否生成 MIDI。
 4. 转换结果保存在 `Output` 文件夹中。
 
