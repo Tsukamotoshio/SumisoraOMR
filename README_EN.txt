@@ -2,7 +2,7 @@ SumisoraOMR
 ===========
 
 Author:  Tsukamotoshio
-Version: v0.3.0
+Version: v0.2.4
 
 Batch-convert Western staff notation PDFs into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
@@ -12,6 +12,26 @@ What's New
 ----------
 
 0.3.0 (current)
+  - Rebrand to SumisoraOMR: updated app icon and product description.
+  - Real-ESRGAN super-resolution engine: a second SR option alongside waifu2x,
+    selectable in the UI; automatically uses the discrete GPU (Vulkan).
+  - Polyphonic Jianpu rendering (new feature): scores with up to four voices
+    are now rendered in multi-voice Jianpu format; each voice is shown
+    separately, and missing bars in secondary voices are filled with rests.
+  - Concurrent batch processing: a new concurrency option (1 / 2 / 4 / Auto)
+    lets high-performance machines process multiple files simultaneously;
+    default is 1 (sequential).
+  - Conversion result dialog: a summary dialog is always shown after
+    conversion, listing per-file status, engine used, and failure reasons.
+  - Audiveris -> Homr automatic fallback: if Audiveris fails, the pipeline
+    automatically retries with Homr.
+  - Transposition rest-position fix: rest layout in multi-voice scores
+    (canons etc.) is now correct after transposition.
+  - GUI appearance and interaction updates: various visual and UX improvements
+    throughout the interface.
+  - Various bug fixes and stability improvements.
+
+0.2.4
   - OMR engine dropdown: a new "Auto (Recommended)" option automatically
     routes each file to Audiveris or Homr based on input format and image
     quality; if Homr crashes in GPU mode it falls back to CPU and retries
