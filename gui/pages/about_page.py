@@ -29,13 +29,13 @@ https://www.gnu.org/licenses/agpl-3.0.html
 附加条款：若您通过网络向用户提供此程序的修改版本，您必须向所有与之交互的
 用户提供获取对应源代码的途径（AGPL-3.0 第 13 条）。
 
-完整许可证文本：https://github.com/Tsukamotoshio/OMR-to-Jianpu-Conversion-Tool/blob/main/LICENSE"""
+完整许可证文本：https://github.com/Tsukamotoshio/SumisoraOMR/blob/main/LICENSE"""
 
 
 class AboutPage(ft.Column):
     """关于页面：作者、项目地址、许可证。"""
 
-    _GITHUB_URL = 'https://github.com/Tsukamotoshio/OMR-to-Jianpu-Conversion-Tool'
+    _GITHUB_URL = 'https://github.com/Tsukamotoshio/SumisoraOMR'
 
     def __init__(self):
         self._opening = False
@@ -80,10 +80,11 @@ class AboutPage(ft.Column):
         logo_card = _card(
             ft.Column(
                 [
-                    ft.Icon(ft.Icons.MUSIC_NOTE_ROUNDED, size=56, color=Palette.PRIMARY),
-                    ft.Text('OMR 乐谱转换工具', size=22,
+                    ft.Image(src='Sumisora.png', width=64, height=64,
+                             border_radius=ft.BorderRadius.all(12)),
+                    ft.Text('SumisoraOMR', size=22,
                             weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE),
-                    ft.Text('将五线谱 PDF 智能转换为简谱', size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text('五线谱识别与简谱生成工具', size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(f'v{APP_VERSION}', size=12, color=Palette.PRIMARY,
                                         weight=ft.FontWeight.W_500),
