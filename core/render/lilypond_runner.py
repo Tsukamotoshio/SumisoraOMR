@@ -129,6 +129,15 @@ def _fix_deprecated_ly_syntax(text: str) -> str:
     )
 
 
+def _ascii_only(s: str) -> str:
+    """仅保留可打印 ASCII 字符（0x20-0x7E），剥离 CJK 等非 ASCII 内容。
+
+    LilyPond 默认字体不含 CJK 字形，注入含汉字的 title 会导致 PDF 出现方块
+    和排版溢出。此函数在写入 \\header 前对 title/composer 做净化。
+    """
+    return ''.join(c for c in s if 0x20 <= ord(c) <= 0x7E).strip()
+
+
 def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> None:
     """Append a \\header block with title/composer from MusicXML metadata at EOF.
 
@@ -142,19 +151,29 @@ def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> None:
         metadata = extract_metadata_from_musicxml(mxl_path)
 
         _GENERIC = {'', 'music21', 'composer', 'title', 'score', 'untitled', 'new score', 'unknown'}
-        title = (metadata.get('title', '') or '').strip()
-        composer = (metadata.get('composer', '') or '').strip()
-        if title.lower() in _GENERIC:
-            title = mxl_path.stem
+        # 过滤非 ASCII，LilyPond 默认字体不支持 CJK
+        title = _ascii_only((metadata.get('title', '') or '').strip())
+        composer = _ascii_only((metadata.get('composer', '') or '').strip())
+        if not title or title.lower() in _GENERIC:
+            title = _ascii_only(mxl_path.stem)
         if composer.lower() in _GENERIC:
             composer = ''
+
+        # 过滤后若 title 仍为空，则不注入（避免写入空 \header {}）
+        if not title and not composer:
+            return
 
         def _esc(s: str) -> str:
             return s.replace('\\', '\\\\').replace('"', '\\"')
 
-        parts = [f'  title = "{_esc(title)}"']
+        parts = []
+        if title:
+            parts.append(f'  title = "{_esc(title)}"')
         if composer:
             parts.append(f'  composer = "{_esc(composer)}"')
+
+        if not parts:
+            return
 
         ly_content = ly_path.read_text(encoding='utf-8', errors='ignore')
         header_block = '\\header {\n' + '\n'.join(parts) + '\n}\n'

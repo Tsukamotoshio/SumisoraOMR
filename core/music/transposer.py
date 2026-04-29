@@ -14,6 +14,7 @@ import logging
 import re
 import shutil
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -80,6 +81,98 @@ KEYS_BY_CIRCLE_OF_FIFTHS = [
     'C',
     'G', 'D', 'A', 'E', 'B', 'F#', 'C#',
 ]
+
+
+@dataclass(frozen=True)
+class _Interval:
+    name: str       # 中文名称（显示用）
+    diatonic: int   # 0-7
+    chromatic: int  # 0-12
+
+
+# 26 个标准音程（与 MuseScore allIntervals 对应）
+INTERVALS: list[_Interval] = [
+    _Interval('纯一度', 0,  0),
+    _Interval('增一度', 0,  1),
+    _Interval('减二度', 1,  0),
+    _Interval('小二度', 1,  1),
+    _Interval('大二度', 1,  2),
+    _Interval('增二度', 1,  3),
+    _Interval('减三度', 2,  2),
+    _Interval('小三度', 2,  3),
+    _Interval('大三度', 2,  4),
+    _Interval('增三度', 2,  5),
+    _Interval('减四度', 3,  4),
+    _Interval('纯四度', 3,  5),
+    _Interval('增四度', 3,  6),
+    _Interval('减五度', 4,  6),
+    _Interval('纯五度', 4,  7),
+    _Interval('增五度', 4,  8),
+    _Interval('减六度', 5,  7),
+    _Interval('小六度', 5,  8),
+    _Interval('大六度', 5,  9),
+    _Interval('增六度', 5, 10),
+    _Interval('减七度', 6,  9),
+    _Interval('小七度', 6, 10),
+    _Interval('大七度', 6, 11),
+    _Interval('增七度', 6, 12),
+    _Interval('减八度', 7, 11),
+    _Interval('纯八度', 7, 12),
+]
+
+_INTERVAL_BY_NAME: dict[str, _Interval] = {iv.name: iv for iv in INTERVALS}
+
+# 全音移调度数（二度-七度）
+DIATONIC_DEGREES: list[tuple[str, int]] = [
+    ('二度', 1),
+    ('三度', 2),
+    ('四度', 3),
+    ('五度', 4),
+    ('六度', 5),
+    ('七度', 6),
+]
+
+
+def key_display_cn(key: str) -> str:
+    """将调名转换为中文大调显示（如 'Bb' → 'B♭大调'）。"""
+    return key.replace('#', '♯').replace('b', '♭') + '大调'
+
+
+def get_interval_semitones(interval_name: str, direction: str = 'up') -> int:
+    """根据音程名称和方向返回带符号半音数（正=向上，负=向下）。"""
+    iv = _INTERVAL_BY_NAME.get(interval_name)
+    if iv is None:
+        return 0
+    c = iv.chromatic
+    if direction == 'down':
+        return -c
+    elif direction == 'closest':
+        if c == 0:
+            return 0
+        return c if c <= 6 else c - 12
+    else:  # 'up'
+        return c
+
+
+def get_interval_diatonic(interval_name: str, direction: str = 'up') -> Optional[int]:
+    """根据音程名称和方向返回带符号音阶步数（正=向上，负=向下）。
+
+    与 get_interval_semitones 方向逻辑保持一致，供 diatonic-aware 移调使用。
+    返回 None 表示未知音程。
+    """
+    iv = _INTERVAL_BY_NAME.get(interval_name)
+    if iv is None:
+        return None
+    d = iv.diatonic
+    if direction == 'down':
+        return -d
+    elif direction == 'closest':
+        c = iv.chromatic
+        if c == 0:
+            return 0
+        return d if c <= 6 else -d
+    else:  # 'up'
+        return d
 
 
 def get_transposition_semitones(
@@ -290,13 +383,27 @@ def _strip_music21_creator(dst: Path) -> None:
         LOGGER.debug('已移除 music21 标识符 (mxl): %s', dst.name)
 
 
-def _transpose_xml_bytes(raw: bytes, semitones: int) -> bytes:
+def _transpose_xml_bytes(
+    raw: bytes,
+    semitones: int,
+    transpose_key_sig: bool = True,
+    diatonic_offset: Optional[int] = None,
+) -> bytes:
     """在字节层级对 MusicXML 做移调，仅修改 <pitch> 和 <key>/<fifths> 元素。
 
     完整保留原始文件结构（声部、休止符、布局、格式头、DOCTYPE 等），
     不经过 music21 的序列化，从根本上消除 round-trip 对声部结构的破坏。
+
+    Parameters
+    ----------
+    diatonic_offset : 若提供（按音程移调时使用），采用 diatonic-aware 拼写法：
+        根据音程的音阶步数（diatonic 字段）确定目标音级字母，再由半音差推算
+        升降号，从而正确区分增减音程（如增二度上 C→D#，而非 Eb）。
+        不提供时沿用原有的目标调升降号方向拼写法（适合按调移调）。
     """
-    if semitones == 0:
+    if semitones == 0 and diatonic_offset == 0:
+        return raw
+    if semitones == 0 and diatonic_offset is None:
         return raw
 
     _STEP_PC: dict[str, int] = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
@@ -325,6 +432,10 @@ def _transpose_xml_bytes(raw: bytes, semitones: int) -> bytes:
     _ALTER_TO_ACC: dict[int, str] = {
         0: 'natural', 1: 'sharp', -1: 'flat', 2: 'double-sharp', -2: 'flat-flat',
     }
+    # diatonic-aware 拼写所需常量
+    _STEP_IDX: dict[str, int] = {'C': 0, 'D': 1, 'E': 2, 'F': 3, 'G': 4, 'A': 5, 'B': 6}
+    _IDX_STEP: list[str] = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+    _STEP_NAT_CHROM: list[int] = [0, 2, 4, 5, 7, 9, 11]  # C D E F G A B 的自然半音值
 
     # ── 1. 确定目标调的升降号方向 ────────────────────────────────────────────
     fifths_m = re.search(rb'<fifths>(-?\d+)</fifths>', raw)
@@ -345,12 +456,15 @@ def _transpose_xml_bytes(raw: bytes, semitones: int) -> bytes:
             nf = {7: -5, 6: -6}.get(nf, nf)
         return max(-7, min(7, nf))
 
-    # ── 2. 更新所有 <fifths> ─────────────────────────────────────────────────
-    result = re.sub(
-        rb'(<fifths>)(-?\d+)(</fifths>)',
-        lambda m: m.group(1) + str(_calc_new_fifths(int(m.group(2)))).encode() + m.group(3),
-        raw,
-    )
+    # ── 2. 更新所有 <fifths>（transpose_key_sig=False 时跳过）────────────────
+    if transpose_key_sig:
+        result = re.sub(
+            rb'(<fifths>)(-?\d+)(</fifths>)',
+            lambda m: m.group(1) + str(_calc_new_fifths(int(m.group(2)))).encode() + m.group(3),
+            raw,
+        )
+    else:
+        result = raw
 
     # ── 3. 移调所有 <pitch>…</pitch> 块（休止符无 <pitch>，安全跳过） ──────
     def _shift_pitch_block(m: re.Match) -> bytes:
@@ -370,10 +484,34 @@ def _transpose_xml_bytes(raw: bytes, semitones: int) -> bytes:
             except ValueError:
                 pass
 
-        pc   = int((_STEP_PC.get(step, 0) + round(alter)) % 12)
-        midi = (octave + 1) * 12 + pc + semitones
-        new_oct   = midi // 12 - 1
-        new_step, new_alter = spell[midi % 12]
+        if diatonic_offset is not None:
+            # ── Diatonic-aware 拼写（MuseScore 方式）──────────────────────
+            # 以音阶步数确定目标音级字母，再由实际半音差推算升降号。
+            # 可正确区分增减音程，如增二度 C→D#（而非 Eb）。
+            old_step_idx = _STEP_IDX.get(step, 0)
+            old_diat = octave * 7 + old_step_idx
+            new_diat = old_diat + diatonic_offset
+            new_step_idx = new_diat % 7
+            new_oct = new_diat // 7
+            new_step = _IDX_STEP[new_step_idx]
+            # 原始音符的绝对半音值（MIDI pitch）
+            old_chrom = (octave + 1) * 12 + _STEP_NAT_CHROM[old_step_idx] + round(alter)
+            new_chrom = old_chrom + semitones
+            # 目标音级在该八度的自然半音值
+            nat_new_chrom = (new_oct + 1) * 12 + _STEP_NAT_CHROM[new_step_idx]
+            new_alter_raw = new_chrom - nat_new_chrom
+            # 归一化到 [-2, 2] 范围（处理 B#/Cb 跨八度边界）
+            if new_alter_raw > 2:
+                new_alter_raw -= 12
+            elif new_alter_raw < -2:
+                new_alter_raw += 12
+            new_alter = new_alter_raw
+        else:
+            # ── 原有目标调升降号拼写法（按调移调时使用）────────────────────
+            pc   = int((_STEP_PC.get(step, 0) + round(alter)) % 12)
+            midi = (octave + 1) * 12 + pc + semitones
+            new_oct   = midi // 12 - 1
+            new_step, new_alter = spell[midi % 12]
 
         nb = re.sub(rb'(<step>)[A-G](</step>)',
                     lambda mm: mm.group(1) + new_step.encode() + mm.group(2), block)
@@ -404,6 +542,81 @@ def _transpose_xml_bytes(raw: bytes, semitones: int) -> bytes:
     return result
 
 
+def _transpose_xml_bytes_diatonic(raw: bytes, diatonic_steps: int) -> bytes:
+    """全音移调：按音阶度数（相对当前调）移调每个音符，不修改 <fifths>。
+
+    diatonic_steps: 正数=向上，负数=向下。步长基于当前调的音阶音名。
+    """
+    if diatonic_steps == 0:
+        return raw
+
+    _STEP_IDX = {'C': 0, 'D': 1, 'E': 2, 'F': 3, 'G': 4, 'A': 5, 'B': 6}
+    _IDX_STEP = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+    _SHARP_ORDER = [3, 0, 4, 1, 5, 2, 6]  # F, C, G, D, A, E, B
+    _FLAT_ORDER  = [6, 2, 5, 1, 4, 0, 3]  # B, E, A, D, G, C, F
+    _ALTER_TO_ACC: dict[int, str] = {
+        0: 'natural', 1: 'sharp', -1: 'flat', 2: 'double-sharp', -2: 'flat-flat',
+    }
+
+    fifths_m = re.search(rb'<fifths>(-?\d+)</fifths>', raw)
+    fifths = int(fifths_m.group(1)) if fifths_m else 0
+
+    def _scale_alter(step_idx: int) -> int:
+        if fifths > 0:
+            for i in range(min(fifths, 7)):
+                if _SHARP_ORDER[i] == step_idx:
+                    return 1
+        elif fifths < 0:
+            for i in range(min(-fifths, 7)):
+                if _FLAT_ORDER[i] == step_idx:
+                    return -1
+        return 0
+
+    def _shift_pitch_diatonic(m: re.Match) -> bytes:  # type: ignore[type-arg]
+        block = m.group(0)
+        step_m = re.search(rb'<step>([A-G])</step>', block)
+        oct_m  = re.search(rb'<octave>(\d+)</octave>', block)
+        if not step_m or not oct_m:
+            return block
+
+        old_step  = step_m.group(1).decode()
+        octave    = int(oct_m.group(1))
+        old_idx   = _STEP_IDX[old_step]
+
+        raw_new   = old_idx + diatonic_steps
+        new_idx   = raw_new % 7
+        oct_delta = raw_new // 7
+        new_step  = _IDX_STEP[new_idx]
+        new_octave = octave + oct_delta
+        new_alter  = _scale_alter(new_idx)
+
+        nb = re.sub(rb'(<step>)[A-G](</step>)',
+                    lambda mm: mm.group(1) + new_step.encode() + mm.group(2), block)
+        nb = re.sub(rb'(<octave>)\d+(</octave>)',
+                    lambda mm: mm.group(1) + str(new_octave).encode() + mm.group(2), nb)
+
+        if new_alter == 0:
+            nb = re.sub(rb'\s*<alter>[^<]*</alter>', b'', nb)
+        else:
+            av = str(new_alter).encode()
+            if re.search(rb'<alter>[^<]*</alter>', nb):
+                nb = re.sub(rb'(<alter>)[^<]*(</alter>)',
+                            lambda mm: mm.group(1) + av + mm.group(2), nb)
+            else:
+                nb = re.sub(rb'(</step>)',
+                            lambda mm: mm.group(1) + b'<alter>' + av + b'</alter>',
+                            nb, count=1)
+
+        if b'<accidental' in nb:
+            acc = _ALTER_TO_ACC.get(new_alter, 'natural').encode()
+            nb = re.sub(rb'(<accidental[^>]*>)[^<]*(</accidental>)',
+                        lambda mm: mm.group(1) + acc + mm.group(2), nb)
+
+        return nb
+
+    return re.sub(rb'<pitch>.*?</pitch>', _shift_pitch_diatonic, raw, flags=re.DOTALL)
+
+
 def transpose_musicxml(
     src: Path,
     dst: Path,
@@ -412,6 +625,8 @@ def transpose_musicxml(
     from_key: Optional[str] = None,
     to_key: Optional[str] = None,
     direction: str = 'closest',
+    transpose_key_sig: bool = True,
+    diatonic_offset: Optional[int] = None,
     progress_callback=None,
 ) -> Path:
     """将 MusicXML（.mxl / .musicxml）移调并写出到 dst。
@@ -421,12 +636,14 @@ def transpose_musicxml(
 
     Parameters
     ----------
-    src              : 原始 MusicXML 路径（.mxl 或 .musicxml）
-    dst              : 输出路径
-    semitones        : 直接指定半音偏移（正数向上移调，负数向下）
-    from_key / to_key: 从哪个调移到哪个调，例如 from_key='C', to_key='F'
-    direction        : 'up' | 'down' | 'closest'（仅在由 from_key/to_key 推算时生效）
-    progress_callback: 若提供，接受 (float 0.0-1.0) 的回调，用于进度更新
+    src               : 原始 MusicXML 路径（.mxl 或 .musicxml）
+    dst               : 输出路径
+    semitones         : 直接指定半音偏移（正数向上移调，负数向下）
+    from_key / to_key : 从哪个调移到哪个调，例如 from_key='C', to_key='F'
+    direction         : 'up' | 'down' | 'closest'（仅在由 from_key/to_key 推算时生效）
+    transpose_key_sig : False 时只移调音符，不更新 <fifths> 调号元素
+    diatonic_offset   : 音阶步数偏移（由 transpose_by_interval 传入），用于 diatonic-aware 拼写
+    progress_callback : 若提供，接受 (float 0.0-1.0) 的回调，用于进度更新
     """
     import io
     import zipfile
@@ -449,7 +666,8 @@ def transpose_musicxml(
 
     if suffix in ('.musicxml', '.xml'):
         raw = src.read_bytes()
-        out = _transpose_xml_bytes(raw, semitones)
+        out = _transpose_xml_bytes(raw, semitones, transpose_key_sig=transpose_key_sig,
+                                   diatonic_offset=diatonic_offset)
         dst.write_bytes(out)
     elif suffix == '.mxl':
         buf = io.BytesIO()
@@ -458,7 +676,8 @@ def transpose_musicxml(
             for item in zin.infolist():
                 data = zin.read(item.filename)
                 if item.filename.lower().endswith('.xml'):
-                    data = _transpose_xml_bytes(data, semitones)
+                    data = _transpose_xml_bytes(data, semitones, transpose_key_sig=transpose_key_sig,
+                                               diatonic_offset=diatonic_offset)
                 zout.writestr(item, data)
         dst.write_bytes(buf.getvalue())
     else:
@@ -468,6 +687,79 @@ def transpose_musicxml(
         progress_callback(1.0)
 
     LOGGER.info('移调完成 → %s', dst)
+    return dst
+
+
+def transpose_by_interval(
+    src: Path,
+    dst: Path,
+    interval_name: str,
+    direction: str = 'up',
+    transpose_key_sig: bool = True,
+    progress_callback=None,
+) -> Path:
+    """按音程名称移调 MusicXML 文件（如 '纯四度'、'小三度'）。
+
+    使用 diatonic-aware 拼写（MuseScore 方式）：由音程的音阶步数字段确定目标
+    音级字母，再由半音差推算升降号，可正确处理增减音程（如增二度 C→D# 而非 Eb）。
+    """
+    semitones = get_interval_semitones(interval_name, direction)
+    diatonic = get_interval_diatonic(interval_name, direction)
+    return transpose_musicxml(
+        src, dst,
+        semitones=semitones,
+        transpose_key_sig=transpose_key_sig,
+        diatonic_offset=diatonic,
+        progress_callback=progress_callback,
+    )
+
+
+def transpose_diatonic(
+    src: Path,
+    dst: Path,
+    degree_name: str,
+    direction: str = 'up',
+    progress_callback=None,
+) -> Path:
+    """全音移调：按音阶度数名称（'二度'-'七度'）移调，不修改调号。"""
+    import io
+    import zipfile
+
+    steps_map = dict(DIATONIC_DEGREES)
+    steps = steps_map.get(degree_name, 1)
+    if direction == 'down':
+        steps = -steps
+
+    if progress_callback:
+        progress_callback(0.1)
+
+    LOGGER.info('全音移调 %+d 步: %s', steps, src.name)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    suffix = src.suffix.lower()
+
+    if progress_callback:
+        progress_callback(0.4)
+
+    if suffix in ('.musicxml', '.xml'):
+        raw = src.read_bytes()
+        dst.write_bytes(_transpose_xml_bytes_diatonic(raw, steps))
+    elif suffix == '.mxl':
+        buf = io.BytesIO()
+        with zipfile.ZipFile(src, 'r') as zin, \
+             zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename.lower().endswith('.xml'):
+                    data = _transpose_xml_bytes_diatonic(data, steps)
+                zout.writestr(item, data)
+        dst.write_bytes(buf.getvalue())
+    else:
+        raise ValueError(f'transpose_diatonic: 不支持的文件格式 {suffix}')
+
+    if progress_callback:
+        progress_callback(1.0)
+
+    LOGGER.info('全音移调完成 → %s', dst)
     return dst
 
 
