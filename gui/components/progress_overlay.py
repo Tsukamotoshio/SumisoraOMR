@@ -140,7 +140,7 @@ class ProgressOverlay(ft.Stack):
         self._timer_running = True
         p = self.page
         if p is not None:
-            p.run_task(self._timer_task)
+            p.run_task(self._timer_task)  # type: ignore[union-attr]
 
     def _stop_timer(self) -> None:
         self._timer_running = False
@@ -309,7 +309,7 @@ class ProgressOverlay(ft.Stack):
             self._try_update()
         p = self.page
         if p is not None:
-            p.run_task(_apply)
+            p.run_task(_apply)  # type: ignore[union-attr]
         else:
             self._progress_bar.value = 0.0
             self._progress_bar.color = Palette.ERROR

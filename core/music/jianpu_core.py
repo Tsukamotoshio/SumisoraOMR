@@ -585,7 +585,7 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
     part = _part if _part is not None else (score.parts[0] if score.parts else score.flatten())
     time_signature = '4/4'
     nominal_measure_length = 4.0
-    time_sig = part.recurse().getElementsByClass(meter.TimeSignature)
+    time_sig = part.recurse().getElementsByClass('TimeSignature')
     if time_sig:
         time_signature = time_sig[0].ratioString
         nominal_measure_length = float(getattr(time_sig[0].barDuration, 'quarterLength', 4.0) or 4.0)
@@ -771,7 +771,7 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0,
         pass
     time_signature = '4/4'
     bar_length = 4.0
-    time_sig = part.recurse().getElementsByClass(meter.TimeSignature)
+    time_sig = part.recurse().getElementsByClass('TimeSignature')
     if time_sig:
         time_signature = time_sig[0].ratioString
         bar_length = float(getattr(time_sig[0].barDuration, 'quarterLength', 4.0) or 4.0)
@@ -895,7 +895,7 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0,
                 rest = m21note.Rest()
                 append_element_chunks(rest, gap)
 
-        next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else offset + float(by_offset[offset].duration.quarterLength or 0.25)
+        next_offset = offsets[idx + 1] if idx + 1 < len(offsets) else offset + float(by_offset[offset].duration.quarterLength or 0.25)  # type: ignore[union-attr]
         # 单个音符时寄不得超过 MAX_SANE_BARS 个小节（防止 OMR 输出中的超长音符）
         duration = max(min(next_offset - offset, bar_length * MAX_SANE_BARS), 0.125)
         append_element_chunks(by_offset[offset], duration)

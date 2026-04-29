@@ -516,6 +516,9 @@ def _merge_jianpu_voices(
 
         # Insert \\voiceX *after* the last per-voice setup override so it
         # takes precedence over any explicit \override Stem #'direction = #DOWN.
+        # Also force Rest.staff-position = #0 so that \voiceOne/\voiceTwo don't
+        # push "0" rest glyphs to different heights on the RhythmicStaff.
+        _rest_fix = '    \\override Rest.staff-position = #0\n'
         tm = _TRANSPARENT_STEM_RE.search(inner)
         if tm:
             line_end = inner.find('\n', tm.end())
@@ -523,16 +526,17 @@ def _merge_jianpu_voices(
                 inner = (
                     inner[: line_end + 1]
                     + f'    {_VOICE_CMDS[i]}\n'
+                    + _rest_fix
                     + inner[line_end + 1 :]
                 )
             else:
-                inner = inner + f'\n    {_VOICE_CMDS[i]}'
+                inner = inner + f'\n    {_VOICE_CMDS[i]}\n' + _rest_fix
         else:
             # Fallback: insert right after the opening { of \\new Voice
             vm = _VOICE_OPEN_RE.search(inner)
             if vm:
                 pos = vm.end()
-                inner = inner[:pos] + f' {_VOICE_CMDS[i]}\n' + inner[pos:]
+                inner = inner[:pos] + f' {_VOICE_CMDS[i]}\n' + _rest_fix + inner[pos:]
 
         voice_inner_blocks.append(inner)
 

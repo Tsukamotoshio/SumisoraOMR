@@ -1,4 +1,4 @@
-#define MyAppName "简谱转换工具"
+#define MyAppName "SumisoraOMR"
 #define MyAppVersion "0.3.0"
 
 #define MyAppVersionNumeric "0.3.0.0"
@@ -13,7 +13,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-DefaultDirName={autopf}\SumisoraOMR
+DefaultDirName=D:\SumisoraOMR
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer-dist
@@ -22,7 +22,7 @@ SetupIconFile=assets\icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -48,7 +48,7 @@ Name: "{app}\Input"
 Name: "{app}\Output"
 
 [Files]
-Source: "dist\SumisoraOMR\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\SumisoraOMR\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
 Source: "package-assets\lilypond-runtime\*"; DestDir: "{app}\lilypond-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\audiveris-runtime\*"; DestDir: "{app}\audiveris-runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "package-assets\tessdata\*"; DestDir: "{app}\tessdata"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
@@ -264,9 +264,9 @@ begin
   if InstallMode = MODE_UPGRADE then
   begin
     if OldInstallDir <> '' then
-      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\SumisoraOMR')
+      WizardForm.DirEdit.Text := 'D:\SumisoraOMR'
     else
-      WizardForm.DirEdit.Text := ExpandConstant('{autopf}\SumisoraOMR');
+      WizardForm.DirEdit.Text := 'D:\SumisoraOMR';
   end;
 
   if InstallMode = MODE_FRESH then Exit;
@@ -343,6 +343,11 @@ var
 begin
   Result := '';
   NeedsRestart := False;
+
+  // 强制终止可能正在运行的 SumisoraOMR 进程，避免文件被锁导致 MoveFile Error 5
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
   if (InstallMode = MODE_UPGRADE) or (InstallMode = MODE_DOWNGRADE) then
   begin
     UninstallerPath := GetUninstallerPath;
@@ -460,6 +465,52 @@ begin
       ReadmeFile := ExpandConstant('{app}\README.txt');
     if FileExists(ReadmeFile) then
       ShellExec('open', ReadmeFile, '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+  end;
+end;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 卸载初始化：检测程序是否正在运行，询问用户是否强制关闭
+// ──────────────────────────────────────────────────────────────────────────────
+function InitializeUninstall: Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+
+  // 检测 SumisoraOMR.exe 是否在运行（FindWindowByClassName 无法跨进程；
+  // 改用检查进程是否存在：尝试 tasklist | findstr）
+  if CheckForMutexes('SumisoraOMR_RunningMutex') or
+     (Exec(ExpandConstant('{sys}\tasklist.exe'),
+           '/FI "IMAGENAME eq SumisoraOMR.exe" /NH /FO CSV',
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0)) then
+  begin
+    // tasklist 不返回是否找到，改用 taskkill /T /FI 探测
+  end;
+
+  // 可靠方案：直接尝试 taskkill；若程序未运行则静默失败（exit 128），无副作用
+  if not UninstallSilent then
+  begin
+    if MsgBox('检测到 SumisoraOMR 可能正在运行。' + #13#10#13#10 +
+              '继续卸载前需要关闭程序，否则部分文件可能无法删除。' + #13#10 +
+              '是否立即强制关闭？',
+              mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end
+    else
+    begin
+      if MsgBox('未关闭程序，卸载可能不完整。' + #13#10 +
+                '是否仍要继续卸载？',
+                mbConfirmation, MB_YESNO) = IDNO then
+        Result := False;
+    end;
+  end
+  else
+  begin
+    // 静默卸载时直接强杀，不弹窗
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
 

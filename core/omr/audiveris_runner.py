@@ -196,7 +196,7 @@ def run_audiveris_batch(
         if sheet_number is not None:
             cmd.extend(['-sheets', str(sheet_number)])
         cmd.extend(['-output', str(target_dir), str(effective_input)])
-        return_code, stdout, stderr = run_subprocess_with_spinner(cmd, cwd=str(exe.parent), java_exe=java_exe)
+        return_code, stdout, stderr = run_subprocess_with_spinner(cmd, cwd=str(exe.parent), java_exe=java_exe)  # type: ignore[union-attr]
         exported_file = find_first_musicxml_file(target_dir, effective_input.stem)
         return return_code, stdout, stderr, exported_file
 
@@ -428,7 +428,7 @@ def _merge_mxl_files(
         for mxl_path in mxl_paths:
             try:
                 score = m21conv.parse(str(mxl_path))
-                part = score.parts[0] if score.parts else score.flatten()
+                part = score.parts[0] if score.parts else score.flatten()  # type: ignore[union-attr]
                 for m in list(part.getElementsByClass('Measure')):
                     m.number = measure_number
                     measure_number += 1
@@ -534,7 +534,7 @@ def run_audiveris_sliced_batch(
         import cv2 as _dpi_cv2
         _dpi_arr = normalize_dpi_by_interline(geo_path)
         if _dpi_arr is not None:
-            _dpi_norm_path = output_dir / f'dpi_{image_path.stem}.png'
+            _dpi_norm_path = output_dir / f'dpi_{input_path.stem}.png'
             _dpi_cv2.imwrite(str(_dpi_norm_path), _dpi_arr)
             geo_path = _dpi_norm_path
             log_message('  [切片OMR] DPI 归一化完成：谱线间距已调整至目标范围（18–24 px）。')

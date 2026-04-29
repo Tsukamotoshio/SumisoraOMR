@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from ..config import LOGGER
 from ..utils import get_app_base_dir, log_message
@@ -192,7 +192,7 @@ def _onnx_fix(
                 vec[0, : len(pitches)] = pitches
 
                 # 推理
-                pred = sess.run(None, {input_name: vec})[0][0]
+                pred = sess.run(None, {input_name: vec})[0][0]  # type: ignore[index]
 
                 # 解码并校正
                 for idx, n in enumerate(notes_in):
@@ -252,7 +252,7 @@ def fix_with_dl(
         return None
 
     # ── 第一层：规则型修复 ────────────────────────────────────────
-    score_obj, rule_fixes = _rule_based_fix(score_obj)
+    score_obj, rule_fixes = _rule_based_fix(score_obj)  # type: ignore[arg-type]
     if rule_fixes:
         log_message(f'  [DL修复] 规则型修复：{rule_fixes} 处小节时值已修正。')
     else:
@@ -388,12 +388,12 @@ def _homr_rule_based_fix(
             all_notes = list(part.flatten().notesAndRests)
             # 按声部分组追踪 open tie start
             # key: (voice, pitch_str)  value: note object with open start
-            open_starts: dict[tuple[str, str], object] = {}
+            open_starts: dict[tuple[str, str], Any] = {}
             for n in all_notes:
                 if not hasattr(n, 'tie') or n.tie is None:
                     continue
                 voice = str(n.activeSite.id if n.activeSite else '')
-                pitch_key = n.pitch.nameWithOctave if hasattr(n, 'pitch') else 'rest'
+                pitch_key = n.pitch.nameWithOctave if hasattr(n, 'pitch') else 'rest'  # type: ignore[union-attr]
                 key = (voice, pitch_key)
                 if n.tie.type == 'start':
                     open_starts[key] = n
@@ -495,7 +495,7 @@ def fix_homr_output(
         log_message(f'  [homr修复] 无法解析 MusicXML: {exc}', logging.WARNING)
         return mxl_path  # 解析失败时透传原始文件
 
-    score_obj, fix_count = _homr_rule_based_fix(score_obj, align_for_jianpu=align_for_jianpu)
+    score_obj, fix_count = _homr_rule_based_fix(score_obj, align_for_jianpu=align_for_jianpu)  # type: ignore[arg-type]
 
     if fix_count == 0:
         log_message('  [homr修复] 未检测到需要清洗的问题，使用原始 MusicXML。')

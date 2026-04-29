@@ -201,6 +201,8 @@ def detect_key_from_musicxml(mxl_path: Path) -> str:
             return tonic
         # 若没有显式 Key 元素，用 music21 分析
         analyzed = score.analyze('key')
+        if analyzed is None or not hasattr(analyzed, 'tonic'):
+            return 'C'
         return analyzed.tonic.name.replace('-', 'b')
     except Exception as exc:
         LOGGER.warning('detect_key_from_musicxml 失败 (%s): %s', mxl_path.name, exc)

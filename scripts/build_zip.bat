@@ -178,10 +178,6 @@ if exist "%BASE_DIR%omr_engine\homr" (
 ) else (
     echo [WARN] omr_engine\homr not found, skipping homr config.
 )
-if exist "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       copy /y "%BASE_DIR%Input\Do_You_Hear_the_People_Sing.pdf"       "%STAGE_DIR%\Input\" >nul
-
-if exist "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" copy /y "%BASE_DIR%Input\Sunset_Waltz_By_Yoko_Shimomura-Violin.pdf" "%STAGE_DIR%\Input\" >nul
-
 copy /y "%BASE_DIR%scripts\jianpu-ly.py"            "%STAGE_DIR%\" >nul
 
 copy /y "%BASE_DIR%README_EN.txt"           "%STAGE_DIR%\README.txt" >nul

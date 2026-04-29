@@ -367,7 +367,7 @@ class PdfViewer(ft.Column):
             return
         try:
             pg = self.page
-            loop = pg.loop
+            loop = pg.loop  # type: ignore[union-attr]
         except (RuntimeError, AttributeError):
             # 控件尚未挂载到页面树，跳过 UI 刷新
             return

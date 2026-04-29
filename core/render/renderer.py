@@ -6,7 +6,7 @@ import re
 import shutil
 import textwrap
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from music21 import converter, metadata as m21metadata
 
@@ -69,7 +69,7 @@ def build_score_from_jianpu_measures(
 
     s = m21stream.Score()
     p = m21stream.Part()
-    p.append(m21meter.TimeSignature(time_signature))
+    p.append(m21meter.TimeSignature(time_signature))  # type: ignore[attr-defined]
 
     # Copy the first MetronomeMark from the source score so MIDI tempo matches.
     if source_score is not None:
@@ -516,8 +516,8 @@ def render_score_to_jianpu_pdf(
     Tries in order: standard jianpu-ly → strict-timing → reportlab fallback → LilyPond markup fallback.
     """
     try:
-        txt_content, _voice_groups = build_jianpu_ly_text(
-            score, title, composer=composer, tempo=tempo, _return_groups=True)
+        _jly_result = build_jianpu_ly_text(score, title, composer=composer, tempo=tempo, _return_groups=True)
+        txt_content, _voice_groups = cast(tuple[str, list[list[int]]], _jly_result)
     except Exception as exc:
         _voice_groups = []
         log_message(f'[jianpu] 标准 jianpu-ly 文本生成失败 ({exc})，尝试使用简化处理', logging.WARNING)
@@ -557,7 +557,7 @@ def render_score_to_jianpu_pdf(
 
     strict_txt_content = build_jianpu_ly_text(score, title, use_strict_timing=True,
                                                composer=composer, tempo=tempo)
-    txt_path.write_text(strict_txt_content, encoding='utf-8')
+    txt_path.write_text(strict_txt_content, encoding='utf-8')  # type: ignore[arg-type]
     if render_jianpu_ly(txt_path, ly_path):
         log_message(f'已通过严格拍号重建生成 jianpu-ly 文件: {ly_path.name}')
         sanitize_generated_lilypond_file(ly_path, title, lyrics_lines, composer=composer)

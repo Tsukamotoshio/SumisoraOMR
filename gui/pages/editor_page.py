@@ -467,6 +467,8 @@ class EditorPage(ft.Row):
 
     def _on_mxl_ready(self, path: Path, **_kw) -> None:
         """MXL 就绪后尝试自动加载对应的 jianpu.txt 和源图像。"""
+        if getattr(self._state, 'current_page', 'editor') != 'editor':
+            return
         ws = editor_workspace_dir()
         stem = path.stem
         matched_txt = self._find_matching_jianpu(stem, path.parent, ws)

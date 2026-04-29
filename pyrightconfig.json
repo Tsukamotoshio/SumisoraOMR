@@ -1,0 +1,9 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.14",
+  "ignore": [
+    ".venv/**"
+  ],
+  "reportPossiblyUnboundVariable": "none"
+}
