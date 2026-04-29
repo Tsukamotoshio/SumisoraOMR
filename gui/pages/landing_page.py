@@ -61,13 +61,13 @@ class LandingPage(ft.Row):
             focused_border_color=Palette.PRIMARY,
         )
 
-        # 超分辨率引擎选择
+        # 超分辨率算法选择
         self._sr_engine_dd = ft.Dropdown(
-            label='超分辨率引擎',
-            value='waifu2x',
+            label='超分辨率算法',
+            value='realesrgan',
             options=[
-                ft.dropdown.Option('waifu2x',     'waifu2x（线条画，默认）'),
-                ft.dropdown.Option('realesrgan',  'Real-ESRGAN（anime，更高质量）'),
+                ft.dropdown.Option('waifu2x',     'waifu2x（线条画）'),
+                ft.dropdown.Option('realesrgan',  'Real-ESRGAN（anime，默认）'),
             ],
             width=200,
             text_size=13,

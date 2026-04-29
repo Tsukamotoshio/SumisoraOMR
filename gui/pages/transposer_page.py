@@ -1,4 +1,4 @@
-# gui/pages/transposer_page.py — 五线谱移调引擎页面
+# gui/pages/transposer_page.py — 五线谱移调功能页面
 # 双栏布局：左侧原调预览，右侧实时渲染移调后预览。
 # 使用 core/transposer.py 处理移调。
 
@@ -46,7 +46,7 @@ def _dd(label: str, value: str, options, width: int) -> ft.Dropdown:
 
 
 class TransposerPage(ft.Column):
-    """移调引擎：三种移调模式，左右对比预览，一键导出。"""
+    """移调功能：三种移调模式，左右对比预览，一键导出。"""
 
     def __init__(self, state: AppState):
         super().__init__(spacing=0, expand=True)
@@ -297,35 +297,38 @@ class TransposerPage(ft.Column):
             ),
         )
 
+        right_btns = ft.Column(
+            [
+                ft.Row([open_btn, open_output_btn], spacing=8),
+                ft.Row([export_orig_btn, export_btn], spacing=8),
+            ],
+            spacing=4,
+            horizontal_alignment=ft.CrossAxisAlignment.END,
+        )
+
         top_bar = ft.Container(
-            content=ft.Column(
+            content=ft.Row(
                 [
-                    ft.Row(
+                    ft.Column(
                         [
-                            section_title('移调引擎', self._state.dark_mode),
-                            ft.Container(expand=True),
-                            ft.Row([open_btn, open_output_btn], spacing=8),
-                        ],
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    ft.Row(
-                        [
-                            self._quick_iv_dd,
-                            self._quick_dir_dd,
-                            self._quick_keysig_cb,
-                            adv_btn,
-                            ft.Container(expand=True),
+                            section_title('移调功能', self._state.dark_mode),
                             ft.Row(
-                                [export_orig_btn, export_btn],
-                                spacing=8,
+                                [
+                                    self._quick_iv_dd,
+                                    self._quick_dir_dd,
+                                    self._quick_keysig_cb,
+                                    adv_btn,
+                                ],
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                spacing=8,
                             ),
                         ],
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=8,
+                        spacing=6,
+                        expand=True,
                     ),
+                    right_btns,
                 ],
-                spacing=6,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=16, vertical=10),

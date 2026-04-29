@@ -110,7 +110,7 @@ from gui.components.progress_overlay import ProgressOverlay
 _NAV_ITEMS = [
     ('landing',    ft.Icons.ARROW_CIRCLE_RIGHT_ROUNDED,  ft.Icons.ARROW_CIRCLE_RIGHT_OUTLINED,  '乐谱识别'),
     ('editor',     ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,            '简谱编辑'),
-    ('transposer', ft.Icons.MUSIC_NOTE_ROUNDED,          ft.Icons.MUSIC_NOTE_OUTLINED,           '移调引擎'),
+    ('transposer', ft.Icons.MUSIC_NOTE_ROUNDED,          ft.Icons.MUSIC_NOTE_OUTLINED,           '移调功能'),
     ('about',      ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,          '关于'),
 ]
 
