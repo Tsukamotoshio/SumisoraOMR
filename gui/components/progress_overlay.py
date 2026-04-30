@@ -51,7 +51,7 @@ class ProgressOverlay(ft.Stack):
             height=3,
             visible=False,
         )
-        self._sub_status_text = ft.Text('', size=11, color=ft.Colors.ON_SURFACE_VARIANT, visible=False)
+        self._sub_status_text = ft.Text('', size=12, color=ft.Colors.ON_SURFACE_VARIANT, visible=False)
         # 旋转进度圈（不确定模式，视觉动画）
         self._spinner = ft.ProgressRing(
             width=20, height=20,
@@ -59,8 +59,8 @@ class ProgressOverlay(ft.Stack):
             color=Palette.PRIMARY,
             visible=True,
         )
-        self._status_text = ft.Text('', size=13, color=ft.Colors.ON_SURFACE, expand=True)
-        self._elapsed_text = ft.Text('00:00', size=11, color=ft.Colors.ON_SURFACE_VARIANT, width=38)
+        self._status_text = ft.Text('', size=14, color=ft.Colors.ON_SURFACE, expand=True)
+        self._elapsed_text = ft.Text('00:00', size=12, color=ft.Colors.ON_SURFACE_VARIANT, width=38)
         self._log_list = ft.ListView(
             spacing=2,
             expand=True,
@@ -177,7 +177,7 @@ class ProgressOverlay(ft.Stack):
             while self._pending_logs and _drained < 8:
                 line, color = self._pending_logs.popleft()
                 self._log_list.controls.append(
-                    ft.Text(line, size=11, font_family='Consolas',
+                    ft.Text(line, size=12, font_family='Consolas',
                             color=color, selectable=True)
                 )
                 _drained += 1

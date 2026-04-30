@@ -34,7 +34,7 @@ _DIRECTIONS_2 = [
 _DD_STYLE = dict(
     bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
     color=ft.Colors.ON_SURFACE,
-    text_size=13,
+    text_size=14,
     border_color=Palette.BORDER_BLUE,
     focused_border_color=Palette.PRIMARY,
     dense=True,
@@ -111,7 +111,7 @@ class TransposerPage(ft.Column):
             [
                 ft.Row(
                     [self._adv_key_from,
-                     ft.Text('→', color=ft.Colors.ON_SURFACE_VARIANT, size=14),
+                     ft.Text('→', color=ft.Colors.ON_SURFACE_VARIANT, size=15),
                      self._adv_key_to,
                      self._adv_key_dir],
                     spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -141,7 +141,7 @@ class TransposerPage(ft.Column):
 
         self._adv_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text('高级选项', size=15, weight=ft.FontWeight.W_600),
+            title=ft.Text('高级选项', size=16, weight=ft.FontWeight.W_700),
             content=ft.Container(
                 content=ft.Column(
                     [
@@ -271,10 +271,10 @@ class TransposerPage(ft.Column):
             ),
         )
 
-        open_btn = ft.OutlinedButton(
+        open_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=15), ft.Text('打开乐谱')],
-                tight=True, spacing=5,
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开乐谱')],
+                tight=True, spacing=6,
             ),
             on_click=self._on_open_click,
             style=ft.ButtonStyle(
@@ -284,10 +284,10 @@ class TransposerPage(ft.Column):
             ),
         )
 
-        open_output_btn = ft.OutlinedButton(
+        open_output_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=15), ft.Text('打开输出目录')],
-                tight=True, spacing=5,
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开输出目录')],
+                tight=True, spacing=6,
             ),
             on_click=self._on_open_output_dir,
             style=ft.ButtonStyle(
@@ -297,13 +297,21 @@ class TransposerPage(ft.Column):
             ),
         )
 
-        right_btns = ft.Column(
+        right_btns = ft.Row(
             [
-                ft.Row([open_btn, open_output_btn], spacing=8),
-                ft.Row([export_orig_btn, export_btn], spacing=8),
+                ft.Column(
+                    [open_btn, export_orig_btn],
+                    spacing=4,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                ft.Column(
+                    [open_output_btn, export_btn],
+                    spacing=4,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
             ],
-            spacing=4,
-            horizontal_alignment=ft.CrossAxisAlignment.END,
+            spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
         top_bar = ft.Container(
@@ -342,7 +350,7 @@ class TransposerPage(ft.Column):
         orig_col = ft.Column(
             [
                 ft.Container(
-                    content=ft.Text('原调', size=12, weight=ft.FontWeight.W_600,
+                    content=ft.Text('原调', size=13, weight=ft.FontWeight.W_700,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                     padding=ft.Padding.symmetric(horizontal=12, vertical=6),
                     bgcolor=ft.Colors.SURFACE,
@@ -355,7 +363,7 @@ class TransposerPage(ft.Column):
         trans_col = ft.Column(
             [
                 ft.Container(
-                    content=ft.Text('移调后', size=12, weight=ft.FontWeight.W_600,
+                    content=ft.Text('移调后', size=13, weight=ft.FontWeight.W_700,
                                     color=Palette.PRIMARY),
                     padding=ft.Padding.symmetric(horizontal=12, vertical=6),
                     bgcolor=ft.Colors.SURFACE,
@@ -376,7 +384,7 @@ class TransposerPage(ft.Column):
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
-        self._status   = ft.Text('请先打开乐谱文件。', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._status   = ft.Text('请先打开乐谱文件。', size=13, color=ft.Colors.ON_SURFACE_VARIANT)
         self._progress = ft.ProgressBar(
             value=0, visible=False,
             bgcolor=ft.Colors.SURFACE_CONTAINER, color=Palette.PRIMARY, height=3,

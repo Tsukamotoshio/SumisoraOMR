@@ -25,8 +25,10 @@ class Event:
     LOG_LINE            = 'log_line'            # new log line (line: str)
     MXL_READY           = 'mxl_ready'          # MusicXML ready (path: Path)
     TRANSPOSED_READY    = 'transposed_ready'    # transposition result ready (path: Path)
-    JIANPU_TXT_SELECTED = 'jianpu_txt_selected' # editor selected a jianpu row (line_no: int)
-    THEME_CHANGED       = 'theme_changed'       # theme toggled (dark: bool)
+    JIANPU_TXT_SELECTED   = 'jianpu_txt_selected'   # editor selected a jianpu row (line_no: int)
+    JIANPU_EDIT_REQUESTED = 'jianpu_edit_requested' # preview page requests edit sub-page (path: Path)
+    JIANPU_PREVIEW_BACK   = 'jianpu_preview_back'   # edit sub-page requests back to preview
+    THEME_CHANGED         = 'theme_changed'         # theme toggled (dark: bool)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -51,8 +53,9 @@ class AppState:
     # Intermediate output paths
     current_mxl:       Optional[Path] = None   # most recent OMR-recognised MusicXML
     transposed_mxl:    Optional[Path] = None   # transposition result
-    current_jianpu_txt: Optional[Path] = None  # jianpu text file open in editor
-    output_pdf:        Optional[Path] = None   # generated jianpu PDF
+    current_jianpu_txt:  Optional[Path] = None  # jianpu text file open in editor
+    output_pdf:         Optional[Path] = None   # generated jianpu PDF
+    jianpu_edit_source: Optional[Path] = None   # jianpu PDF selected for editing from preview page
 
     # Transposition parameters
     transpose_from_key: str = 'C'

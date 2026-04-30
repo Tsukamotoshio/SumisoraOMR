@@ -83,25 +83,26 @@ This file provides license and attribution notices for third-party components di
 - Home: <https://ssb22.user.srcf.net/mwrhome/jianpu-ly.html>
 - Upstream: <https://github.com/ssb22/jianpu-ly>
 
-## waifu2x-ncnn-vulkan
-- Version: `20250915`
-- License: MIT
-- Copyright: © 2019 nihui
-- Upstream: <https://github.com/nihui/waifu2x-ncnn-vulkan>
-- Note: Bundled as a GPU-accelerated (Vulkan) super-resolution pre-processor
-  for low-resolution sheet music images. Invoked as an external subprocess;
-  not linked or modified. License text is included in `waifu2x-runtime/LICENSE`.
-
 ## Real-ESRGAN (realesrgan-ncnn-vulkan)
 - License: BSD-3-Clause
 - Copyright: © 2021 Xintao Wang, Liangbin Xie, Chao Dong, Ying Shan, Xiaohu Qie
 - Upstream (Python): <https://github.com/xinntao/Real-ESRGAN>
 - Upstream (ncnn-vulkan binary): <https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan>
-- Note: Optional GPU-accelerated super-resolution pre-processor bundled under
-  `realesrgan-runtime/`. Invoked as an external subprocess; not linked or modified.
-  Supports models: `realesrgan-x4plus`, `realesrgan-x4plus-anime`,
-  `realesr-animevideov3`. Used as an alternative to waifu2x for higher-fidelity
-  upscaling of sheet music images.
+- Note: **Default** GPU-accelerated (Vulkan) super-resolution pre-processor bundled
+  under `realesrgan-runtime/`. Invoked as an external subprocess; not linked or
+  modified. Supports models: `realesrgan-x4plus`, `realesrgan-x4plus-anime`,
+  `realesr-animevideov3`. Used for high-fidelity upscaling of low-resolution sheet
+  music images before OMR; waifu2x is available as a secondary option.
+
+## waifu2x-ncnn-vulkan
+- Version: `20250915`
+- License: MIT
+- Copyright: © 2019 nihui
+- Upstream: <https://github.com/nihui/waifu2x-ncnn-vulkan>
+- Note: GPU-accelerated (Vulkan) super-resolution pre-processor for low-resolution
+  sheet music images. Invoked as an external subprocess; not linked or modified.
+  Selectable as a secondary alternative to Real-ESRGAN (line-art model). License
+  text is included in `waifu2x-runtime/LICENSE`.
 
 ## Eclipse Temurin JDK
 - Version: `25.0.2+10` (Temurin-25.0.2+10)

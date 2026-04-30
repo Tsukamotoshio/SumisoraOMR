@@ -146,7 +146,7 @@ class FileSidebar(ft.Column):
                     ft.Icon(icon, size=14, color=ft.Colors.SECONDARY),
                     ft.Text(
                         path.name,
-                        size=12,
+                        size=13,
                         color=ft.Colors.ON_SURFACE,
                         expand=True,
                         overflow=ft.TextOverflow.ELLIPSIS,

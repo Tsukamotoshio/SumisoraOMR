@@ -114,8 +114,8 @@ def card_style(dark: bool = True) -> dict:
 def section_title(text: str, dark: bool = True) -> ft.Text:
     return ft.Text(
         text,
-        size=11,
-        weight=ft.FontWeight.W_600,
+        size=12,
+        weight=ft.FontWeight.W_700,
         color=ft.Colors.ON_SURFACE_VARIANT,
         style=ft.TextStyle(letter_spacing=1.2),
     )

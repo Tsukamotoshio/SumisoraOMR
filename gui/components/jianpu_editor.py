@@ -71,7 +71,7 @@ class JianpuEditor(ft.Column):
         self._editor = ft.TextField(
             multiline=True,
             expand=True,
-            text_size=13,
+            text_size=14,
             text_style=ft.TextStyle(font_family='Consolas', font_family_fallback=['YaHei']),
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,

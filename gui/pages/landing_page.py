@@ -54,7 +54,7 @@ class LandingPage(ft.Row):
                 ft.dropdown.Option('homr',      'Homr（深度学习）'),
             ],
             width=200,
-            text_size=13,
+            text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
@@ -70,7 +70,7 @@ class LandingPage(ft.Row):
                 ft.dropdown.Option('realesrgan',  'Real-ESRGAN（anime，默认）'),
             ],
             width=200,
-            text_size=13,
+            text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
@@ -88,7 +88,7 @@ class LandingPage(ft.Row):
                 ft.dropdown.Option('auto', '自动（按 CPU 核数）'),
             ],
             width=200,
-            text_size=13,
+            text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
@@ -98,7 +98,7 @@ class LandingPage(ft.Row):
         # 输出目录选择
         self._output_dir_text = ft.Text(
             '未指定（默认 Output/）',
-            size=12,
+            size=13,
             color=ft.Colors.ON_SURFACE_VARIANT,
             expand=True,
             overflow=ft.TextOverflow.ELLIPSIS,
@@ -144,7 +144,7 @@ class LandingPage(ft.Row):
             content=ft.Column(
                 [
                     ft.Container(
-                        content=ft.Text('转换选项', size=14, weight=ft.FontWeight.W_600,
+                        content=ft.Text('转换选项', size=15, weight=ft.FontWeight.W_700,
                                         color=ft.Colors.ON_SURFACE),
                         height=48,
                         padding=ft.Padding.only(left=16, right=16),
@@ -309,22 +309,22 @@ class LandingPage(ft.Row):
             warn_items.append(
                 ft.Row([
                     ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,
-                            color=Palette.WARNING, size=15),
+                            color=Palette.WARNING, size=16),
                     ft.Text(
                         f'以下 {len(existing)} 个文件已存在输出：',
-                        color=Palette.WARNING, size=12,
+                        color=Palette.WARNING, size=13,
                     ),
                 ], spacing=4)
             )
             for name in existing[:5]:
                 warn_items.append(
-                    ft.Text(f'  • {name}', size=11,
+                    ft.Text(f'  • {name}', size=12,
                             color=ft.Colors.ON_SURFACE_VARIANT)
                 )
             if len(existing) > 5:
                 warn_items.append(
                     ft.Text(f'  …等另外 {len(existing)-5} 个',
-                            size=11, color=ft.Colors.OUTLINE)
+                            size=12, color=ft.Colors.OUTLINE)
                 )
             self._skip_dup_cb = ft.Checkbox(
                 label='跳过重复文件（不重新识别）',
@@ -348,7 +348,7 @@ class LandingPage(ft.Row):
             modal=True,
             title=ft.Text(
                 f'转换 {len(checked)} 个文件',
-                size=15, weight=ft.FontWeight.W_600,
+                size=16, weight=ft.FontWeight.W_700,
             ),
             content=ft.Container(
                 content=ft.Column(
@@ -901,7 +901,7 @@ class LandingPage(ft.Row):
             # ── 标题行：总共 X 文件，成功 Y，失败 Z ──
             def _stat_chip(label: str, color: str) -> ft.Container:
                 return ft.Container(
-                    content=ft.Text(label, size=12, color=color, weight=ft.FontWeight.W_600),
+                    content=ft.Text(label, size=13, color=color, weight=ft.FontWeight.W_700),
                     padding=ft.padding.symmetric(horizontal=10, vertical=4),
                     border_radius=12,
                     bgcolor=ft.Colors.with_opacity(0.12, color),
@@ -909,7 +909,7 @@ class LandingPage(ft.Row):
 
             header_row = ft.Row(
                 [
-                    ft.Text(f'总共 {total} 个文件', size=13, color=ft.Colors.ON_SURFACE),
+                    ft.Text(f'总共 {total} 个文件', size=14, color=ft.Colors.ON_SURFACE),
                     _stat_chip(f'✓ 成功 {success_count}', Palette.SUCCESS),
                     _stat_chip(f'✗ 失败 {failed_count}', Palette.ERROR) if failed_count else ft.Container(),
                 ],
@@ -923,7 +923,7 @@ class LandingPage(ft.Row):
             if success_files:
                 list_items.append(
                     ft.Container(
-                        ft.Text('成功', size=11, weight=ft.FontWeight.W_600, color=Palette.SUCCESS),
+                        ft.Text('成功', size=12, weight=ft.FontWeight.W_700, color=Palette.SUCCESS),
                         padding=ft.padding.only(top=8, bottom=2),
                     )
                 )
@@ -948,13 +948,13 @@ class LandingPage(ft.Row):
                                 [
                                     ft.Text(
                                         f'  ✓  {file_name}',
-                                        size=11,
+                                        size=12,
                                         color=ft.Colors.ON_SURFACE,
                                         no_wrap=False,
                                     ),
                                     ft.Text(
                                         f'       {detail_str}',
-                                        size=10,
+                                        size=11,
                                         color=ft.Colors.ON_SURFACE_VARIANT,
                                     ),
                                 ],
@@ -969,7 +969,7 @@ class LandingPage(ft.Row):
             if failed_files:
                 list_items.append(
                     ft.Container(
-                        ft.Text('失败', size=11, weight=ft.FontWeight.W_600, color=Palette.ERROR),
+                        ft.Text('失败', size=12, weight=ft.FontWeight.W_700, color=Palette.ERROR),
                         padding=ft.padding.only(top=10, bottom=2),
                     )
                 )
@@ -982,13 +982,13 @@ class LandingPage(ft.Row):
                                 [
                                     ft.Text(
                                         f'  ✗  {file_name}',
-                                        size=11,
+                                        size=12,
                                         color=ft.Colors.ON_SURFACE,
                                         no_wrap=False,
                                     ),
                                     ft.Text(
                                         f'       原因：{reason}',
-                                        size=10,
+                                        size=11,
                                         color=Palette.ERROR,
                                         no_wrap=False,
                                     ),
@@ -1006,7 +1006,7 @@ class LandingPage(ft.Row):
 
             dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text('识别结果', size=15, weight=ft.FontWeight.W_600),
+                title=ft.Text('识别结果', size=16, weight=ft.FontWeight.W_700),
                 content=ft.Column(
                     [
                         header_row,

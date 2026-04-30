@@ -56,7 +56,7 @@ class PdfViewer(ft.Column):
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self._page_label = ft.Text('—', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._page_label = ft.Text('—', size=13, color=ft.Colors.ON_SURFACE_VARIANT)
 
         toolbar = ft.Row(
             [
@@ -93,7 +93,7 @@ class PdfViewer(ft.Column):
         self._placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
-                ft.Text('暂无文件', size=13, color=ft.Colors.OUTLINE),
+                ft.Text('暂无文件', size=14, color=ft.Colors.OUTLINE),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -253,7 +253,7 @@ class PdfViewer(ft.Column):
         self._image.src = _BLANK_PNG_B64
         self._placeholder_col.controls = [
             ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
-            ft.Text('暂无文件', size=13, color=ft.Colors.OUTLINE),
+            ft.Text('暂无文件', size=14, color=ft.Colors.OUTLINE),
         ]
         self._placeholder.visible = True
         self._update_toolbar()
@@ -348,7 +348,7 @@ class PdfViewer(ft.Column):
     def _show_error(self, msg: str) -> None:
         self._placeholder_col.controls = [
             ft.Icon(ft.Icons.ERROR_OUTLINE, size=36, color=Palette.ERROR),
-            ft.Text(msg, size=12, color=Palette.ERROR),
+            ft.Text(msg, size=13, color=Palette.ERROR),
         ]
         self._image.src = _BLANK_PNG_B64
         self._placeholder.visible = True

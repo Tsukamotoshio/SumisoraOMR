@@ -758,7 +758,7 @@ def generate_jianpu_pdf_from_mxl(
             except Exception:
                 pass
 
-        lyrics_lines = collect_preserved_lyrics_lines(source_score, source_path)
+        lyrics_lines = None  # 歌词排版存在已知问题，暂不在简谱输出中显示
 
         # Use the original parsed score for MIDI — preserves all parts and voices.
         if midi_output_path is not None:

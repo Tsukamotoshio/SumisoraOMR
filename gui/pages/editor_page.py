@@ -286,13 +286,23 @@ class EditorPage(ft.Row):
         self._editor   = JianpuEditor(state)
         self._open_picker = ft.FilePicker()
         self._build_ui()
-        state.on(Event.FILE_SELECTED, self._on_file_selected)
-        state.on(Event.MXL_READY,     self._on_mxl_ready)
+        state.on(Event.FILE_SELECTED,        self._on_file_selected)
+        state.on(Event.MXL_READY,            self._on_mxl_ready)
+        state.on(Event.JIANPU_EDIT_REQUESTED, self._on_edit_requested)
 
     def did_mount(self):
         self.page._services.register_service(self._open_picker)  # type: ignore[attr-defined]
 
     def _build_ui(self) -> None:
+        back_btn = ft.IconButton(
+            icon=ft.Icons.ARROW_BACK_ROUNDED,
+            icon_size=18,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltip='返回简谱预览',
+            on_click=lambda _: self._state.emit(Event.JIANPU_PREVIEW_BACK),
+            width=32,
+            height=32,
+        )
         open_btn = ft.Button(
             content=ft.Row(
                 [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开乐谱')],
@@ -320,7 +330,8 @@ class EditorPage(ft.Row):
         top_bar = ft.Container(
             content=ft.Row(
                 [
-                    ft.Text('简谱编辑套件', size=13, weight=ft.FontWeight.W_600,
+                    back_btn,
+                    ft.Text('简谱编辑', size=13, weight=ft.FontWeight.W_700,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(expand=True),
                     open_btn,
@@ -484,6 +495,30 @@ class EditorPage(ft.Row):
             self._img_view.load(matched_source)
         else:
             self._img_view.reset()
+
+    def load_from_output_pdf(self, pdf_path: Path) -> None:
+        """根据 Output/ 中的 Jianpu PDF，查找并加载 editor-workspace/ 中对应的源图像和 jianpu.txt。"""
+        ws = editor_workspace_dir()
+        # 输出 PDF 命名为 '{源文件名}_jianpu.pdf'，editor-workspace 用源文件名存储；还原源文件名
+        stem = pdf_path.stem
+        if stem.endswith('_jianpu'):
+            stem = stem[: -len('_jianpu')]
+        matched_txt = self._find_matching_jianpu(stem, pdf_path.parent, ws)
+        if matched_txt is not None:
+            self._editor.load(matched_txt)
+            self._state.current_jianpu_txt = matched_txt
+        else:
+            self._editor.reset()
+            self._state.current_jianpu_txt = None
+        matched_source = self._find_matching_source(stem, pdf_path.parent, ws)
+        if matched_source is not None:
+            self._img_view.load(matched_source)
+        else:
+            self._img_view.reset()
+
+    def _on_edit_requested(self, path: Path, **_kw) -> None:
+        self.load_from_output_pdf(path)
+        self._has_been_shown = True
 
     def reset_view(self) -> None:
         self._img_view.reset()

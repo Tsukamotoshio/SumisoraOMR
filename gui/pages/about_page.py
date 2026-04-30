@@ -82,11 +82,11 @@ class AboutPage(ft.Column):
                 [
                     ft.Image(src='Sumisora.png', width=64, height=64,
                              border_radius=ft.BorderRadius.all(12)),
-                    ft.Text('SumisoraOMR', size=22,
+                    ft.Text('SumisoraOMR', size=24,
                             weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE),
-                    ft.Text('五线谱识别与简谱生成工具', size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text('五线谱识别与简谱生成工具', size=15, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
-                        content=ft.Text(f'v{APP_VERSION}', size=12, color=Palette.PRIMARY,
+                        content=ft.Text(f'v{APP_VERSION}', size=13, color=Palette.PRIMARY,
                                         weight=ft.FontWeight.W_500),
                         bgcolor=with_alpha(Palette.PRIMARY, '22'),
                         border_radius=ft.BorderRadius.all(6),
@@ -102,17 +102,17 @@ class AboutPage(ft.Column):
         author_card = _card(
             ft.Column(
                 [
-                    ft.Text('作者', size=13, weight=ft.FontWeight.W_600,
+                    ft.Text('作者', size=14, weight=ft.FontWeight.W_700,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
                             ft.Icon(ft.Icons.PERSON_ROUNDED, size=18, color=Palette.PRIMARY),
-                            ft.Text('Tsukamotoshio', size=15, color=ft.Colors.ON_SURFACE),
+                            ft.Text('Tsukamotoshio', size=16, color=ft.Colors.ON_SURFACE),
                         ],
                         spacing=8,
                     ),
                     ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
-                    ft.Text('项目主页', size=13, weight=ft.FontWeight.W_600,
+                    ft.Text('项目主页', size=14, weight=ft.FontWeight.W_700,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
@@ -120,7 +120,7 @@ class AboutPage(ft.Column):
                             ft.GestureDetector(
                                 content=ft.Text(
                                     self._GITHUB_URL,
-                                    size=13,
+                                    size=14,
                                     color=Palette.PRIMARY,
                                     weight=ft.FontWeight.W_500,
                                 ),
@@ -139,12 +139,12 @@ class AboutPage(ft.Column):
         license_card = _card(
             ft.Column(
                 [
-                    ft.Text('开源许可证 (AGPL-3.0)', size=13, weight=ft.FontWeight.W_600,
+                    ft.Text('开源许可证 (AGPL-3.0)', size=14, weight=ft.FontWeight.W_700,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(
                             _AGPL_LICENSE,
-                            size=11,
+                            size=12,
                             color=ft.Colors.ON_SURFACE_VARIANT,
                             font_family='Consolas',
                             selectable=True,
