@@ -1,4 +1,4 @@
-﻿# gui/pages/editor_page.py — 简谱编辑套件（Editing Suite）
+# gui/pages/editor_page.py — 简谱编辑套件（Editing Suite）
 # 双栏布局：左侧二值化图像预览（含滚轮缩放和放大镜），右侧简谱文本编辑器。
 # 实现图像坐标 ↔ 文本行的"点对点"联动。
 
@@ -129,7 +129,7 @@ class _BinaryImageView(ft.Column):
             threading.Thread(target=self._load_async, args=(path, token), daemon=True).start()
 
     def _load_pdf_async(self, path: Path, token: int) -> None:
-        """PDF 文件：用 PyMuPDF 渲染第一页为 PNG，再二値化。"""
+        """PDF 文件：用 PyMuPDF 渲染第一页为 PNG。"""
         try:
             import fitz
             with fitz.open(str(path)) as doc:
@@ -137,20 +137,7 @@ class _BinaryImageView(ft.Column):
                 mat = fitz.Matrix(2.0, 2.0)
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 buf = io.BytesIO(pix.tobytes('png'))
-                b64_raw = base64.b64encode(buf.getvalue()).decode()
-            if token != self._load_token:
-                return
-            try:
-                from PIL import Image as PILImage
-                buf2 = io.BytesIO(base64.b64decode(b64_raw))
-                with PILImage.open(buf2) as img:
-                    gray = img.convert('L')
-                    binary = gray.point(lambda p: 255 if p > 128 else 0, '1').convert('RGB')
-                    out = io.BytesIO()
-                    binary.save(out, format='PNG')
-                    raw_b64 = base64.b64encode(out.getvalue()).decode()
-            except Exception:
-                raw_b64 = b64_raw
+                raw_b64 = base64.b64encode(buf.getvalue()).decode()
             if token != self._load_token:
                 return
             self._schedule_image_load(raw_b64, token)
@@ -161,17 +148,8 @@ class _BinaryImageView(ft.Column):
 
     def _load_async(self, path: Path, token: int) -> None:
         try:
-            try:
-                from PIL import Image as PILImage
-                with PILImage.open(path) as img:
-                    gray = img.convert('L')
-                    binary = gray.point(lambda p: 255 if p > 128 else 0, '1').convert('RGB')
-                    buf = io.BytesIO()
-                    binary.save(buf, format='PNG')
-                    raw_b64 = base64.b64encode(buf.getvalue()).decode()
-            except ImportError:
-                with open(path, 'rb') as f:
-                    raw_b64 = base64.b64encode(f.read()).decode()
+            with open(path, 'rb') as f:
+                raw_b64 = base64.b64encode(f.read()).decode()
             if token != self._load_token:
                 return
             self._schedule_image_load(raw_b64, token)
@@ -516,8 +494,9 @@ class EditorPage(ft.Row):
         else:
             self._img_view.reset()
 
-    def _on_edit_requested(self, path: Path, **_kw) -> None:
-        self.load_from_output_pdf(path)
+    def _on_edit_requested(self, path: Optional[Path] = None, **_kw) -> None:
+        if path is not None:
+            self.load_from_output_pdf(path)
         self._has_been_shown = True
 
     def reset_view(self) -> None:

@@ -1,10 +1,9 @@
 # gui/pages/jianpu_preview_page.py — 简谱预览页
-# 扫描 Output/*.pdf，左侧文件列表（复选框 + 编辑按钮），右侧 PdfViewer，底部导出功能。
+# 三列布局（仿乐谱识别页）：左侧文件列表、中央 PdfViewer、右侧导出操作面板。
 
 from __future__ import annotations
 
 import shutil
-import threading
 from pathlib import Path
 from typing import Optional
 
@@ -13,7 +12,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import output_dir
 from ..components.pdf_viewer import PdfViewer
-from ..theme import Palette, with_alpha
+from ..theme import Palette, with_alpha, section_title
 
 
 class JianpuPreviewPage(ft.Row):
@@ -46,7 +45,7 @@ class JianpuPreviewPage(ft.Row):
                     ft.Icon(ft.Icons.MUSIC_NOTE_OUTLINED, size=40, color=ft.Colors.OUTLINE),
                     ft.Text(
                         'Output 目录暂无简谱文件\n请先在乐谱识别页完成转换',
-                        size=12,
+                        size=13,
                         color=ft.Colors.OUTLINE,
                         text_align=ft.TextAlign.CENTER,
                     ),
@@ -79,53 +78,29 @@ class JianpuPreviewPage(ft.Row):
             height=28,
         )
 
+        self._export_btn = ft.IconButton(
+            icon=ft.Icons.DOWNLOAD_ROUNDED,
+            icon_size=17,
+            icon_color=Palette.PRIMARY,
+            tooltip='导出已勾选的简谱',
+            on_click=self._on_export_click,
+            width=28,
+            height=28,
+        )
+
         sidebar_header = ft.Container(
             content=ft.Row(
                 [
-                    ft.Row(
-                        [
-                            self._select_all_btn,
-                            ft.Text(
-                                '简谱文件',
-                                size=12,
-                                weight=ft.FontWeight.W_700,
-                                color=ft.Colors.ON_SURFACE_VARIANT,
-                            ),
-                        ],
-                        spacing=2,
-                    ),
+                    ft.Row([self._select_all_btn, section_title('简谱文件')], spacing=0),
                     ft.Container(expand=True),
+                    self._export_btn,
                     refresh_btn,
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            bgcolor=ft.Colors.SURFACE,
-            padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+            height=48,
+            padding=ft.Padding.only(left=12, right=4),
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
-        )
-
-        self._export_picker = ft.FilePicker()
-        self._export_picker.on_result = self._on_export_result
-
-        export_btn = ft.ElevatedButton(
-            content=ft.Row(
-                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), ft.Text('导出简谱', size=13)],
-                tight=True,
-                spacing=6,
-            ),
-            style=ft.ButtonStyle(
-                color=ft.Colors.ON_PRIMARY,
-                bgcolor=Palette.PRIMARY,
-                shape=ft.RoundedRectangleBorder(radius=8),
-                padding=ft.Padding.symmetric(horizontal=16, vertical=10),
-            ),
-            on_click=self._on_export_click,
-        )
-
-        sidebar_footer = ft.Container(
-            content=export_btn,
-            padding=ft.Padding.all(8),
-            border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         self._list_stack = ft.Stack(
@@ -136,31 +111,51 @@ class JianpuPreviewPage(ft.Row):
             expand=True,
         )
 
+        self._export_picker = ft.FilePicker()
+        self._export_picker.on_result = self._on_export_result
+
+        edit_jianpu_btn = ft.OutlinedButton(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.EDIT_NOTE_ROUNDED, size=16), ft.Text('简谱编辑', size=14)],
+                tight=True,
+                spacing=6,
+            ),
+            style=ft.ButtonStyle(
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+                padding=ft.Padding.symmetric(horizontal=16, vertical=10),
+            ),
+            on_click=self._on_edit_current,
+        )
+
         sidebar = ft.Container(
             content=ft.Column(
-                [sidebar_header, self._list_stack, sidebar_footer],
+                [
+                    sidebar_header,
+                    ft.Container(
+                        content=self._list_stack,
+                        expand=True,
+                        padding=ft.Padding.symmetric(horizontal=6, vertical=4),
+                    ),
+                ],
                 spacing=0,
                 expand=True,
             ),
-            width=220,
+            expand=1,
             bgcolor=ft.Colors.SURFACE,
             border=ft.Border.only(right=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         top_bar = ft.Container(
             content=ft.Row(
-                [
-                    ft.Text(
-                        '简谱预览',
-                        size=13,
-                        weight=ft.FontWeight.W_700,
-                        color=ft.Colors.ON_SURFACE_VARIANT,
-                    ),
-                ],
+                [ft.Container(expand=True), edit_jianpu_btn],
+                spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor=ft.Colors.SURFACE,
-            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
+            height=56,
+            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
@@ -216,6 +211,9 @@ class JianpuPreviewPage(ft.Row):
         chk = ft.Checkbox(
             value=is_checked,
             on_change=lambda e, p=path: self._on_check_change(e, p),
+            active_color=Palette.PRIMARY,
+            width=28,
+            height=28,
         )
 
         edit_btn = ft.IconButton(
@@ -229,25 +227,31 @@ class JianpuPreviewPage(ft.Row):
         )
 
         display_name = path.stem[: -len('_jianpu')] if path.stem.endswith('_jianpu') else path.stem
-        name_text = ft.Text(
-            display_name,
-            size=12,
-            overflow=ft.TextOverflow.ELLIPSIS,
-            expand=True,
-            color=Palette.PRIMARY if is_selected else ft.Colors.ON_SURFACE,
-            weight=ft.FontWeight.W_700 if is_selected else ft.FontWeight.NORMAL,
-        )
 
         return ft.Container(
             content=ft.Row(
-                [chk, name_text, edit_btn],
+                [
+                    chk,
+                    ft.Icon(ft.Icons.PICTURE_AS_PDF, size=14, color=ft.Colors.SECONDARY),
+                    ft.Text(
+                        display_name,
+                        size=13,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        expand=True,
+                        color=Palette.PRIMARY if is_selected else ft.Colors.ON_SURFACE,
+                        weight=ft.FontWeight.W_700 if is_selected else ft.FontWeight.NORMAL,
+                        tooltip=path.name,
+                    ),
+                    edit_btn,
+                ],
                 spacing=4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            padding=ft.Padding.symmetric(horizontal=4, vertical=2),
-            border_radius=ft.BorderRadius.all(4),
-            bgcolor=with_alpha(Palette.PRIMARY, '22') if is_selected else ft.Colors.TRANSPARENT,
+            bgcolor=with_alpha(Palette.PRIMARY, '33') if is_selected else ft.Colors.TRANSPARENT,
+            border_radius=ft.BorderRadius.all(6),
+            padding=ft.Padding.only(left=2, right=4, top=3, bottom=3),
             on_click=lambda _, p=path: self._select_file(p),
+            ink=True,
         )
 
     def _select_file(self, path: Path) -> None:
@@ -315,6 +319,13 @@ class JianpuPreviewPage(ft.Row):
 
     # ── 编辑跳转 ──────────────────────────────────────────────────────────────
 
+    def _on_edit_current(self, _e) -> None:
+        if self._current_path is not None:
+            self._state.jianpu_edit_source = self._current_path
+            self._state.emit(Event.JIANPU_EDIT_REQUESTED, path=self._current_path)
+        else:
+            self._state.emit(Event.JIANPU_EDIT_REQUESTED)
+
     def _on_edit_click(self, path: Path) -> None:
         self._state.jianpu_edit_source = path
         self._state.emit(Event.JIANPU_EDIT_REQUESTED, path=path)
@@ -323,6 +334,13 @@ class JianpuPreviewPage(ft.Row):
 
     def _on_export_click(self, _e) -> None:
         if not self._checked:
+            try:
+                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                    content=ft.Text('请先勾选要导出的简谱文件', size=14),
+                    duration=2000,
+                ))
+            except Exception:
+                pass
             return
         self.page.run_task(self._pick_export_dir_async)  # type: ignore[attr-defined]
 

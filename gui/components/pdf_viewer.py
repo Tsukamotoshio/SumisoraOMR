@@ -1,4 +1,4 @@
-﻿# gui/components/pdf_viewer.py — PDF / 图片预览组件
+# gui/components/pdf_viewer.py — PDF / 图片预览组件
 # 使用 PyMuPDF (fitz) 将 PDF 页面渲染为内存图片，以 base64 流喂给 ft.Image。
 # 缩放与平移由 ft.InteractiveViewer 内建手势管理；工具栏按钮通过 IV.zoom()/reset() 精确控制。
 
@@ -50,6 +50,7 @@ class PdfViewer(ft.Column):
         self._refresh_pending = False
         self._refresh_waiting = False
         self._fitz_doc = None
+        self._is_image: bool = False
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._build_ui()
 
@@ -136,14 +137,24 @@ class PdfViewer(ft.Column):
         self.expand = True
 
     def _on_viewer_resize(self, e) -> None:
-        """视口尺寸变化时将图像宽度同步为视口宽度，消除左右黑边并允许垂直拖动。"""
+        """视口尺寸变化时同步图像尺寸。PDF 只同步宽度（允许垂直拖动）；图片同步宽高（CONTAIN 模式）。"""
         w = int(e.width)
-        if w > 0 and self._image.width != w:
-            self._image.width = w
-            try:
-                self._image.update()
-            except Exception:
-                pass
+        h = int(e.height) if hasattr(e, 'height') else 0
+        if self._is_image:
+            if w > 0 and h > 0 and (self._image.width != w or self._image.height != h):
+                self._image.width = w
+                self._image.height = h
+                try:
+                    self._image.update()
+                except Exception:
+                    pass
+        else:
+            if w > 0 and self._image.width != w:
+                self._image.width = w
+                try:
+                    self._image.update()
+                except Exception:
+                    pass
 
     # ── 缓存 ─────────────────────────────────────────────────────────────────
 
@@ -207,10 +218,27 @@ class PdfViewer(ft.Column):
                 pass
             self._fitz_doc = None
 
+        # 按文件类型切换 InteractiveViewer 模式：
+        # 图片用 constrained=True + CONTAIN（防止 Flutter 强制"填满视口"最小缩放）
+        # PDF 用 constrained=False + FIT_WIDTH（允许高页面垂直拖动）
+        is_image = path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
+        if is_image != self._is_image:
+            self._is_image = is_image
+            self._interactive.constrained = is_image
+            self._image.fit = ft.BoxFit.CONTAIN if is_image else ft.BoxFit.FIT_WIDTH
+            if not is_image:
+                self._image.height = None  # PDF 模式不锁定高度
+
         # 立即进入加载中状态（显示占位符，图像重置为透明占位）
         self._image.src = _BLANK_PNG_B64
         self._placeholder.visible = True
         self._request_page_refresh()
+
+        # 切换文件时重置缩放 / 平移状态
+        try:
+            self.page.run_task(self._reset_zoom_async)
+        except Exception:
+            pass
 
         cache = self._get_cached_preview(path)
         if cache is not None:
@@ -242,6 +270,7 @@ class PdfViewer(ft.Column):
         self._path = None
         self._page_count = 0
         self._current_page = 0
+        self._is_image = False
 
         if self._fitz_doc is not None:
             try:
@@ -250,6 +279,9 @@ class PdfViewer(ft.Column):
                 pass
             self._fitz_doc = None
 
+        self._interactive.constrained = False
+        self._image.fit = ft.BoxFit.FIT_WIDTH
+        self._image.height = None
         self._image.src = _BLANK_PNG_B64
         self._placeholder_col.controls = [
             ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
@@ -402,6 +434,12 @@ class PdfViewer(ft.Column):
             self._update_toolbar()
             if self._on_page_change:
                 self._on_page_change(self._current_page)
+
+    async def _reset_zoom_async(self) -> None:
+        try:
+            await self._interactive.reset()
+        except Exception:
+            pass
 
     async def _zoom_in(self, _e) -> None:
         await self._interactive.zoom(1 + self.SCALE_STEP)
