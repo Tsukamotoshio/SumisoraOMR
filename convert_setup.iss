@@ -1,4 +1,4 @@
-#define MyAppName "SumisoraOMR"
+#define MyAppName "Sumisora OMR"
 #define MyAppVersion "0.3.1"
 
 #define MyAppVersionNumeric "0.3.1.0"

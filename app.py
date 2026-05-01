@@ -198,9 +198,8 @@ async def main(page: ft.Page) -> None:
             else:
                 container.visible = (name == 'jianpu_edit')
         state.current_page = name
-        if name == 'editor' and not getattr(jianpu_preview_page, '_has_been_shown', False):
+        if name == 'editor':
             jianpu_preview_page.reload()
-            jianpu_preview_page._has_been_shown = True
         if name == 'transposer' and not getattr(transposer_page, '_has_been_shown', False):
             transposer_page.reset_view()
             transposer_page._has_been_shown = True
