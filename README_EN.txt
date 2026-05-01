@@ -2,7 +2,7 @@ SumisoraOMR
 ===========
 
 Author:  Tsukamotoshio
-Version: v0.2.4
+Version: v0.3.1
 
 Batch-convert Western staff notation PDFs into Jianpu (numbered musical
 notation) PDFs, with optional MIDI output.
@@ -11,7 +11,32 @@ notation) PDFs, with optional MIDI output.
 What's New
 ----------
 
-0.3.0 (current)
+0.3.1 (current)
+  - Transposer feature update: two new transposition modes — "by interval"
+    (select a named interval such as perfect 4th, major 3rd, etc.) and
+    "diatonic" (shift notes by scale degree within the key); diatonic-aware
+    pitch spelling ensures correct enharmonic notation (e.g. augmented second
+    C→D# rather than Eb); the transposer interface has been restructured.
+  - Real-ESRGAN is now the default super-resolution engine.
+  - UI font update: switched to Microsoft YaHei UI for crisper CJK rendering;
+    bold weight changed to W700 to eliminate font-synthesis artifacts; global
+    font size increased by 1pt throughout the interface.
+  - New Jianpu preview page: a dedicated page for browsing and exporting
+    converted Jianpu PDFs, replacing the previous direct navigation to the
+    editor; the Jianpu editor is now accessible as a sub-feature from within
+    the preview page.
+  Bug fixes:
+  - PDF viewer: zoom and pan state is now reset when switching files.
+  - PDF viewer: fixed non-standard (wide/short) images being unable to zoom
+    out below the fill-viewport minimum scale.
+  - Editor reference image: binarization removed; the original color image
+    is now displayed, improving legibility for blurry or low-contrast scores.
+  - LilyPond title sanitization: CJK characters in title/composer fields are
+    now stripped before writing LilyPond headers, preventing layout artifacts
+    in transposed PDFs.
+  - Various stability improvements.
+
+0.3.0
   - Rebrand to SumisoraOMR: updated app icon and product description.
   - Real-ESRGAN super-resolution engine: a second SR option alongside waifu2x,
     selectable in the UI; automatically uses the discrete GPU (Vulkan).
@@ -142,7 +167,7 @@ Usage
 
 The app also includes:
   Transposer  — transpose a MusicXML score to a different key with live preview
-  Editor      — open and edit .jianpu.txt files with a binarized image reference
+  Editor      — open and edit .jianpu.txt files with the original score image as reference
 
 
 Directory Layout

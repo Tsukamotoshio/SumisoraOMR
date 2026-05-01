@@ -330,7 +330,7 @@ async def main(page: ft.Page) -> None:
                             ft.Image(src='Sumisora.png', width=18, height=18),
                             ft.Container(width=6),
                             ft.Text(
-                                'SumisoraOMR  v0.3.0',
+                                'SumisoraOMR  v0.3.1',
                                 size=13,
                                 weight=ft.FontWeight.W_600,
                                 color=ft.Colors.ON_SURFACE,

@@ -35,17 +35,52 @@
 
 | Engine | Notes |
 |--------|-------|
-| **waifu2x-ncnn-vulkan** | Default SR engine; Vulkan GPU-accelerated |
-| **Real-ESRGAN** | Higher-fidelity upscaling; anime-optimized models; selectable in UI |
+| **Real-ESRGAN** | Default SR engine; higher-fidelity upscaling; anime-optimized models; Vulkan GPU-accelerated |
+| **waifu2x-ncnn-vulkan** | Alternative SR engine; Vulkan GPU-accelerated |
 
 ---
 
 ## Usage
 
-1. Drop your staff notation files (`.pdf`, `.png`, `.jpg`) into the `Input` folder.
-2. Launch the app — double-click the **SumisoraOMR** shortcut or run `SumisoraOMR.exe`.
-3. Follow the prompts to start conversion and choose whether to generate MIDI.
-4. Converted files appear in the `Output` folder.
+### Conversion
+
+1. Drop your staff notation files (`.pdf`, `.png`, `.jpg`) into the `Input`
+   folder, or drag them directly into the file sidebar.
+2. Launch the app — double-click the **SumisoraOMR** shortcut or run
+   `SumisoraOMR.exe`.
+3. In the file sidebar, check the files you want to convert.
+4. Choose an OMR engine (or leave it on **Auto**), then click **Start Conversion**.
+5. Confirm options in the dialog (MIDI generation, skip duplicates) and
+   click **Start Conversion**.
+6. Converted Jianpu PDFs appear in the `Output` folder.
+
+### Jianpu Preview
+
+After conversion, switch to the **Jianpu Preview** tab to browse all
+generated PDFs. Check files using the checkboxes, then click the export
+button in the sidebar header to copy them to a folder of your choice.
+Click **Edit Jianpu** in the top bar to open the currently previewed file
+in the editor.
+
+### Jianpu Editor
+
+The editor lets you inspect and manually correct `.jianpu.txt` source files.
+The left pane shows the original score image for reference; the right pane
+contains editable Jianpu text. After editing, click **Regenerate PDF** to
+rebuild the output.
+
+### Transposer
+
+The transposer reads a MusicXML score from `xml-scores/` and renders it in
+a different key. Three modes are available:
+
+- **By semitone** — enter an exact semitone offset.
+- **By interval** — choose a named interval (perfect 4th, major 3rd, etc.)
+  and direction.
+- **Diatonic** — shift notes by scale degree within the current key.
+
+Settings auto-preview on any change. The result can be exported as a Jianpu
+PDF or a staff-notation PDF.
 
 ---
 

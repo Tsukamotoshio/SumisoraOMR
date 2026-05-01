@@ -1,7 +1,7 @@
 #define MyAppName "SumisoraOMR"
-#define MyAppVersion "0.3.0"
+#define MyAppVersion "0.3.1"
 
-#define MyAppVersionNumeric "0.3.0.0"
+#define MyAppVersionNumeric "0.3.1.0"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "SumisoraOMR.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
