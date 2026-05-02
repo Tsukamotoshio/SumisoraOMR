@@ -13,7 +13,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from core.app.backend import editor_workspace_dir, open_directory
+from core.app.backend import editor_workspace_dir
 from ..components.jianpu_editor import JianpuEditor
 from ..theme import Palette
 
@@ -293,18 +293,6 @@ class EditorPage(ft.Row):
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
-        open_output_btn = ft.Button(
-            content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开输出目录')],
-                tight=True, spacing=6,
-            ),
-            on_click=self._on_open_output_dir,
-            style=ft.ButtonStyle(
-                color=ft.Colors.ON_SURFACE_VARIANT,
-                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
-                shape=ft.RoundedRectangleBorder(radius=8),
-            ),
-        )
         top_bar = ft.Container(
             content=ft.Row(
                 [
@@ -313,7 +301,6 @@ class EditorPage(ft.Row):
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(expand=True),
                     open_btn,
-                    open_output_btn,
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=8,
@@ -345,12 +332,6 @@ class EditorPage(ft.Row):
 
     def _on_open_click(self, _e) -> None:
         self.page.run_task(self._pick_open_async)  # type: ignore[attr-defined]
-
-    def _on_open_output_dir(self, _e) -> None:
-        try:
-            open_directory(editor_workspace_dir().parent / 'Output')
-        except Exception:
-            pass
 
     async def _pick_open_async(self) -> None:
         init_dir = editor_workspace_dir()

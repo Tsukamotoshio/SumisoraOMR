@@ -110,9 +110,9 @@ from gui.components.progress_overlay import ProgressOverlay
 
 _NAV_ITEMS = [
     ('landing',    ft.Icons.ARROW_CIRCLE_RIGHT_ROUNDED,  ft.Icons.ARROW_CIRCLE_RIGHT_OUTLINED,  '乐谱识别'),
-    ('editor',     ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,            '简谱预览'),
-    ('transposer', ft.Icons.MUSIC_NOTE_ROUNDED,          ft.Icons.MUSIC_NOTE_OUTLINED,           '移调功能'),
-    ('about',      ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,          '关于'),
+    ('editor',     ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,           '简谱预览'),
+    ('transposer', ft.Icons.LIBRARY_MUSIC_ROUNDED,       ft.Icons.LIBRARY_MUSIC_OUTLINED,       '五线谱预览'),
+    ('about',      ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,         '关于'),
 ]
 
 
@@ -200,9 +200,6 @@ async def main(page: ft.Page) -> None:
         state.current_page = name
         if name == 'editor':
             jianpu_preview_page.reload()
-        if name == 'transposer' and not getattr(transposer_page, '_has_been_shown', False):
-            transposer_page.reset_view()
-            transposer_page._has_been_shown = True
         try:
             content_stack.update()
         except Exception:
@@ -222,12 +219,22 @@ async def main(page: ft.Page) -> None:
     def _on_nav_change(e) -> None:
         name = _NAV_ITEMS[e.control.selected_index][0]
         _show_page(name)
-        # 同步导航状态事件
         state.emit(Event.PAGE_CHANGED, page=name)
+        try:
+            nav_rail.update()
+        except Exception:
+            pass
+
+    _nav_label_toggle_btn = ft.IconButton(
+        icon=ft.Icons.CHEVRON_LEFT_ROUNDED,
+        icon_size=18,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
+        tooltip='隐藏标签',
+    )
 
     nav_rail = ft.NavigationRail(
         selected_index=0,
-        label_type=ft.NavigationRailLabelType.SELECTED,
+        label_type=ft.NavigationRailLabelType.ALL,
         bgcolor=ft.Colors.SURFACE,
         indicator_color=with_alpha(Palette.PRIMARY, '44'),
         on_change=_on_nav_change,
@@ -239,9 +246,30 @@ async def main(page: ft.Page) -> None:
             )
             for _, icon_sel, icon_out, label in _NAV_ITEMS
         ],
-        min_width=64,
+        min_width=80,
         min_extended_width=150,
+        expand=True,
     )
+
+    _nav_labels_shown = [True]
+
+    def _toggle_nav_labels(_=None) -> None:
+        _nav_labels_shown[0] = not _nav_labels_shown[0]
+        if _nav_labels_shown[0]:
+            nav_rail.label_type = ft.NavigationRailLabelType.ALL
+            _nav_label_toggle_btn.icon = ft.Icons.CHEVRON_LEFT_ROUNDED
+            _nav_label_toggle_btn.tooltip = '隐藏标签'
+        else:
+            nav_rail.label_type = ft.NavigationRailLabelType.SELECTED
+            _nav_label_toggle_btn.icon = ft.Icons.CHEVRON_RIGHT_ROUNDED
+            _nav_label_toggle_btn.tooltip = '显示标签'
+        try:
+            nav_rail.update()
+            _nav_label_toggle_btn.update()
+        except Exception:
+            pass
+
+    _nav_label_toggle_btn.on_click = _toggle_nav_labels
 
     # ── Theme toggle (top-right) ──────────────────────────────────────────────
     _theme_icon = ft.IconButton(
@@ -382,7 +410,7 @@ async def main(page: ft.Page) -> None:
 
     # ── Notification helpers (SnackBar) ──────────────────────────────────────
     def _show_snack(msg: str, color: str = Palette.INFO) -> None:
-        page.show_dialog(ft.SnackBar(
+        page.show_dialog(ft.SnackBar(  # type: ignore[call-arg]
             content=ft.Text(msg, color='#FFFFFF'),
             bgcolor=color,
             duration=3500,
@@ -405,7 +433,22 @@ async def main(page: ft.Page) -> None:
 
     # ── Page layout ───────────────────────────────────────────────────────────
     left_rail_container = ft.Container(
-        content=nav_rail,
+        content=ft.Column(
+            [
+                nav_rail,
+                ft.Container(
+                    content=_nav_label_toggle_btn,
+                    alignment=ft.Alignment(0, 0),
+                    height=40,
+                    bgcolor=ft.Colors.SURFACE,
+                    border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
+                ),
+            ],
+            spacing=0,
+            expand=True,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        width=80,
         bgcolor=ft.Colors.SURFACE,
         border=ft.Border.only(right=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )
@@ -693,6 +736,18 @@ def _setup_flet_view_name() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    if sys.platform == 'win32' and '--worker' not in sys.argv:
+        import ctypes as _ctypes
+        _ctypes.windll.kernel32.CreateMutexW(None, False, 'SumisoraOMR_RunningMutex')
+        if _ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            _ctypes.windll.user32.MessageBoxW(
+                0,
+                'Sumisora OMR 已在运行中。\n\n请查看任务栏。',
+                'Sumisora OMR',
+                0x30,  # MB_ICONWARNING | MB_OK
+            )
+            sys.exit(0)
+
     _setup_flet_view_name()
     _assets_dir = os.path.join(
         getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))),

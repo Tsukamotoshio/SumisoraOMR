@@ -95,24 +95,6 @@ class LandingPage(ft.Row):
             focused_border_color=Palette.PRIMARY,
         )
 
-        # 输出目录选择
-        self._output_dir_text = ft.Text(
-            '未指定（默认 Output/）',
-            size=13,
-            color=ft.Colors.ON_SURFACE_VARIANT,
-            expand=True,
-            overflow=ft.TextOverflow.ELLIPSIS,
-        )
-        self._output_dir_picker = ft.FilePicker()
-        output_row = ft.Row(
-            [
-                ft.Icon(ft.Icons.FOLDER_OUTLINED, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
-                self._output_dir_text,
-                ft.TextButton('选择', on_click=self._on_choose_output, style=ft.ButtonStyle(color=Palette.PRIMARY)),
-            ],
-            spacing=6,
-        )
-
         self._convert_btn = ft.Button(
             content=ft.Row(
                 [ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, size=18), ft.Text('开始转换')],
@@ -157,9 +139,7 @@ class LandingPage(ft.Row):
                                 self._engine_dd,
                                 self._sr_engine_dd,
                                 self._parallel_dd,
-                                ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
-                                output_row,
-                                ft.Container(height=8),
+                                ft.Container(height=4),
                                 self._convert_btn,
                                 open_output_btn,
                             ],
@@ -186,7 +166,6 @@ class LandingPage(ft.Row):
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
 
     def did_mount(self):
-        self.page._services.register_service(self._output_dir_picker)  # type: ignore[attr-defined]
         # 延迟扫描：让 did_mount 先返回、Flet 内部锁释放后再推送 UI 更新
         self._scan_token += 1
         current_token = self._scan_token
@@ -256,18 +235,6 @@ class LandingPage(ft.Row):
             except Exception:
                 pass
 
-    def _on_choose_output(self, _e) -> None:
-        self.page.run_task(self._pick_output_dir_async)  # type: ignore[attr-defined]
-
-    async def _pick_output_dir_async(self) -> None:
-        path = await self._output_dir_picker.get_directory_path(dialog_title='选择输出目录')
-        if path:
-            self._output_dir_text.value = path
-            try:
-                self._output_dir_text.update()
-            except Exception:
-                pass
-
     def _show_snack(self, msg: str, color: str = Palette.INFO) -> None:
         self.page.show_dialog(ft.SnackBar(
             content=ft.Text(msg, color='#FFFFFF'),
@@ -277,7 +244,7 @@ class LandingPage(ft.Row):
 
     def _on_open_output_dir(self, _e) -> None:
         try:
-            output_dir_path = output_dir(self._output_dir_text.value)
+            output_dir_path = output_dir(None)
             open_directory(output_dir_path)
         except Exception as exc:
             self._show_snack(f'无法打开目录: {exc}', Palette.ERROR)
@@ -291,8 +258,7 @@ class LandingPage(ft.Row):
             return
 
         # 计算输出目录，检测已存在文件
-        out_dir_text = self._output_dir_text.value
-        output_path = output_dir(out_dir_text)
+        output_path = output_dir(None)
         existing = [
             src.name for src in checked
             if (output_path / (src.stem + '_jianpu.pdf')).exists()
@@ -431,7 +397,7 @@ class LandingPage(ft.Row):
 
         try:
             base_dir = app_base_dir()
-            output_path = output_dir(self._output_dir_text.value)
+            output_path = output_dir(None)
 
             engine_val = self._engine_dd.value or 'auto'
             gen_midi = getattr(self, '_gen_midi', True)
@@ -611,7 +577,7 @@ class LandingPage(ft.Row):
 
         try:
             base_dir = app_base_dir()
-            output_path = output_dir(self._output_dir_text.value)
+            output_path = output_dir(None)
             engine_val = self._engine_dd.value or 'auto'
             gen_midi = getattr(self, '_gen_midi', True)
             total = len(files)
