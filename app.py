@@ -100,6 +100,7 @@ from gui.pages.landing_page import LandingPage
 from gui.pages.jianpu_preview_page import JianpuPreviewPage
 from gui.pages.editor_page import EditorPage
 from gui.pages.transposer_page import TransposerPage
+from gui.pages.score_preview_page import ScorePreviewPage
 from gui.pages.about_page import AboutPage
 from gui.components.progress_overlay import ProgressOverlay
 
@@ -109,10 +110,10 @@ from gui.components.progress_overlay import ProgressOverlay
 # ─────────────────────────────────────────────────────────────────────────────
 
 _NAV_ITEMS = [
-    ('landing',    ft.Icons.ARROW_CIRCLE_RIGHT_ROUNDED,  ft.Icons.ARROW_CIRCLE_RIGHT_OUTLINED,  '乐谱识别'),
-    ('editor',     ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,           '简谱预览'),
-    ('transposer', ft.Icons.LIBRARY_MUSIC_ROUNDED,       ft.Icons.LIBRARY_MUSIC_OUTLINED,       '五线谱预览'),
-    ('about',      ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,         '关于'),
+    ('landing',       ft.Icons.ARROW_CIRCLE_RIGHT_ROUNDED,  ft.Icons.ARROW_CIRCLE_RIGHT_OUTLINED,  '乐谱识别'),
+    ('editor',        ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,           '简谱预览'),
+    ('score_preview', ft.Icons.LIBRARY_MUSIC_ROUNDED,       ft.Icons.LIBRARY_MUSIC_OUTLINED,       '五线谱预览'),
+    ('about',         ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,         '关于'),
 ]
 
 
@@ -171,35 +172,42 @@ async def main(page: ft.Page) -> None:
     landing_page         = LandingPage(state, overlay)
     jianpu_preview_page  = JianpuPreviewPage(state)
     editor_page          = EditorPage(state)
+    score_preview_page   = ScorePreviewPage(state)
     transposer_page      = TransposerPage(state)
     about_page           = AboutPage()
 
     # ── Content area (ft.Stack with overlay support) ──────────────────────────
-    # 前 4 个容器对应导航栏 4 项；第 5 个是编辑子页（从简谱预览页的"编辑"按钮进入）
+    # 前 4 个容器对应导航栏 4 项；
+    # 第 5 个（index 4）是 jianpu_edit 子页；第 6 个（index 5）是 transposer 子页
     content_stack = ft.Stack(
         [
-            ft.Container(content=landing_page,        expand=True, visible=True),
-            ft.Container(content=jianpu_preview_page, expand=True, visible=False),
-            ft.Container(content=transposer_page,     expand=True, visible=False),
-            ft.Container(content=about_page,          expand=True, visible=False),
-            ft.Container(content=editor_page,         expand=True, visible=False),
+            ft.Container(content=landing_page,        expand=True, visible=True),   # 0: landing
+            ft.Container(content=jianpu_preview_page, expand=True, visible=False),  # 1: editor
+            ft.Container(content=score_preview_page,  expand=True, visible=False),  # 2: score_preview
+            ft.Container(content=about_page,          expand=True, visible=False),  # 3: about
+            ft.Container(content=editor_page,         expand=True, visible=False),  # 4: jianpu_edit (sub)
+            ft.Container(content=transposer_page,     expand=True, visible=False),  # 5: transposer (sub)
             overlay,
         ],
         expand=True,
     )
-    _content_containers: list[ft.Container] = content_stack.controls[:5]  # type: ignore[index]
+    _content_containers: list[ft.Container] = content_stack.controls[:6]  # type: ignore[index]
 
-    _NAV_NAMES = [item[0] for item in _NAV_ITEMS]  # ['landing', 'editor', 'transposer', 'about']
+    _NAV_NAMES = [item[0] for item in _NAV_ITEMS]  # ['landing', 'editor', 'score_preview', 'about']
 
     def _show_page(name: str) -> None:
         for i, container in enumerate(_content_containers):
             if i < len(_NAV_NAMES):
                 container.visible = (_NAV_NAMES[i] == name)
-            else:
+            elif i == 4:
                 container.visible = (name == 'jianpu_edit')
+            else:  # i == 5
+                container.visible = (name == 'transposer')
         state.current_page = name
         if name == 'editor':
             jianpu_preview_page.reload()
+        if name == 'score_preview':
+            score_preview_page.reload()
         try:
             content_stack.update()
         except Exception:
@@ -211,8 +219,18 @@ async def main(page: ft.Page) -> None:
     def _on_jianpu_preview_back(**_) -> None:
         _show_page('editor')
 
-    state.on(Event.JIANPU_EDIT_REQUESTED, _on_jianpu_edit_requested)
-    state.on(Event.JIANPU_PREVIEW_BACK,   _on_jianpu_preview_back)
+    def _on_score_transposer_requested(path=None, **_) -> None:
+        if path is not None:
+            transposer_page.load_mxl(path)
+        _show_page('transposer')
+
+    def _on_score_transposer_back(**_) -> None:
+        _show_page('score_preview')
+
+    state.on(Event.JIANPU_EDIT_REQUESTED,      _on_jianpu_edit_requested)
+    state.on(Event.JIANPU_PREVIEW_BACK,        _on_jianpu_preview_back)
+    state.on(Event.SCORE_TRANSPOSER_REQUESTED, _on_score_transposer_requested)
+    state.on(Event.SCORE_TRANSPOSER_BACK,      _on_score_transposer_back)
 
     # ── NavigationRail (left sidebar) ────────────────────────────────────────
 

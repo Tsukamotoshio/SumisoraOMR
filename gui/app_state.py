@@ -28,6 +28,8 @@ class Event:
     JIANPU_TXT_SELECTED   = 'jianpu_txt_selected'   # editor selected a jianpu row (line_no: int)
     JIANPU_EDIT_REQUESTED = 'jianpu_edit_requested' # preview page requests edit sub-page (path: Path)
     JIANPU_PREVIEW_BACK   = 'jianpu_preview_back'   # edit sub-page requests back to preview
+    SCORE_TRANSPOSER_REQUESTED = 'score_transposer_requested' # score_preview requests transposer (path: Path)
+    SCORE_TRANSPOSER_BACK      = 'score_transposer_back'      # transposer requests back to score_preview
     THEME_CHANGED         = 'theme_changed'         # theme toggled (dark: bool)
 
 

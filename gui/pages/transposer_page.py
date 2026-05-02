@@ -259,6 +259,14 @@ class TransposerPage(ft.Column):
             style=ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT),
         )
 
+        back_btn = ft.IconButton(
+            icon=ft.Icons.ARROW_BACK_ROUNDED,
+            icon_size=20,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltip='返回五线谱预览',
+            on_click=lambda _: self._state.emit(Event.SCORE_TRANSPOSER_BACK),
+        )
+
         open_btn = ft.Button(
             content=ft.Row(
                 [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开乐谱')],
@@ -294,6 +302,7 @@ class TransposerPage(ft.Column):
         top_bar = ft.Container(
             content=ft.Row(
                 [
+                    back_btn,
                     ft.Column(
                         [
                             section_title('移调功能', self._state.dark_mode),
@@ -753,6 +762,19 @@ class TransposerPage(ft.Column):
             p.loop.call_soon_threadsafe(  # type: ignore[attr-defined]
                 p.update, self._orig_viewer, self._trans_viewer, self._status
             )
+
+    def load_mxl(self, path: Path) -> None:
+        """从五线谱预览页跳转时，预加载指定 MXL 文件。"""
+        if path is None or not path.exists():
+            return
+        self._clear_transposed_preview()
+        self._orig_mxl = path
+        self._state.current_mxl = path
+        self._orig_render_token += 1
+        current_token = self._orig_render_token
+        self._set_status(f'已加载: {path.name}')
+        threading.Thread(target=self._render_orig, args=(current_token,), daemon=True).start()
+        self._on_auto_detect(None)
 
     # ── 辅助 ─────────────────────────────────────────────────────────────────
 

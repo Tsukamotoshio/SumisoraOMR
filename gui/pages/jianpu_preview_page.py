@@ -44,7 +44,7 @@ class JianpuPreviewPage(ft.Row):
                 [
                     ft.Icon(ft.Icons.MUSIC_NOTE_OUTLINED, size=40, color=ft.Colors.OUTLINE),
                     ft.Text(
-                        'Output 目录暂无简谱文件\n请先在乐谱识别页完成转换',
+                        '请先识别乐谱文件\n或点击刷新按钮',
                         size=13,
                         color=ft.Colors.OUTLINE,
                         text_align=ft.TextAlign.CENTER,
