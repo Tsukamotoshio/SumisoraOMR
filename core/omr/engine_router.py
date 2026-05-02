@@ -1,14 +1,13 @@
-# core/engine_router.py — 智能 OMR 引擎路由模块
-"""根据图像质量评分决定 OMR 处理策略。
+# core/omr/engine_router.py — OMR engine router
+"""Selects the OMR processing strategy based on image quality score.
 
-路由策略
---------
+Routing logic
+-------------
 score >= QUALITY_THRESHOLD (6.0)  →  "audiveris"
-    图像质量良好，直接使用 Audiveris 进行 OMR 识别。
+    Good image quality: run Audiveris directly.
 
 score <  QUALITY_THRESHOLD        →  "audiveris_with_dl_fix"
-    图像质量不足，使用 Audiveris 进行主要识别，
-    再叠加深度学习辅助修复层校正可能的识别错误。
+    Poor image quality: run Audiveris then apply a DL correction pass.
 """
 from __future__ import annotations
 
@@ -20,34 +19,34 @@ if TYPE_CHECKING:
     from ..image.quality_score import QualityResult
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 公共常量
+# Constants
 # ──────────────────────────────────────────────────────────────────────────────
 
 STRATEGY_DIRECT = "audiveris"
-"""高质量路径：Audiveris 直接识别。"""
+"""High-quality path: Audiveris direct recognition."""
 
 STRATEGY_DL_FIX = "audiveris_with_dl_fix"
-"""低质量路径：Audiveris 识别 + 深度学习辅助修复。"""
+"""Low-quality path: Audiveris recognition + DL correction pass."""
 
 QUALITY_THRESHOLD: float = 6.0
-"""路由切换阈值（综合质量分）。"""
+"""Score threshold that switches between the two strategies."""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 公共接口
+# Public API
 # ──────────────────────────────────────────────────────────────────────────────
 
 def route_engine(score_info: 'QualityResult') -> str:
-    """根据质量评分返回 OMR 处理策略字符串。
+    """Return the OMR strategy string for the given quality result.
 
     Parameters
     ----------
-    score_info : score_sheet_quality() 返回的 QualityResult 字典。
+    score_info : QualityResult dict returned by score_sheet_quality().
 
     Returns
     -------
-    "audiveris"               —— score >= QUALITY_THRESHOLD
-    "audiveris_with_dl_fix"   —— score <  QUALITY_THRESHOLD
+    "audiveris"               — score >= QUALITY_THRESHOLD
+    "audiveris_with_dl_fix"   — score <  QUALITY_THRESHOLD
     """
     score = float(score_info.get('score', 0.0))  # type: ignore[attr-defined]
     if score >= QUALITY_THRESHOLD:
@@ -56,32 +55,30 @@ def route_engine(score_info: 'QualityResult') -> str:
 
 
 def describe_route(strategy: str, score: float) -> str:
-    """返回人类可读的路由决策描述（用于日志输出）。"""
+    """Return a human-readable routing decision string for log output."""
     if strategy == STRATEGY_DIRECT:
         return f'高质量图像（{score:.1f}/10）→ Audiveris 直接识别'
     return f'低质量图像（{score:.1f}/10）→ Audiveris 识别 + 深度学习辅助修复'
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PDF 类型检测：矢量 vs 位图
+# PDF type detection: vector vs bitmap
 # ──────────────────────────────────────────────────────────────────────────────
 
 def is_pdf_vector(pdf_path: Path) -> bool:
-    """检测 PDF 第一页是否以矢量图形为主（适合 Audiveris 直接处理）。
+    """Return True if the first page of the PDF is primarily vector graphics.
 
-    判断依据
-    --------
-    乐谱软件（MuseScore / Sibelius / Finale）导出的矢量 PDF：
-      - 页面含大量绘图路径（staves、noteheads、beams 等 SVG-like paths）
-      - 零个或极少数嵌入式位图
-    扫描/拍照乐谱保存的位图 PDF：
-      - 页面含 1 张（或数张）大尺寸嵌入位图（宽/高均 > 300 px）
-      - 绘图路径极少
+    Heuristic
+    ---------
+    Notation-software PDFs (MuseScore / Sibelius / Finale) are vector:
+      many drawing paths (staves, noteheads, beams), zero or few embedded bitmaps.
+    Scanned/photographed score PDFs are bitmap:
+      one or more large embedded images (w > 300 px AND h > 300 px), few paths.
 
-    策略：若第一页存在至少一张大型嵌入图像（宽度 > 300 且高度 > 300 像素），
-    则视为位图 PDF；否则视为矢量 PDF。
+    Strategy: if the first page contains at least one large embedded image
+    (width > 300 and height > 300), treat as bitmap; otherwise treat as vector.
 
-    依赖 PyMuPDF（fitz）；若未安装或发生任何异常，默认返回 True（矢量路径）。
+    Requires PyMuPDF (fitz); defaults to True (vector) on ImportError or any exception.
     """
     try:
         import fitz  # PyMuPDF

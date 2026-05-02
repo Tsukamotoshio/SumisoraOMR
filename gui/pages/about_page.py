@@ -1,5 +1,5 @@
-# gui/pages/about_page.py — 关于页面
-# 展示作者信息、项目主页链接与 AGPL-3.0 许可证文本。
+# gui/pages/about_page.py — About page
+# Displays author info, project URL and AGPL-3.0 license text.
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ https://www.gnu.org/licenses/agpl-3.0.html
 
 
 class AboutPage(ft.Column):
-    """关于页面：作者、项目地址、许可证。"""
+    """About page: author, project URL, license."""
 
     _GITHUB_URL = 'https://github.com/Tsukamotoshio/SumisoraOMR'
 
@@ -76,7 +76,7 @@ class AboutPage(ft.Column):
                 ),
             )
 
-        # ── Logo & 标题 ──────────────────────────────────────────────────────
+        # Logo & title
         logo_card = _card(
             ft.Column(
                 [
@@ -98,7 +98,7 @@ class AboutPage(ft.Column):
             )
         )
 
-        # ── 作者信息 ─────────────────────────────────────────────────────────
+        # Author info
         author_card = _card(
             ft.Column(
                 [
@@ -135,7 +135,7 @@ class AboutPage(ft.Column):
             )
         )
 
-        # ── 许可证 ───────────────────────────────────────────────────────────
+        # License
         license_card = _card(
             ft.Column(
                 [

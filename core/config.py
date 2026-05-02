@@ -1,14 +1,11 @@
-# core/config.py — 常量、数据类、全局 logger
-# 拆分自 convert.py
+# core/config.py — constants, dataclasses, global logger
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-# ──────────────────────────────────────────────
-# 简谱音名映射
-# ──────────────────────────────────────────────
+# Jianpu note name map (Western pitch → numbered notation digit)
 JIANPU_MAP = {
     'C': '1',
     'D': '2',
@@ -19,7 +16,6 @@ JIANPU_MAP = {
     'B': '7',
 }
 
-# CJK 字体候选列表（优先顺序），用于 PDF 和 LilyPond 输出
 CJK_FONT_CANDIDATES = [
     ('Meiryo', r'%SystemRoot%\\Fonts\\meiryo.ttc'),
     ('Yu Gothic', r'%SystemRoot%\\Fonts\\YuGothM.ttc'),
@@ -31,7 +27,7 @@ CJK_FONT_CANDIDATES = [
     ('Microsoft YaHei Bold', r'%SystemRoot%\\Fonts\\msyhbd.ttc'),
 ]
 
-# jianpu-ly.py 下载 fallback URL 列表
+# jianpu-ly.py download fallback URLs
 JIANPU_LY_URLS = [
     'https://ssb22.user.srcf.net/mwrhome/jianpu-ly.py',
     'http://ssb22.user.srcf.net/mwrhome/jianpu-ly.py',
@@ -63,50 +59,41 @@ AUDIVERIS_MSI_NAMES = [
 ]
 
 
-# ──────────────────────────────────────────────
-# 超分辨率引擎枚举
-# ──────────────────────────────────────────────
+# Super-resolution engine
 class SREngine(Enum):
-    """可选的超分辨率引擎。
+    """Available super-resolution upscaling engines.
 
-    WAIFU2X:    基于 waifu2x-ncnn-vulkan 的线条画超分（当前默认）。
-    REALESRGAN: 基于 Real-ESRGAN 的高质量超分（anime 模型，更适合乐谱）。
-                优先使用 realesrgan-ncnn-vulkan 二进制，回退至 Python 脚本。
+    WAIFU2X:    waifu2x-ncnn-vulkan; optimised for line-art (current default).
+    REALESRGAN: Real-ESRGAN anime model; generally better quality for sheet music.
+                Prefers realesrgan-ncnn-vulkan binary, falls back to Python script.
     """
     WAIFU2X = 'waifu2x'
     REALESRGAN = 'realesrgan'
 
 
-# ──────────────────────────────────────────────
-# OMR 引擎枚举
-# ──────────────────────────────────────────────
+# OMR engine
 class OMREngine(Enum):
-    """可选的光学乐谱识别 (OMR) 引擎。
+    """Available optical music recognition engines.
 
-    AUTO:      自动按格式选择引擎（推荐）。
-               PDF + 图片输入均使用 Audiveris。
-    AUDIVERIS: 基于 Java 的传统 OMR 引擎，支持 PDF/图片输入，
-               输出 MusicXML (.mxl)。需要本地 JDK + Audiveris 安装。
-    HOMR:      基于 homr 的端到端 OMR 引擎，支持图片输入和 PDF 首页，
-               输出 .musicxml。可直接使用本地 omr_engine/homr 仓库。
+    AUTO:      Auto-select by input format (recommended). Currently always Audiveris.
+    AUDIVERIS: Java-based traditional OMR; accepts PDF/image; outputs MusicXML (.mxl).
+               Requires a local JDK + Audiveris installation.
+    HOMR:      End-to-end DL OMR via homr; accepts images and the first page of PDFs;
+               outputs .musicxml. Uses omr_engine/homr repo directly.
     """
     AUTO = 'auto'
     AUDIVERIS = 'audiveris'
     HOMR = 'homr'
 
-# ──────────────────────────────────────────────
-# 全局 Logger（延迟由 utils.setup_logging 初始化）
+# Global logger (initialised lazily by utils.setup_logging)
 # LOG_FILE_PATH 是可变状态，定义在 core/utils.py
-# ──────────────────────────────────────────────
 LOGGER = logging.getLogger('convert')
 
 
-# ──────────────────────────────────────────────
-# 数据类
-# ──────────────────────────────────────────────
+# Dataclasses
 @dataclass(frozen=True)
 class AppConfig:
-    """应用目录结构：输入、输出、临时、日志文件夹名称，以及 OMR 引擎选择。"""
+    """Application directory layout and OMR engine selection."""
     input_dir_name: str = 'Input'
     output_dir_name: str = 'Output'
     temp_dir_name: str = 'omr-temp'
@@ -116,7 +103,7 @@ class AppConfig:
 
 @dataclass
 class ConversionSummary:
-    """批量转换统计：成功/跳过/失败计数及文件列表。"""
+    """Batch conversion counters and per-status file lists."""
     total: int = 0
     success: int = 0
     skipped: int = 0
@@ -128,7 +115,7 @@ class ConversionSummary:
 
 @dataclass
 class JianpuNote:
-    """单个简谱音符或休止符，携带音高、升降号、八度点、时值、MIDI 音高。"""
+    """A single jianpu note or rest: pitch, accidental, octave dots, duration, MIDI pitch."""
     symbol: str
     accidental: str
     upper_dots: int
