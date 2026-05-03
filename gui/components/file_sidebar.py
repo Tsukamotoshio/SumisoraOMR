@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import shutil
 import threading
 import flet as ft
 from pathlib import Path
@@ -205,10 +207,8 @@ class FileSidebar(ft.Column):
         )
         if not files:
             return
-        for f in files:
-            if f.path:
-                self._state.add_file(Path(f.path))
-        self._refresh_list()
+        paths = [Path(f.path) for f in files if f.path]
+        await self._import_with_progress(paths)
 
     async def _pick_folder_async(self) -> None:
         input_dir = app_base_dir() / 'Input'
@@ -220,13 +220,88 @@ class FileSidebar(ft.Column):
         if not folder_path:
             return
         folder = Path(folder_path)
-        added = 0
+        paths: list[Path] = []
         for ext in ('*.pdf', '*.png', '*.jpg', '*.jpeg'):
-            for f in folder.glob(ext):
-                self._state.add_file(f)
-                added += 1
-        if added:
-            self._refresh_list()
+            paths.extend(folder.glob(ext))
+        if paths:
+            await self._import_with_progress(paths)
+
+    async def _import_with_progress(self, source_paths: list[Path]) -> None:
+        """Copy source_paths into Input/, showing a progress dialog.
+
+        Files already inside Input/ are registered directly without copying.
+        Name conflicts are resolved by appending _1, _2, … to the stem.
+        """
+        if not source_paths:
+            return
+
+        input_dir = app_base_dir() / 'Input'
+        await asyncio.to_thread(input_dir.mkdir, parents=True, exist_ok=True)
+
+        n = len(source_paths)
+
+        # ── Progress dialog ──────────────────────────────────────────────────
+        _prog_text = ft.Text('准备中…', size=13, color=ft.Colors.ON_SURFACE)
+        _prog_bar  = ft.ProgressBar(
+            value=0,
+            width=340,
+            color=Palette.PRIMARY,
+            bgcolor=ft.Colors.SURFACE_VARIANT,
+            border_radius=ft.BorderRadius.all(4),
+        )
+        _dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f'导入 {n} 个文件', size=15, weight=ft.FontWeight.W_600),
+            content=ft.Column(
+                [_prog_text, _prog_bar],
+                spacing=14,
+                tight=True,
+                width=360,
+            ),
+        )
+        self.page.open(_dlg)
+        await self.page.update_async()
+
+        # ── Copy loop ────────────────────────────────────────────────────────
+        copied: list[Path] = []
+        for i, src in enumerate(source_paths):
+            _prog_text.value = f'({i + 1}/{n})  {src.name}'
+            _prog_bar.value  = i / n
+            await self.page.update_async()
+
+            # Files already inside Input/ need no copy
+            try:
+                src_resolved = src.resolve()
+                in_input_dir = src_resolved.parent == input_dir.resolve()
+            except Exception:
+                in_input_dir = False
+
+            if in_input_dir:
+                copied.append(src_resolved)
+                continue
+
+            dest = input_dir / src.name
+            if dest.exists():
+                stem, suffix = src.stem, src.suffix
+                j = 1
+                while dest.exists():
+                    dest = input_dir / f'{stem}_{j}{suffix}'
+                    j += 1
+
+            try:
+                await asyncio.to_thread(shutil.copy2, str(src), str(dest))
+                copied.append(dest)
+            except Exception:
+                copied.append(src)  # fallback: keep original path
+
+        self.page.close(_dlg)
+        await self.page.update_async()
+
+        for path in copied:
+            self._state.add_file(path)
+        self._refresh_list()
+        if copied:
+            self._state.emit(Event.FILES_IMPORTED, paths=copied)
 
     def _on_files_changed(self, files, **_kw) -> None:
         self._refresh_list()

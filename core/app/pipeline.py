@@ -229,10 +229,24 @@ def process_single_input_to_jianpu(
         f'{"Homr" if effective_engine is OMREngine.HOMR else "Audiveris"} 引擎。'
     )
 
+    # ── Image geometry preprocessing (rotation + gradient correction) ────────
+    # Apply before OMR so the engine receives a deskewed, contrast-normalised image.
+    # preprocess_geometry_for_omr() is lightweight (no denoising/SR) and safe for
+    # both Homr (which does its own ML preprocessing) and Audiveris.
+    _omr_source = source_file
+    if _IS_IMAGE:
+        try:
+            from ..image.image_preprocess import preprocess_geometry_for_omr
+            _preprocessed = preprocess_geometry_for_omr(source_file, file_temp_dir)
+            if _preprocessed is not None:
+                _omr_source = _preprocessed
+        except Exception as _pre_exc:
+            log_message(f'  [几何预处理] 预处理失败，使用原始图像：{_pre_exc}', logging.WARNING)
+
     # ── Helper: try to run Homr (used for fallback) ─────────────────────────
     def _try_run_homr() -> Optional[Path]:
         """尝试运行 Homr，返回输出目录或 None 失败。"""
-        if not _IS_IMAGE and source_file.suffix.lower() != '.pdf':
+        if not _IS_IMAGE and _omr_source.suffix.lower() != '.pdf':
             return None
         if not check_homr_available():
             return None
@@ -241,7 +255,7 @@ def process_single_input_to_jianpu(
         with ThreadPoolExecutor(max_workers=1) as _homr_ex:
             _homr_future = _homr_ex.submit(
                 run_homr_batch,
-                source_file,
+                _omr_source,
                 file_temp_dir,
                 use_gpu_inference=use_gpu_inference,
                 progress_fn=_report_subprogress,
@@ -277,7 +291,7 @@ def process_single_input_to_jianpu(
     # ── Audiveris (with fallback to Homr) ──────────────────────────────────
     else:
         _report_subprogress(0.05, '[Audiveris] 启动 OMR 识别…')
-        omr_out = run_audiveris_sliced_batch(source_file, output_dir=file_temp_dir)
+        omr_out = run_audiveris_sliced_batch(_omr_source, output_dir=file_temp_dir)
         if omr_out is not None:
             _report_subprogress(0.65, 'OMR 完成，正在生成简谱…')
         engine_label = 'Audiveris'
@@ -319,7 +333,7 @@ def process_single_input_to_jianpu(
         effective_source = source_file
 
     # ── Homr 后处理：结构清洗 + 简谱时值对齐──────────────────────────────────────
-    if effective_engine is OMREngine.HOMR:
+    if engine_label == 'Homr':
         try:
             from ..omr.dl_fix import fix_homr_output
             # 为简谱转换启用时值对齐：jianpu-ly 的拍号检查对浮点差敏感

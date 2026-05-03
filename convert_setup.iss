@@ -469,48 +469,60 @@ begin
 end;
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 卸载初始化：检测程序是否正在运行，询问用户是否强制关闭
+// 卸载初始化：真实检测程序是否正在运行，只在确认运行时才提示
 // ──────────────────────────────────────────────────────────────────────────────
 function InitializeUninstall: Boolean;
 var
   ResultCode: Integer;
+  TempFile: String;
+  TaskListOutput: String;
+  IsRunning: Boolean;
 begin
   Result := True;
+  IsRunning := False;
 
-  // 检测 SumisoraOMR.exe 是否在运行（FindWindowByClassName 无法跨进程；
-  // 改用检查进程是否存在：尝试 tasklist | findstr）
-  if CheckForMutexes('SumisoraOMR_RunningMutex') or
-     (Exec(ExpandConstant('{sys}\tasklist.exe'),
-           '/FI "IMAGENAME eq SumisoraOMR.exe" /NH /FO CSV',
-           '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0)) then
+  // 用 cmd 重定向 tasklist 输出到临时文件，再读取内容判断进程是否存在。
+  // tasklist /FI 本身不通过 exit code 表示"找到 / 未找到"，必须解析输出文本。
+  TempFile := ExpandConstant('{tmp}\sumisora_running.txt');
+  if Exec(ExpandConstant('{sys}\cmd.exe'),
+         '/C tasklist /FI "IMAGENAME eq SumisoraOMR.exe" /NH /FO CSV > "' + TempFile + '"',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    // tasklist 不返回是否找到，改用 taskkill /T /FI 探测
+    if LoadStringFromFile(TempFile, TaskListOutput) then
+      IsRunning := Pos('SumisoraOMR.exe', TaskListOutput) > 0;
+    DeleteFile(TempFile);
   end;
 
-  // 可靠方案：直接尝试 taskkill；若程序未运行则静默失败（exit 128），无副作用
-  if not UninstallSilent then
+  // 互斥锁作为补充（若 app 主动创建了 SumisoraOMR_RunningMutex）
+  if not IsRunning then
+    IsRunning := CheckForMutexes('SumisoraOMR_RunningMutex');
+
+  if IsRunning then
   begin
-    if MsgBox('检测到 SumisoraOMR 可能正在运行。' + #13#10#13#10 +
-              '继续卸载前需要关闭程序，否则部分文件可能无法删除。' + #13#10 +
-              '是否立即强制关闭？',
-              mbConfirmation, MB_YESNO) = IDYES then
+    if not UninstallSilent then
     begin
-      Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
-           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      if MsgBox('检测到 SumisoraOMR 正在运行。' + #13#10#13#10 +
+                '继续卸载前需要关闭程序，否则部分文件可能无法删除。' + #13#10 +
+                '是否立即强制关闭？',
+                mbConfirmation, MB_YESNO) = IDYES then
+      begin
+        Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+             '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      end
+      else
+      begin
+        if MsgBox('未关闭程序，卸载可能不完整。' + #13#10 +
+                  '是否仍要继续卸载？',
+                  mbConfirmation, MB_YESNO) = IDNO then
+          Result := False;
+      end;
     end
     else
     begin
-      if MsgBox('未关闭程序，卸载可能不完整。' + #13#10 +
-                '是否仍要继续卸载？',
-                mbConfirmation, MB_YESNO) = IDNO then
-        Result := False;
+      // 静默卸载时直接强杀，不弹窗
+      Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
-  end
-  else
-  begin
-    // 静默卸载时直接强杀，不弹窗
-    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
-         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
 

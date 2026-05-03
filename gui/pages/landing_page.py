@@ -39,6 +39,7 @@ class LandingPage(ft.Row):
         self._build_ui()
         state.on(Event.FILE_SELECTED,   self._on_file_selected)
         state.on(Event.FILES_CHANGED,   self._on_files_changed)
+        state.on(Event.FILES_IMPORTED,  self._on_files_imported)
 
     def _build_ui(self) -> None:
         self._sidebar = FileSidebar(self._state)
@@ -230,6 +231,13 @@ class LandingPage(ft.Row):
 
     def _on_files_changed(self, files: list[Path], **_kw) -> None:
         for path in files:
+            try:
+                self._viewer.preload(path)
+            except Exception:
+                pass
+
+    def _on_files_imported(self, paths: list[Path], **_kw) -> None:
+        for path in paths:
             try:
                 self._viewer.preload(path)
             except Exception:

@@ -24,6 +24,7 @@ from ..utils import (
     get_app_base_dir,
     get_runtime_search_roots,
     log_message,
+    resolve_font_path,
 )
 
 
@@ -138,42 +139,177 @@ def _ascii_only(s: str) -> str:
     return ''.join(c for c in s if 0x20 <= ord(c) <= 0x7E).strip()
 
 
-def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> None:
+def _has_cjk(s: str) -> bool:
+    """Return True if *s* contains any character outside the ASCII printable range."""
+    return any(ord(c) > 0x7E for c in s)
+
+
+def _find_cjk_font_for_overlay() -> Optional[Path]:
+    """Locate a CJK-capable TrueType/OpenType font file for fitz text overlay.
+
+    Preference order:
+    1. Bundled NotoSansSC font in assets/fonts/ (always available in this repo).
+    2. First available system CJK font via :func:`resolve_font_path`.
+    """
+    bundled = get_app_base_dir() / 'assets' / 'fonts' / 'NotoSansSC-VariableFont_wght.ttf'
+    if bundled.exists():
+        return bundled
+    return resolve_font_path()
+
+
+def _overlay_cjk_title_on_staff_pdf(pdf_path: Path, title: str) -> None:
+    """Overlay a Unicode/CJK title onto the first page of a LilyPond staff PDF.
+
+    When the score title is CJK-only, musicxml2ly emits the raw CJK bytes into
+    the LilyPond ``\\header`` block, and LilyPond's default Century Schoolbook font
+    renders them as empty boxes or partial glyphs.  ``_inject_metadata_to_lilypond``
+    ensures LilyPond always reserves the title-area vertical space (by injecting
+    a ``"."`` placeholder when the MusicXML had no title).  This function then:
+
+    1. Finds the title text block position dynamically via ``page.get_text``.
+    2. Draws a white rectangle over the garbled/placeholder header area.
+    3. Draws the correct CJK title text centered in that area using the
+       bundled Noto Sans SC TTF via PyMuPDF's TextWriter API.
+
+    Note: ``insert_textbox``'s ``fontfile=`` keyword is *not* sufficient for CJK
+    fonts — fitz silently falls back to a built-in font when the supplied file
+    contains non-Latin glyphs.  The correct way is to create a ``fitz.Font`` object
+    from the file and pass it as the ``font=`` keyword argument.
+    """
+    if not title:
+        return
+    font_path = _find_cjk_font_for_overlay()
+    if font_path is None:
+        LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 未找到 CJK 字体，跳过叠加')
+        return
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        return
+    try:
+        doc = fitz.open(str(pdf_path))
+        if len(doc) == 0:
+            doc.close()
+            return
+        page = doc[0]
+        pw = page.rect.width
+        # Dynamically locate the title area using word-level extraction.
+        # PyMuPDF sometimes merges adjacent text blocks (e.g. "." title and
+        # "Piano" instrument label into one block), making block-level y-bounds
+        # unreliable.  Word-level extraction gives individual bounding boxes so
+        # we can filter by x-position: the centered title sits at x > 25 % of
+        # page width, while left-margin instrument/voice labels sit at x ≈ 35 pt.
+        #
+        # Words are kept if:
+        #   • y0 < 45 pt  (title area only; voice labels at y≈39 but x≈35 → excluded)
+        #   • x0 > pw*0.25  (centered, not a left-margin instrument/voice label)
+        #   • more than 50 % of chars are above 0x1F  (not binary music-font data)
+        def _is_readable_word(text: str) -> bool:
+            if not text.strip():
+                return False
+            return sum(1 for c in text if ord(c) > 0x1F) / len(text) > 0.5
+
+        title_words = [
+            (x0, y0, x1, y1)
+            for x0, y0, x1, y1, word, *_ in page.get_text('words')
+            if y0 < 45 and x0 > pw * 0.25 and _is_readable_word(word)
+        ]
+        if title_words:
+            cover_y0 = max(0.0, min(b[1] for b in title_words) - 4)
+            cover_y1 = min(max(b[3] for b in title_words) + 4, 55.0)
+        else:
+            # Fallback: single title-line estimate.  With the "." placeholder
+            # injected by _inject_metadata_to_lilypond, LilyPond always reserves
+            # title space, so the music never starts before y ≈ 25–35 pt.
+            cover_y0, cover_y1 = 5.0, 35.0
+        cover_rect = fitz.Rect(0, cover_y0, pw, cover_y1)
+        title_rect = fitz.Rect(36, cover_y0, pw - 36, cover_y1)
+        # Must use fitz.Font + fitz.TextWriter — passing fontfile= directly to
+        # insert_textbox does not work for CJK glyphs; fitz silently reverts to a
+        # built-in font.  TextWriter.fill_textbox() accepts a fitz.Font object and
+        # correctly embeds CJK glyphs from the TTF file.
+        # Blank out the garbled LilyPond-rendered title area with white, then
+        # draw the correct CJK text on top using the Noto Sans SC font.
+        page.draw_rect(cover_rect, color=(1, 1, 1), fill=(1, 1, 1))
+        cjk_font = fitz.Font(fontfile=str(font_path))
+        tw = fitz.TextWriter(page.rect)
+        tw.fill_textbox(
+            title_rect,
+            title,
+            font=cjk_font,
+            fontsize=15,
+            align=1,  # 1 = TEXT_ALIGN_CENTER
+        )
+        # render_mode=2 (fill + stroke with same color) makes the glyphs appear
+        # slightly bolder.  Note: write_text() does NOT accept border_width or
+        # fill_color — both raise TypeError in PyMuPDF 1.27.x.
+        tw.write_text(page, render_mode=2, color=(0, 0, 0))
+        # Save to a sibling temp file then replace the original.  On Windows,
+        # doc.save(same_path, incremental=False) silently discards the changes
+        # because the original file handle is still held during the write.
+        tmp_path = pdf_path.with_suffix('.tmp.pdf')
+        doc.save(str(tmp_path), incremental=False, garbage=4, encryption=fitz.PDF_ENCRYPT_NONE)
+        doc.close()
+        tmp_path.replace(pdf_path)
+        LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 已叠加标题 "%s"', title)
+    except Exception as exc:
+        LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 叠加失败: %s', exc)
+
+def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> str:
     """Append a \\header block with title/composer from MusicXML metadata at EOF.
+
+    Returns the raw (pre-ASCII-stripping) title string so callers can use it
+    for post-processing (e.g. CJK overlay) without a second metadata parse.
 
     Appending is safe for any LilyPond file structure, including complex
     multi-voice/multi-staff output from musicxml2ly.  In LilyPond, later
     global \\header blocks override earlier ones for conflicting keys, so the
     appended block wins over the generic header musicxml2ly generates.
     """
+    _GENERIC = {'', 'music21', 'composer', 'title', 'score', 'untitled', 'new score', 'unknown'}
+    raw_title: str = mxl_path.stem
     try:
         from ..music.transposer import extract_metadata_from_musicxml
         metadata = extract_metadata_from_musicxml(mxl_path)
 
-        _GENERIC = {'', 'music21', 'composer', 'title', 'score', 'untitled', 'new score', 'unknown'}
+        # Raw title (before ASCII stripping) — returned for CJK overlay use
+        _raw = (metadata.get('title', '') or '').strip()
+        if _raw and _raw.lower() not in _GENERIC:
+            raw_title = _raw
+
         # 过滤非 ASCII，LilyPond 默认字体不支持 CJK
-        title = _ascii_only((metadata.get('title', '') or '').strip())
-        composer = _ascii_only((metadata.get('composer', '') or '').strip())
+        title = _ascii_only(raw_title)
         if not title or title.lower() in _GENERIC:
             title = _ascii_only(mxl_path.stem)
+        composer = _ascii_only((metadata.get('composer', '') or '').strip())
         if composer.lower() in _GENERIC:
             composer = ''
-
-        # 过滤后若 title 仍为空，则不注入（避免写入空 \header {}）
-        if not title and not composer:
-            return
 
         def _esc(s: str) -> str:
             return s.replace('\\', '\\\\').replace('"', '\\"')
 
-        parts = []
-        if title:
-            parts.append(f'  title = "{_esc(title)}"')
-        if composer:
-            parts.append(f'  composer = "{_esc(composer)}"')
-
-        if not parts:
-            return
+        # Build header override block:
+        # - subtitle: always cleared (musicxml2ly mirrors title → subtitle).
+        # - composer: always cleared if it's a generic placeholder like "Music21".
+        # - title: only overridden when the ASCII-filtered title is non-empty.
+        #   When the raw title is CJK-only (ascii title == ""), we leave the
+        #   original musicxml2ly CJK title intact so LilyPond preserves its normal
+        #   title-area spacing.  The garbled rendered title is wiped and replaced
+        #   by _overlay_cjk_title_on_staff_pdf() after LilyPond renders the PDF.
+        parts: list[str] = [
+            '  subtitle = ""',
+            f'  composer = "{_esc(composer)}"',
+        ]
+        if title:  # non-empty ASCII title → override
+            parts.insert(0, f'  title = "{_esc(title)}"')
+        elif _has_cjk(raw_title):
+            # CJK-only title: musicxml2ly may or may not have written a title into
+            # the .ly file.  If the MusicXML had no title tag, LilyPond will not
+            # reserve any vertical space for the header, making the music start at
+            # y≈5.  Injecting a visible non-whitespace placeholder forces LilyPond
+            # to always reserve the title area, so the CJK overlay step can later
+            # place the correct text there without covering the first staff line.
+            parts.insert(0, '  title = "."')
 
         ly_content = ly_path.read_text(encoding='utf-8', errors='ignore')
         header_block = '\\header {\n' + '\n'.join(parts) + '\n}\n'
@@ -181,6 +317,7 @@ def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> None:
         LOGGER.debug('_inject_metadata_to_lilypond: 追加元数据头 title="%s"', title)
     except Exception as exc:
         LOGGER.debug('_inject_metadata_to_lilypond 失败: %s', exc)
+    return raw_title
 
 
 def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
@@ -214,9 +351,15 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
         import sys as _sys
         python_exe = Path(_sys.executable)
 
+    out_dir = out_dir.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     mxl_path = mxl_path.resolve()
-    ly_path = out_dir / (mxl_path.stem + '_staff.ly')
+    # Use a fixed ASCII-only filename for the .ly file.  musicxml2ly (LilyPond's
+    # bundled Python 3.10) cannot open output files whose absolute path contains
+    # non-ASCII (CJK) characters on Windows — open() raises FileNotFoundError.
+    # The out_dir already uniquely identifies the score, so a constant basename
+    # is safe.  The final PDF is renamed to include the stem at the end.
+    ly_path = out_dir / '_staff.ly'
 
     # Step 1: musicxml2ly → .ly
     try:
@@ -243,11 +386,19 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     except Exception:
         pass
 
-    # Step 3: Append title/composer from MusicXML metadata
-    _inject_metadata_to_lilypond(ly_path, mxl_path)
+    # Step 3: Append title/composer from MusicXML metadata; raw_title is the
+    # pre-ASCII-stripping title (may contain CJK) returned for the overlay step.
+    raw_title = _inject_metadata_to_lilypond(ly_path, mxl_path)
 
     # Step 4: LilyPond → PDF（使用已有的 render_lilypond_pdf）
-    return render_lilypond_pdf(ly_path)
+    pdf_path = render_lilypond_pdf(ly_path)
+
+    # Step 5: Overlay CJK title if the raw title contains non-ASCII characters
+    # (LilyPond rendered with title="" leaving a blank title area at the top).
+    if pdf_path is not None and _has_cjk(raw_title):
+        _overlay_cjk_title_on_staff_pdf(pdf_path, raw_title)
+
+    return pdf_path
 
 
 # ──────────────────────────────────────────────
@@ -538,6 +689,8 @@ def _merge_jianpu_voices(
         # Also force Rest.staff-position = #0 so that \voiceOne/\voiceTwo don't
         # push "0" rest glyphs to different heights on the RhythmicStaff.
         _rest_fix = '    \\override Rest.staff-position = #0\n'
+        if i > 0:
+            _rest_fix += '    \\override Rest.stencil = ##f\n'
         tm = _TRANSPARENT_STEM_RE.search(inner)
         if tm:
             line_end = inner.find('\n', tm.end())
@@ -682,3 +835,113 @@ def merge_polyphonic_jianpu_staves(
     except OSError as exc:
         log_message(f'[jianpu] 多声部合并写入失败: {exc}', logging.WARNING)
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Repeat barline injection
+# ──────────────────────────────────────────────────────────────────────────────
+
+def inject_repeat_barlines_to_ly(
+    ly_path: Path,
+    repeat_info: 'dict[int, dict[str, bool]]',
+) -> None:
+    """Inject \\bar repeat commands into the first Voice block of a LilyPond file.
+
+    repeat_info maps measure index → {'start': bool, 'end': bool}.
+    'start' inserts \\bar ".|:" before the measure's first note.
+    'end'   inserts \\bar ":|." after  the measure's last note.
+    Adjacent end+start across a barline becomes \\bar ":|.|:".
+    Only the first \\new Voice block is modified; LilyPond propagates the
+    barline change to the shared staff automatically.
+    """
+    if not repeat_info:
+        return
+    try:
+        content = ly_path.read_text(encoding='utf-8', errors='ignore')
+        result = _insert_repeat_bar_commands(content, repeat_info)
+        if result != content:
+            ly_path.write_text(result, encoding='utf-8')
+            LOGGER.debug('inject_repeat_barlines_to_ly: injected %d repeat markers', len(repeat_info))
+    except Exception as exc:
+        LOGGER.warning('inject_repeat_barlines_to_ly failed: %s', exc)
+
+
+def _insert_repeat_bar_commands(content: str, repeat_info: 'dict[int, dict[str, bool]]') -> str:
+    """Locate the first \\new Voice block and insert \\bar commands at measure boundaries."""
+    voice_re = re.compile(r'\\new\s+Voice\s*(?:=\s*"[^"]*")?\s*\{')
+    m = voice_re.search(content)
+    if not m:
+        return content
+
+    # Brace-match to find the closing } of the Voice block
+    start = m.end()
+    depth = 1
+    pos = start
+    while pos < len(content) and depth > 0:
+        if content[pos] == '{':
+            depth += 1
+        elif content[pos] == '}':
+            depth -= 1
+        pos += 1
+    end = pos - 1  # position of closing }
+
+    block = content[start:end]
+    modified = _inject_barlines_into_voice_block(block, repeat_info)
+    return content[:start] + modified + content[end:]
+
+
+def _inject_barlines_into_voice_block(block: str, repeat_info: 'dict[int, dict[str, bool]]') -> str:
+    """Insert \\bar commands into a voice block using %{ bar N: %} bar-comment markers.
+
+    jianpu-ly outputs the pattern:
+        (notes) | (optional tie overrides) | %{ bar N: %} (next measure notes)
+
+    N is the 1-based bar number of the measure STARTING after the marker.
+    Therefore:  end_mi  = N - 2  (0-based index of measure that just ended)
+                start_mi = N - 1  (0-based index of measure that's starting)
+    """
+    _START = r'\bar ".|:"'
+    _END   = r'\bar ":|."'
+    _BOTH  = r'\bar ":|.|:"'
+
+    boundary_re = re.compile(r'\|\s*%\{\s*bar\s+(\d+)\s*:\s*%\}')
+    matches = list(boundary_re.finditer(block))
+
+    # (position_in_block, text_to_insert) — applied in reverse order to preserve offsets
+    injections: list[tuple[int, str]] = []
+
+    for m in matches:
+        N = int(m.group(1))
+        end_mi   = N - 2   # 0-based m21 index of the measure that just ended
+        start_mi = N - 1   # 0-based m21 index of the measure about to start
+
+        has_end   = repeat_info.get(end_mi, {}).get('end', False)
+        has_start = repeat_info.get(start_mi, {}).get('start', False)
+
+        if has_end and has_start:
+            # Combined barline: insert before the | in "| %{ bar N: %}"
+            injections.append((m.start(), f'{_BOTH} '))
+        elif has_end:
+            injections.append((m.start(), f'{_END} '))
+        elif has_start:
+            # Insert start-repeat after the closing %} of the comment
+            injections.append((m.end(), f' {_START}'))
+
+    # Handle last measure end-repeat (no %{ bar N+1: %} follows the last measure)
+    if matches:
+        last_N = max(int(m.group(1)) for m in matches)
+        last_mi = last_N - 1  # last measure's 0-based index
+        if repeat_info.get(last_mi, {}).get('end', False):
+            final_m = re.search(r'\|\s*\\bar\s*"\|\."\s*$', block.rstrip())
+            if final_m:
+                injections.append((final_m.start(), f'{_END} '))
+
+    # Apply in reverse position order to preserve string offsets
+    result = block
+    for pos, text in sorted(injections, key=lambda x: x[0], reverse=True):
+        result = result[:pos] + text + result[pos:]
+
+    # Measure 0 start-repeat: prepend at very beginning of the voice block
+    if repeat_info.get(0, {}).get('start'):
+        result = f'{_START} ' + result
+
+    return result

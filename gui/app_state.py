@@ -17,6 +17,7 @@ from typing import Any, Callable, Optional
 class Event:
     FILES_CHANGED       = 'files_changed'       # pinned file list changed
     FILES_CHECK_CHANGED = 'files_check_changed' # file check state changed (checked: set[Path])
+    FILES_IMPORTED      = 'files_imported'      # files copied to Input/ (paths: list[Path])
     FILE_SELECTED       = 'file_selected'       # user selected a file
     PAGE_CHANGED        = 'page_changed'        # navigation page switched
     PROGRESS_UPDATE     = 'progress_update'     # progress update (value: float 0-1)

@@ -28,6 +28,7 @@ from ..music.jianpu_core import (
     parse_score_to_jianpu,
 )
 from .lilypond_runner import (
+    inject_repeat_barlines_to_ly,
     merge_polyphonic_jianpu_staves,
     render_jianpu_ly,
     render_lilypond_pdf,
@@ -515,9 +516,12 @@ def render_score_to_jianpu_pdf(
     Render a music21 score to jianpu PDF.
     Tries in order: standard jianpu-ly → strict-timing → reportlab fallback → LilyPond markup fallback.
     """
+    _repeat_barlines: dict = {}
     try:
         _jly_result = build_jianpu_ly_text(score, title, composer=composer, tempo=tempo, _return_groups=True)
-        txt_content, _voice_groups = cast(tuple[str, list[list[int]]], _jly_result)
+        txt_content, _voice_groups, _repeat_barlines = cast(
+            tuple[str, list[list[int]], dict], _jly_result
+        )
     except Exception as exc:
         _voice_groups = []
         log_message(f'[jianpu] 标准 jianpu-ly 文本生成失败 ({exc})，尝试使用简化处理', logging.WARNING)
@@ -546,6 +550,7 @@ def render_score_to_jianpu_pdf(
         log_message(f'已生成 jianpu-ly LilyPond 文件: {ly_path.name}')
         sanitize_generated_lilypond_file(ly_path, title, lyrics_lines, composer=composer)
         merge_polyphonic_jianpu_staves(ly_path, _voice_groups)
+        inject_repeat_barlines_to_ly(ly_path, _repeat_barlines)
         pdf_path = render_lilypond_pdf(ly_path)
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)

@@ -318,6 +318,15 @@ class PdfViewer(ft.Column):
                 return
             self._page_count = len(doc)
             self._fitz_doc = doc
+            if self._page_count == 0:
+                if token != self._load_token:
+                    return
+                # Encrypted or structurally empty PDF
+                msg = ('PDF 已加密或无法读取（无页面）' if doc.is_encrypted
+                       else 'PDF 无法渲染（文件可能已损坏或格式不受支持）')
+                self._show_error(msg)
+                self._update_toolbar()
+                return
             self._render_current_page(token=token)
             if token != self._load_token:
                 return
@@ -356,6 +365,8 @@ class PdfViewer(ft.Column):
         if token != self._load_token:
             return
         if self._fitz_doc is None:
+            return
+        if self._page_count == 0 or self._current_page < 0 or self._current_page >= self._page_count:
             return
         try:
             import fitz

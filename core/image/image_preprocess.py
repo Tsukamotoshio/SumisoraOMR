@@ -83,6 +83,7 @@ def enhance_image_with_pillow(input_path: Path, output_path: Path, keep_color: b
         return False
     try:
         with Image.open(input_path) as img:
+            img = ImageOps.exif_transpose(img)
             if keep_color:
                 working = img.convert('RGB')
             else:
@@ -187,6 +188,7 @@ def preprocess_geometry_for_omr(
     work_dir.mkdir(parents=True, exist_ok=True)
     try:
         with Image.open(image_path) as img:
+            img = ImageOps.exif_transpose(img)
             working = img.convert('RGB')
 
         working, border_ratio = crop_white_border(working)
@@ -463,6 +465,7 @@ def enhance_image(
 
     try:
         with Image.open(image_path) as img:
+            img = ImageOps.exif_transpose(img)
             working = img.convert('RGB')
 
         if apply_geometry:
@@ -554,6 +557,7 @@ def create_display_reference(
     work_dir.mkdir(parents=True, exist_ok=True)
     try:
         with Image.open(image_path) as img:
+            img = ImageOps.exif_transpose(img)
             working = img.convert('RGB')
 
         working, border_ratio = crop_white_border(working)

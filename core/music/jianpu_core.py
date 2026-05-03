@@ -558,6 +558,56 @@ def _get_voice_ids_in_part(part) -> list[str]:
     return sorted(vid for vid, count in voice_measure_count.items() if count >= 2)
 
 
+def _extract_part_repeat_barlines(part) -> dict[int, dict[str, bool]]:
+    """Return {measure_index: {'start': bool, 'end': bool}} for measures with repeat barlines.
+
+    'start' — measure's left barline is a start-repeat (⌃|:)
+    'end'   — measure's right barline is an end-repeat (:|)
+    """
+    try:
+        from music21 import bar as m21bar
+    except ImportError:
+        return {}
+
+    result: dict[int, dict[str, bool]] = {}
+    measures = list(part.getElementsByClass('Measure'))
+    if len(measures) > MAX_SANE_BARS:
+        measures = measures[:MAX_SANE_BARS]
+
+    for i, measure in enumerate(measures):
+        lb = getattr(measure, 'leftBarline', None)
+        rb = getattr(measure, 'rightBarline', None)
+        has_start = isinstance(lb, m21bar.Repeat) and getattr(lb, 'direction', None) == 'start'
+        has_end   = isinstance(rb, m21bar.Repeat) and getattr(rb, 'direction', None) == 'end'
+        if has_start or has_end:
+            result[i] = {'start': has_start, 'end': has_end}
+
+    # Validate: drop repeat sections that span too few notes (likely Audiveris false positives).
+    # Pair each start-repeat measure with the nearest following end-repeat measure;
+    # if the section contains fewer than 4 non-rest notes, discard the entire pair.
+    _MIN_NOTES = 4
+    starts = sorted(mi for mi, f in result.items() if f.get('start'))
+    ends   = sorted(mi for mi, f in result.items() if f.get('end'))
+    _used_ends: set[int] = set()
+    _drop: set[int] = set()
+    for _s in starts:
+        _e = next((x for x in ends if x >= _s and x not in _used_ends), None)
+        if _e is not None:
+            _used_ends.add(_e)
+            _note_count = sum(
+                1 for _mi in range(_s, min(_e + 1, len(measures)))
+                for _el in measures[_mi].flatten().notesAndRests
+                if not getattr(_el, 'isRest', True)
+            )
+            if _note_count < _MIN_NOTES:
+                _drop.add(_s)
+                _drop.add(_e)
+    for _mi in _drop:
+        result.pop(_mi, None)
+
+    return result
+
+
 def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                              _part=None, _voice_id: str = '1',
                              _multi_voice_mode: bool = False,
@@ -1141,7 +1191,11 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
 
     text = '\n'.join(header)
     if _return_groups:
-        return text, _voice_groups
+        _first_part = _parts[0] if _parts else None
+        _repeat_barlines: dict[int, dict[str, bool]] = (
+            _extract_part_repeat_barlines(_first_part) if _first_part is not None else {}
+        )
+        return text, _voice_groups, _repeat_barlines
     return text
 
 
