@@ -341,34 +341,30 @@ var
   UninstallerPath: String;
   ResultCode: Integer;
   TempFile: String;
-  TaskListOutput: String;
+  TaskListOutput: AnsiString;
+  ShouldKill: Boolean;
 begin
   Result := '';
   NeedsRestart := False;
 
   // 安装前确保进程已退出，防止文件被锁导致 Error 5。
-  // 先用 tasklist 精确检测，若检测本身失败则无条件兜底强杀。
+  // 先 tasklist 检测；进程存在或检测失败（输出为空）→ 兜底强杀。
+  TaskListOutput := '';
   TempFile := ExpandConstant('{tmp}\sumisora_chk.txt');
   if Exec(ExpandConstant('{sys}\cmd.exe'),
          '/C tasklist /FI "IMAGENAME eq SumisoraOMR.exe" /NH /FO CSV > "' + TempFile + '"',
          '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    if LoadStringFromFile(TempFile, TaskListOutput) then
-    begin
-      if Pos('SumisoraOMR.exe', TaskListOutput) > 0 then
-        Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
-             '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    end
-    else
-      // tasklist 输出读取失败，兜底强杀
-      Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
-           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if not LoadStringFromFile(TempFile, TaskListOutput) then
+      TaskListOutput := '';
     DeleteFile(TempFile);
-  end
-  else
-    // tasklist 执行本身失败，兜底强杀
+  end;
+  ShouldKill := (TaskListOutput = '') or (Pos('SumisoraOMR.exe', TaskListOutput) > 0);
+  if ShouldKill then
+  begin
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
          '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
 
   if (InstallMode = MODE_UPGRADE) or (InstallMode = MODE_DOWNGRADE) then
   begin
@@ -497,7 +493,7 @@ function InitializeUninstall: Boolean;
 var
   ResultCode: Integer;
   TempFile: String;
-  TaskListOutput: String;
+  TaskListOutput: AnsiString;
   IsRunning: Boolean;
 begin
   Result := True;
