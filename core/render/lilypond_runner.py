@@ -117,6 +117,94 @@ def render_lilypond_pdf(ly_path: Path) -> Optional[Path]:
         return None
 
 
+def _fix_adjacent_backward_repeats_in_mxl(mxl_path: Path) -> Path:
+    """Return a path to a MusicXML file with adjacent backward-repeat barlines fixed.
+
+    Some OMR engines (Homr, Audiveris) split a combined ``:|.|:`` barline into
+    two consecutive backward-repeat (``direction="backward"``) barlines — one
+    on the right side of measure N, one on the right side of measure N+1.
+    This is invalid: two adjacent end-repeats without a start-repeat between
+    them cannot logically occur in standard notation.
+
+    This function detects such pairs and converts the second measure's right-side
+    backward-repeat into a left-side forward-repeat, restoring the intended
+    ``:|.|:`` semantics.
+
+    A ``direction="forward"`` on a RIGHT barline is ignored by both music21 and
+    musicxml2ly; it must appear as a LEFT barline of the following measure to be
+    recognised as a start-repeat by downstream tools.  The corrected XML is:
+
+    Before (measure N+1):
+        <barline location="right"><repeat direction="backward"/></barline>
+
+    After (measure N+1):
+        <barline location="left"><repeat direction="forward"/></barline>
+
+    If no fix is needed the original path is returned unchanged.  If a fix is
+    applied a sibling temp file ``_staff_fixed.musicxml`` is written and returned.
+    """
+    try:
+        content = mxl_path.read_text(encoding='utf-8', errors='ignore')
+    except Exception:
+        return mxl_path
+
+    measure_re = re.compile(
+        r'(<measure\b[^>]*>)(.*?)(</measure>)',
+        re.DOTALL,
+    )
+    right_backward_re = re.compile(
+        r'<barline\s+location=["\']right["\'][^>]*>.*?<repeat\s+direction=["\']backward["\'].*?</barline>',
+        re.DOTALL,
+    )
+    left_any_re = re.compile(
+        r'<barline\s+location=["\']left["\']',
+        re.DOTALL,
+    )
+
+    measures = list(measure_re.finditer(content))
+    replacements: list[tuple[int, int, str]] = []  # (start, end, new_text)
+
+    for i in range(len(measures) - 1):
+        ma, mb = measures[i], measures[i + 1]
+        body_a, body_b = ma.group(2), mb.group(2)
+        # Both measures must have a right-side backward-repeat, and the second
+        # must not already have a left-side barline (to avoid double-insertion).
+        if (
+            right_backward_re.search(body_a)
+            and right_backward_re.search(body_b)
+            and not left_any_re.search(body_b)
+        ):
+            # Replace the right-side backward-repeat in measure N+1 with a
+            # left-side forward-repeat so both music21 and musicxml2ly see a
+            # valid start-repeat at the beginning of that measure.
+            new_body_b = right_backward_re.sub(
+                '<barline location="left"><repeat direction="forward"/></barline>',
+                body_b,
+                count=1,
+            )
+            full_new = mb.group(1) + new_body_b + mb.group(3)
+            replacements.append((mb.start(), mb.end(), full_new))
+
+    if not replacements:
+        return mxl_path
+
+    # Apply replacements in reverse order to preserve string offsets.
+    new_content = content
+    for start, end, new_text in sorted(replacements, key=lambda x: x[0], reverse=True):
+        new_content = new_content[:start] + new_text + new_content[end:]
+
+    fixed_path = mxl_path.parent / '_staff_fixed.musicxml'
+    try:
+        fixed_path.write_text(new_content, encoding='utf-8')
+        LOGGER.debug(
+            '_fix_adjacent_backward_repeats_in_mxl: fixed %d pair(s) in %s',
+            len(replacements), mxl_path.name,
+        )
+        return fixed_path
+    except Exception:
+        return mxl_path
+
+
 def _fix_deprecated_ly_syntax(text: str) -> str:
     r"""Convert deprecated LilyPond #'property syntax to .property dot notation.
 
@@ -361,10 +449,14 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     # is safe.  The final PDF is renamed to include the stem at the end.
     ly_path = out_dir / '_staff.ly'
 
+    # Step 0: Pre-fix adjacent backward-repeat barlines in the MusicXML (OMR
+    # artefact: combined :|.|: barline split into two backward-repeats).
+    mxl_for_ly = _fix_adjacent_backward_repeats_in_mxl(mxl_path)
+
     # Step 1: musicxml2ly → .ly
     try:
         result = subprocess.run(
-            [str(python_exe), str(musicxml2ly), '-o', str(ly_path), str(mxl_path)],
+            [str(python_exe), str(musicxml2ly), '-o', str(ly_path), str(mxl_for_ly)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=str(out_dir), timeout=60,
             creationflags=_WIN_NO_WINDOW,

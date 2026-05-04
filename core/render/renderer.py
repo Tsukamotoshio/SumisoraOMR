@@ -28,6 +28,7 @@ from ..music.jianpu_core import (
     parse_score_to_jianpu,
 )
 from .lilypond_runner import (
+    _fix_adjacent_backward_repeats_in_mxl,
     inject_repeat_barlines_to_ly,
     merge_polyphonic_jianpu_staves,
     render_jianpu_ly,
@@ -731,7 +732,11 @@ def generate_jianpu_pdf_from_mxl(
     _GENERIC_TITLES = {'', 'music21', 'untitled', 'title', 'score', 'new score', 'unknown'}
 
     try:
-        source_score = converter.parse(str(mxl_path))
+        # Pre-fix MusicXML: convert adjacent backward-repeat pairs (OMR artefact for
+        # combined :|.|: barlines) before music21 parses them, so both this jianpu
+        # flow and the staff-PDF flow see correct start/end repeat structure.
+        _mxl_for_parse = _fix_adjacent_backward_repeats_in_mxl(mxl_path)
+        source_score = converter.parse(str(_mxl_for_parse))
 
         # Source file stem (preferred_title) is always authoritative — OMR engines write
         # internal filenames like "homr_input" that must not leak into the PDF title.
