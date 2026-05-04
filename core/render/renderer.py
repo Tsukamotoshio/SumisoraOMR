@@ -29,10 +29,12 @@ from ..music.jianpu_core import (
 )
 from .lilypond_runner import (
     _fix_adjacent_backward_repeats_in_mxl,
+    render_lilypond_pdf,
+)
+from .jianpu_runner import (
     inject_repeat_barlines_to_ly,
     merge_polyphonic_jianpu_staves,
     render_jianpu_ly,
-    render_lilypond_pdf,
 )
 from ..utils import (
     collect_preserved_lyrics_lines,

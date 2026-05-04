@@ -1,0 +1,520 @@
+# core/render/jianpu_runner.py — jianpu-ly 工具查找、运行、多声部合并、反复小节注入
+# 拆分自 lilypond_runner.py
+import importlib.util
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+from typing import Optional
+
+# 在 Windows 上，作为 GUI 程序运行时防止子进程弹出新控制台窗口
+_WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
+from ..config import (
+    JIANPU_LY_URLS,
+    LILYPOND_RUNTIME_DIR_NAME,
+    LOGGER,
+)
+from ..utils import (
+    find_packaged_runtime_dir,
+    get_app_base_dir,
+    get_runtime_search_roots,
+    log_message,
+)
+
+
+# ──────────────────────────────────────────────
+# jianpu-ly 工具查找与运行
+# ──────────────────────────────────────────────
+
+def find_jianpu_ly_command() -> Optional[str]:
+    """Look for a jianpu-ly command on PATH."""
+    for candidate in ['jianpu-ly', 'jianpu-ly.py']:
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def find_jianpu_ly_module() -> bool:
+    """Check whether jianpu_ly is installed as a Python module."""
+    try:
+        return importlib.util.find_spec('jianpu_ly') is not None
+    except Exception:
+        return False
+
+
+def find_jianpu_ly_script() -> Optional[Path]:
+    """Look for jianpu-ly.py in cwd, the app base directory, and scripts/."""
+    script_dir = get_app_base_dir()
+    for base in [Path.cwd(), script_dir, script_dir / 'scripts']:
+        path = base / 'jianpu-ly.py'
+        if path.exists():
+            return path
+    return None
+
+
+def download_jianpu_ly_script(dest: Path) -> bool:
+    """Download jianpu-ly.py from the fallback URL list and write it to dest."""
+    for url in JIANPU_LY_URLS:
+        try:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                if resp.status != 200:
+                    continue
+                dest.write_bytes(resp.read())
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _ensure_jianpu_script() -> Optional[Path]:
+    """Ensure jianpu-ly.py is available, downloading it to the app dir or scripts/ if necessary."""
+    script_path = find_jianpu_ly_script()
+    if script_path is not None:
+        return script_path
+    script_path = get_app_base_dir() / 'scripts' / 'jianpu-ly.py'
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    if script_path.exists() or download_jianpu_ly_script(script_path):
+        return script_path
+    return None
+
+
+def find_python_script_command() -> Optional[list[str]]:
+    """Find a usable Python interpreter command, preferring the bundled one."""
+    candidates: list[list[str]] = []
+    packaged_lilypond_dir = find_packaged_runtime_dir(LILYPOND_RUNTIME_DIR_NAME)
+    if packaged_lilypond_dir is not None:
+        candidates.append([str(packaged_lilypond_dir / 'bin' / 'python.exe')])
+
+    for base_dir in get_runtime_search_roots():
+        candidates.extend([
+            [str(base_dir / 'python.exe')],
+            [str(base_dir / 'Python' / 'python.exe')],
+            [str(base_dir / '_internal' / 'python.exe')],
+        ])
+
+    sys_executable_path = Path(sys.executable)
+    if sys_executable_path.name.lower().startswith('python'):
+        candidates.insert(0, [str(sys_executable_path)])
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        candidate_path = Path(candidate[0])
+        candidate_key = str(candidate_path).lower()
+        if candidate_key in seen:
+            continue
+        seen.add(candidate_key)
+        if candidate_path.exists() and candidate_path.is_file():
+            return candidate
+
+    for command_name in ('python.exe', 'python'):
+        found = shutil.which(command_name)
+        if found:
+            return [found]
+
+    py_launcher = shutil.which('py')
+    if py_launcher:
+        return [py_launcher, '-3']
+
+    return None
+
+
+def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
+    """Convert a jianpu-ly text file to a LilyPond .ly file (tries command > module > local script)."""
+    import tempfile as _tempfile
+
+    env = os.environ.copy()
+    env['j2ly_sloppy_bars'] = '1'
+    txt_path = txt_path.resolve()
+    ly_path = ly_path.resolve()
+
+    # jianpu-ly 不支持 # 开头的注释行（会报 "Unrecognised command #"），
+    # 预处理：将原文件的 # 注释行过滤掉，传一个临时干净版本给 jianpu-ly。
+    _clean_path = txt_path
+    _tmp_to_delete: Optional[Path] = None
+    try:
+        raw = txt_path.read_text(encoding='utf-8-sig', errors='replace')
+        cleaned = '\n'.join(
+            line for line in raw.splitlines()
+            if not line.lstrip().startswith('#')
+        )
+        _tmp = _tempfile.NamedTemporaryFile(
+            mode='w', suffix='.jianpu.txt', delete=False,
+            encoding='utf-8', dir=str(txt_path.parent),
+        )
+        _tmp.write(cleaned)
+        _tmp.close()
+        _clean_path = Path(_tmp.name)
+        _tmp_to_delete = _clean_path
+    except Exception as exc:
+        log_message(f'预处理 jianpu.txt 失败，使用原文件: {exc}', logging.WARNING)
+
+    try:
+        cmd = find_jianpu_ly_command()
+        if cmd is not None:
+            try:
+                with ly_path.open('w', encoding='utf-8') as out:
+                    subprocess.run([cmd, str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                return True
+            except subprocess.CalledProcessError as exc:
+                log_message(f'jianpu-ly 命令执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
+
+        if find_jianpu_ly_module():
+            try:
+                with ly_path.open('w', encoding='utf-8') as out:
+                    subprocess.run([sys.executable, '-m', 'jianpu_ly', str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                return True
+            except subprocess.CalledProcessError as exc:
+                log_message(f'jianpu_ly 模块执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
+
+        script_path = _ensure_jianpu_script()
+        if script_path is None:
+            return False
+
+        python_cmd = find_python_script_command()
+        if python_cmd is None:
+            log_message('未找到可用于执行 jianpu-ly.py 的 Python 解释器。', logging.WARNING)
+            return False
+
+        try:
+            with ly_path.open('w', encoding='utf-8') as out:
+                subprocess.run([*python_cmd, str(script_path), str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+            return True
+        except subprocess.CalledProcessError as exc:
+            log_message(f'jianpu-ly 脚本执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
+            return False
+    finally:
+        if _tmp_to_delete is not None:
+            try:
+                _tmp_to_delete.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
+    """Convert a MusicXML file directly to a LilyPond .ly file via jianpu-ly."""
+    env = os.environ.copy()
+    env['j2ly_sloppy_bars'] = '1'
+    mxl_path = mxl_path.resolve()
+    ly_path = ly_path.resolve()
+
+    cmd = find_jianpu_ly_command()
+    if cmd is not None:
+        try:
+            with ly_path.open('w', encoding='utf-8') as out:
+                subprocess.run([cmd, str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+            return True
+        except subprocess.CalledProcessError as exc:
+            log_message(f'jianpu-ly 命令处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
+
+    if find_jianpu_ly_module():
+        try:
+            with ly_path.open('w', encoding='utf-8') as out:
+                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+            return True
+        except subprocess.CalledProcessError as exc:
+            log_message(f'jianpu_ly 模块处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
+
+    script_path = _ensure_jianpu_script()
+    if script_path is None:
+        return False
+
+    python_cmd = find_python_script_command()
+    if python_cmd is None:
+        log_message('未找到可用于执行 jianpu-ly.py 的 Python 解释器。', logging.WARNING)
+        return False
+
+    try:
+        with ly_path.open('w', encoding='utf-8') as out:
+            subprocess.run([*python_cmd, str(script_path), str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+        return True
+    except subprocess.CalledProcessError as exc:
+        log_message(f'jianpu-ly 脚本处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
+        return False
+
+
+# ──────────────────────────────────────────────
+# Polyphonic jianpu stave merging
+# ──────────────────────────────────────────────
+
+# Patterns used by _merge_jianpu_voices (compiled once at module level for speed).
+_STAFF_SPLIT_RE = re.compile(r'\}\s*\n(\s*\{)', re.DOTALL)
+_TRANSPARENT_STEM_RE = re.compile(
+    r"(\\override\s+Staff\.Stem\s+#'transparent\s*=\s*##t[^\n]*)"
+)
+_VOICE_OPEN_RE = re.compile(r'(\\new\s+Voice\s*=\s*"[^"]*"\s*\{)')
+
+_VOICE_CMDS = ['\\voiceOne', '\\voiceTwo', '\\voiceThree', '\\voiceFour']
+
+
+def _merge_jianpu_voices(
+    section_contents: list[str],
+    begin_marker: str,
+    end_marker: str,
+) -> str:
+    """Combine 2–4 jianpu ``RhythmicStaff`` section bodies into one polyphonic staff."""
+    staff_with_block: Optional[str] = None
+    voice_inner_blocks: list[str] = []
+
+    for i, content in enumerate(section_contents):
+        m = _STAFF_SPLIT_RE.search(content)
+        if not m:
+            voice_inner_blocks.append(content.strip())
+            continue
+
+        if i == 0:
+            staff_with_block = content[: m.start() + 1].strip()
+
+        music_block = content[m.start(1):]
+        inner = music_block.strip()
+        if inner.startswith('{'):
+            inner = inner[1:]
+        inner = inner.rstrip()
+        if inner.endswith('}'):
+            inner = inner[:-1].rstrip()
+
+        _rest_fix = '    \\override Rest.staff-position = #0\n'
+        if i > 0:
+            _rest_fix += '    \\override Rest.stencil = ##f\n'
+        tm = _TRANSPARENT_STEM_RE.search(inner)
+        if tm:
+            line_end = inner.find('\n', tm.end())
+            if line_end >= 0:
+                inner = (
+                    inner[: line_end + 1]
+                    + f'    {_VOICE_CMDS[i]}\n'
+                    + _rest_fix
+                    + inner[line_end + 1 :]
+                )
+            else:
+                inner = inner + f'\n    {_VOICE_CMDS[i]}\n' + _rest_fix
+        else:
+            vm = _VOICE_OPEN_RE.search(inner)
+            if vm:
+                pos = vm.end()
+                inner = inner[:pos] + f' {_VOICE_CMDS[i]}\n' + _rest_fix + inner[pos:]
+
+        voice_inner_blocks.append(inner)
+
+    if not voice_inner_blocks or staff_with_block is None:
+        result = begin_marker
+        for content in section_contents:
+            result += content
+        result += end_marker
+        return result
+
+    voice_parts: list[str] = []
+    for j, block in enumerate(voice_inner_blocks):
+        if j > 0:
+            voice_parts.append('        \\\\')
+        indented = '\n'.join(
+            ('        ' + line) if line.strip() else line
+            for line in block.split('\n')
+        )
+        voice_parts.append(indented)
+
+    combined = (
+        begin_marker + '\n'
+        + '    ' + staff_with_block + '\n'
+        + '    {\n'
+        + '        <<\n'
+        + '\n'.join(voice_parts) + '\n'
+        + '        >>\n'
+        + '    }\n'
+        + end_marker
+    )
+    return combined
+
+
+def merge_polyphonic_jianpu_staves(
+    ly_path: Path,
+    voice_groups: list[list[int]],
+) -> None:
+    """Post-process a jianpu-ly-generated ``.ly`` file to render polyphonic voices
+    on a single jianpu staff instead of separate staves.
+
+    Parameters
+    ----------
+    ly_path
+        Path to the ``.ly`` file to modify **in-place**.
+    voice_groups
+        A list of section-index groups returned by
+        :func:`~core.music.jianpu_core.build_jianpu_ly_text` with
+        ``_return_groups=True``.  Each inner list contains the 0-based indices
+        of the sections that belong to the same musical Part.  Groups with only
+        one member are left unchanged.  Groups with 2–4 members have their
+        ``RhythmicStaff`` sections merged into a single polyphonic staff.
+    """
+    if not voice_groups or not any(len(g) > 1 for g in voice_groups):
+        return
+
+    try:
+        content = ly_path.read_text(encoding='utf-8', errors='ignore')
+    except OSError:
+        return
+
+    SECTION_RE = re.compile(
+        r'(%+\s*===\s*BEGIN JIANPU STAFF\s*===)(.*?)(%+\s*===\s*END JIANPU STAFF\s*===)',
+        re.DOTALL,
+    )
+    sections = list(SECTION_RE.finditer(content))
+    if not sections:
+        return
+
+    section_to_group: dict[int, list[int]] = {}
+    for group in voice_groups:
+        for idx in group:
+            section_to_group[idx] = group
+
+    replacements: list[tuple[int, int, str]] = []
+    consumed: set[int] = set()
+
+    for sec_idx, match in enumerate(sections):
+        if sec_idx in consumed:
+            continue
+        group = section_to_group.get(sec_idx, [sec_idx])
+        if len(group) <= 1:
+            continue
+
+        group_matches = [sections[i] for i in group if i < len(sections)]
+        if len(group_matches) < 2:
+            continue
+
+        first_m = group_matches[0]
+        last_m = group_matches[-1]
+
+        merged = _merge_jianpu_voices(
+            [m.group(2) for m in group_matches],
+            first_m.group(1),
+            last_m.group(3),
+        )
+
+        replacements.append((first_m.start(), last_m.end(), merged))
+        for i in group[1:]:
+            consumed.add(i)
+
+    if not replacements:
+        return
+
+    result = content
+    for start, end, new_text in sorted(replacements, key=lambda t: t[0], reverse=True):
+        result = result[:start] + new_text + result[end:]
+
+    try:
+        ly_path.write_text(result, encoding='utf-8')
+        log_message(
+            f'[jianpu] 已合并 {sum(len(g) for g in voice_groups if len(g) > 1)} 个声道为'
+            f' {sum(1 for g in voice_groups if len(g) > 1)} 个多声部谱表',
+            logging.DEBUG,
+        )
+    except OSError as exc:
+        log_message(f'[jianpu] 多声部合并写入失败: {exc}', logging.WARNING)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Repeat barline injection
+# ──────────────────────────────────────────────────────────────────────────────
+
+def inject_repeat_barlines_to_ly(
+    ly_path: Path,
+    repeat_info: 'dict[int, dict[str, bool]]',
+) -> None:
+    """Inject \\bar repeat commands into the first Voice block of a LilyPond file.
+
+    repeat_info maps measure index → {'start': bool, 'end': bool}.
+    'start' inserts \\bar ".|:" before the measure's first note.
+    'end'   inserts \\bar ":|." after  the measure's last note.
+    Adjacent end+start across a barline becomes \\bar ":|.|:".
+    Only the first \\new Voice block is modified; LilyPond propagates the
+    barline change to the shared staff automatically.
+    """
+    if not repeat_info:
+        return
+    try:
+        content = ly_path.read_text(encoding='utf-8', errors='ignore')
+        result = _insert_repeat_bar_commands(content, repeat_info)
+        if result != content:
+            ly_path.write_text(result, encoding='utf-8')
+            LOGGER.debug('inject_repeat_barlines_to_ly: injected %d repeat markers', len(repeat_info))
+    except Exception as exc:
+        LOGGER.warning('inject_repeat_barlines_to_ly failed: %s', exc)
+
+
+def _insert_repeat_bar_commands(content: str, repeat_info: 'dict[int, dict[str, bool]]') -> str:
+    """Locate the first \\new Voice block and insert \\bar commands at measure boundaries."""
+    voice_re = re.compile(r'\\new\s+Voice\s*(?:=\s*"[^"]*")?\s*\{')
+    m = voice_re.search(content)
+    if not m:
+        return content
+
+    start = m.end()
+    depth = 1
+    pos = start
+    while pos < len(content) and depth > 0:
+        if content[pos] == '{':
+            depth += 1
+        elif content[pos] == '}':
+            depth -= 1
+        pos += 1
+    end = pos - 1
+
+    block = content[start:end]
+    modified = _inject_barlines_into_voice_block(block, repeat_info)
+    return content[:start] + modified + content[end:]
+
+
+def _inject_barlines_into_voice_block(block: str, repeat_info: 'dict[int, dict[str, bool]]') -> str:
+    """Insert \\bar commands into a voice block using %{ bar N: %} bar-comment markers.
+
+    jianpu-ly outputs the pattern:
+        (notes) | (optional tie overrides) | %{ bar N: %} (next measure notes)
+
+    N is the 1-based bar number of the measure STARTING after the marker.
+    Therefore:  end_mi  = N - 2  (0-based index of measure that just ended)
+                start_mi = N - 1  (0-based index of measure that's starting)
+    """
+    _START = r'\bar ".|:"'
+    _END   = r'\bar ":|."'
+    _BOTH  = r'\bar ":|.|:"'
+
+    boundary_re = re.compile(r'\|\s*%\{\s*bar\s+(\d+)\s*:\s*%\}')
+    matches = list(boundary_re.finditer(block))
+
+    injections: list[tuple[int, str]] = []
+
+    for m in matches:
+        N = int(m.group(1))
+        end_mi   = N - 2
+        start_mi = N - 1
+
+        has_end   = repeat_info.get(end_mi, {}).get('end', False)
+        has_start = repeat_info.get(start_mi, {}).get('start', False)
+
+        if has_end and has_start:
+            injections.append((m.start(), f'{_BOTH} '))
+        elif has_end:
+            injections.append((m.start(), f'{_END} '))
+        elif has_start:
+            injections.append((m.end(), f' {_START}'))
+
+    if matches:
+        last_N = max(int(m.group(1)) for m in matches)
+        last_mi = last_N - 1
+        if repeat_info.get(last_mi, {}).get('end', False):
+            final_m = re.search(r'\|\s*\\bar\s*"\|\."\s*$', block.rstrip())
+            if final_m:
+                injections.append((final_m.start(), f'{_END} '))
+
+    result = block
+    for pos, text in sorted(injections, key=lambda x: x[0], reverse=True):
+        result = result[:pos] + text + result[pos:]
+
+    if repeat_info.get(0, {}).get('start'):
+        result = f'{_START} ' + result
+
+    return result
