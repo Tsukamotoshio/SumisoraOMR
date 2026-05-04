@@ -1,5 +1,5 @@
-# core/renderer.py — 乐谱渲染（LilyPond PDF / MIDI / 直接 PDF）
-# 拆分自 convert.py
+# core/render/renderer.py — Score rendering: LilyPond PDF, MIDI, and direct PDF output.
+# Split from convert.py.
 import logging
 import os
 import re
@@ -630,9 +630,9 @@ def _build_editor_header(title: str) -> str:
 
 
 def _build_validation_annotation(errors: list) -> str:
-    """将 omr_validator 的错误列表序列化为 % 注释块，追加到编辑器文件末尾。
+    """Serialise the omr_validator error list into a ``%``-prefixed comment block to append to the editor file.
 
-    使用 ``%`` 前缀确保：
+    ``%`` 前缀确保：
     - jianpu-ly.py 将这些行视为注释并忽略（官方文档：``% a comment`` 被忽略）。
     - 若这些行意外出现在 .ly 中，LilyPond 也会将 ``%`` 视为单行注释，不会报错。
     """

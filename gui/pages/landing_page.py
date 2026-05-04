@@ -1,5 +1,5 @@
-# gui/pages/landing_page.py — 文件管理 + PDF 预览页（Landing Page）
-# 左侧：文件钉选侧边栏；右侧：预览区 + 转换按钮。
+# gui/pages/landing_page.py — File management + PDF preview page (Landing Page).
+# Left panel: pinned file sidebar; right panel: preview area + conversion button.
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 
 
 class LandingPage(ft.Row):
-    """首页：文件管理 + PDF 预览 + "开始转换"按钮。"""
+    """Landing page: file management + PDF preview + "Start Conversion" button."""
 
     def __init__(self, state: AppState, overlay: ProgressOverlay):
         super().__init__(spacing=0, expand=True)

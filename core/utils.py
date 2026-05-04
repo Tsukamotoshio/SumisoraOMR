@@ -1,5 +1,5 @@
-# core/utils.py — 基础工具函数
-# 拆分自 convert.py
+# core/utils.py — Shared utility functions.
+# Split from convert.py.
 import hashlib
 import json
 import logging

@@ -1,12 +1,12 @@
-# core/transposer.py — MusicXML 移调算法模块
-# 独立的 XML / 音频移调，使用 music21 处理升降号补偿。
-# 不依赖任何 GUI 库，可被任意调用方导入。
+# core/music/transposer.py — MusicXML transposition algorithm module.
+# Standalone XML / audio transposition using music21 for accidental compensation.
+# No GUI dependency; may be imported from any caller.
 #
-# 公开 API:
+# Public API:
 #   transpose_musicxml(src, dst, semitones=None, from_key=None, to_key=None) -> Path
 #   get_transposition_semitones(from_key, to_key) -> int
 #   detect_key_from_musicxml(mxl_path) -> str
-#   strip_slurs_ties_from_xml(xml_path) -> Path  （CURVES 崩溃救援）
+#   strip_slurs_ties_from_xml(xml_path) -> Path  (CURVES crash rescue)
 
 from __future__ import annotations
 
@@ -22,11 +22,11 @@ LOGGER = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 内部辅助
+# Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_key_name(key_str: str) -> str:
-    """将用户输入（如 'F', 'Bb', 'F#'）规范化为 music21 可识别的音名。
+    """Normalise a user-supplied key name (e.g. 'F', 'Bb', 'F#') to music21's format.
 
     jianpu 编辑器中常用 'b' 替代 '-' 表示降号。
     """
@@ -53,7 +53,7 @@ _PITCH_CLASS: dict[str, int] = {
 
 
 def _key_to_pitch_class(key_str: str) -> int:
-    """将调名字符串转为音级（0-11），不依赖 music21。"""
+    """Convert a key name string to a pitch class (0–11) without music21."""
     k = key_str.strip()
     if k in _PITCH_CLASS:
         return _PITCH_CLASS[k]
@@ -66,13 +66,13 @@ def _key_to_pitch_class(key_str: str) -> int:
 
 
 def _semitone_diff(from_pitch_class: int, to_pitch_class: int) -> int:
-    """返回从 from 到 to 的最短上行半音数（0-11）。"""
+    """Return the shortest ascending semitone distance from *from* to *to* (0–11)."""
     diff = (to_pitch_class - from_pitch_class) % 12
     return diff
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 公开 API
+# Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 按五度圈排列的标准调名（与 MuseScore 一致，-7 到 +7）
@@ -134,12 +134,12 @@ DIATONIC_DEGREES: list[tuple[str, int]] = [
 
 
 def key_display_cn(key: str) -> str:
-    """将调名转换为中文大调显示（如 'Bb' → 'B♭大调'）。"""
+    """Convert a key name to Chinese major-key display form (e.g. 'Bb' → 'B♭大调')."""
     return key.replace('#', '♯').replace('b', '♭') + '大调'
 
 
 def get_interval_semitones(interval_name: str, direction: str = 'up') -> int:
-    """根据音程名称和方向返回带符号半音数（正=向上，负=向下）。"""
+    """Return a signed semitone count for the named interval (positive=up, negative=down)."""
     iv = _INTERVAL_BY_NAME.get(interval_name)
     if iv is None:
         return 0
@@ -155,7 +155,7 @@ def get_interval_semitones(interval_name: str, direction: str = 'up') -> int:
 
 
 def get_interval_diatonic(interval_name: str, direction: str = 'up') -> Optional[int]:
-    """根据音程名称和方向返回带符号音阶步数（正=向上，负=向下）。
+    """Return the signed diatonic step count for the named interval (positive=up, negative=down).
 
     与 get_interval_semitones 方向逻辑保持一致，供 diatonic-aware 移调使用。
     返回 None 表示未知音程。
@@ -180,20 +180,20 @@ def get_transposition_semitones(
     to_key: str,
     direction: str = 'closest',
 ) -> int:
-    """计算从 from_key 到 to_key 的移调半音数。
+    """Calculate the transposition semitone count from *from_key* to *to_key*.
 
     Parameters
     ----------
-    from_key  : 原调音名（如 'C', 'Bb', 'F#'）
-    to_key    : 目标调音名
-    direction : 'up'     — 始终向上移调（0..+11），同调时 +12
-                'down'   — 始终向下移调（0..-11），同调时 -12
-                'closest'— 选择距离最近方向（-6..+6），半音差 >6 时向下；
-                            同调时返回 0（不动），与 MuseScore 行为一致
+    from_key  : Source key name (e.g. 'C', 'Bb', 'F#').
+    to_key    : Target key name.
+    direction : 'up'      — always transpose upward (0..+11); same key gives +12.
+                'down'    — always transpose downward (0..-11); same key gives -12.
+                'closest' — choose the nearest direction (-6..+6); diff > 6 goes
+                            down; same key returns 0 (no movement), matching MuseScore.
 
     Returns
     -------
-    带符号的半音数（正=向上，负=向下，0=不动）
+    Signed semitone count (positive=up, negative=down, 0=no movement).
     """
     try:
         pc_from = _key_to_pitch_class(from_key)

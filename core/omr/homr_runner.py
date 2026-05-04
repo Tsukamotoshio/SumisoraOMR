@@ -1,5 +1,5 @@
-# core/homr_runner.py — homr OMR 引擎封装
-# 本模块将本地 homr 仓库目录作为可选 OMR 引擎，支持图片输入和 PDF（多页）输入。
+# core/omr/homr_runner.py — Homr deep-learning OMR engine wrapper.
+# Supports image input and multi-page PDF input.
 
 import logging
 import io
@@ -20,7 +20,7 @@ _PATH_LOCK = threading.Lock()
 
 
 def _get_available_memory_mb() -> Optional[int]:
-    """返回当前可用物理内存（MB）。仅 Windows 有效，其他平台返回 None。"""
+    """Return the available physical memory in MB (Windows only; other platforms return None)."""
     if os.name != 'nt':
         return None
     try:
@@ -48,7 +48,7 @@ def _get_available_memory_mb() -> Optional[int]:
 
 
 def _compute_segnet_batch_size(avail_mb: Optional[int]) -> int:
-    """根据可用内存确定 SegNet 推理批大小。
+    """Determine the SegNet inference batch size based on available memory.
 
     内存越少，每批处理的 patch 越少，降低内存峰值。
     阈值经验来自：模型权重 ~150 MB + ONNX 运行时开销 ~200 MB + 批量 numpy 缓冲。
@@ -66,7 +66,10 @@ def _compute_segnet_batch_size(avail_mb: Optional[int]) -> int:
 
 @contextmanager
 def _suppress_homr_output():
-    """将 homr 库的 stdout/stderr 重定向到 /dev/null，避免淹没应用日志。"""
+    """Redirect homr's stdout/stderr to /dev/null to prevent flooding the application log.
+
+    同时压制 homr 可能使用的 root logger handlers 产生的控制台输出。
+    """
     devnull = open(os.devnull, 'w', encoding='utf-8', errors='replace')
     old_stdout, old_stderr = sys.stdout, sys.stderr
     # 同时压制 homr 可能使用的 root logger handlers 产生的控制台输出
@@ -124,14 +127,11 @@ def _pdf_pages_to_png(
 
 
 def _add_nvidia_cuda_dll_dirs() -> None:
-    """将 nvidia pip 包（nvidia-cuda-runtime-cu12 / nvidia-cublas-cu12 /
-    nvidia-cudnn-cu12 等）安装的 DLL 目录预置到 PATH 环境变量，
-    同时通过 os.add_dll_directory() 注册（供 ctypes 使用）。
+    """Prepend DLL directories from nvidia pip packages to PATH and register via os.add_dll_directory().
 
-    onnxruntime 的 C++ 层用 LoadLibrary 加载 CUDA Provider DLL，走的是
-    标准 PATH 搜索顺序，因此必须在首次创建 CUDAExecutionProvider session
-    前修改 PATH；os.add_dll_directory() 额外供 ctypes 检测用。
-    仅在 Windows 上生效，其他平台无操作。
+    onnxruntime 的 C++ 层用 LoadLibrary 加载 CUDA Provider DLL，走的是标准 PATH 搜索顺序，
+    因此必须在首次创建 CUDAExecutionProvider session 前修改 PATH；
+    os.add_dll_directory() 额外供 ctypes 检测用。仅在 Windows 上生效。
     """
     if os.name != 'nt':
         return
@@ -166,7 +166,7 @@ def _run_with_heartbeat(
     heartbeat_interval: int = 30,
     on_heartbeat=None,
 ) -> None:
-    """在子线程中执行 fn()，主线程每隔 heartbeat_interval 秒输出一条进度日志。
+    """Run *fn* in a worker thread while emitting a progress log line every *heartbeat_interval* seconds.
 
     若 fn 抛出异常，异常会在主线程重新抛出。
     on_heartbeat: 可选回调，签名 on_heartbeat(elapsed_seconds: int)，每次心跳触发一次。
@@ -279,7 +279,7 @@ def _ensure_homr_import_path() -> Optional[Path]:
 
 
 def _cuda_dlls_available() -> bool:
-    """检查 CUDA 和 cuDNN 核心 DLL 是否存在（文件级检查，不依赖 LoadLibrary）。"""
+    """Check for CUDA and cuDNN core DLLs via file-system inspection (does not call LoadLibrary)."""
     import site, shutil
     # 检查 nvidia pip 包路径
     for sp in site.getsitepackages():
@@ -292,7 +292,7 @@ def _cuda_dlls_available() -> bool:
 
 
 def _log_homr_gpu_mode() -> None:
-    """记录 homr 实际将使用的计算设备（仅用于信息输出）。"""
+    """Log the compute device homr will use (informational only)."""
     try:
         import onnxruntime as _rt
         _avail = _rt.get_available_providers()
@@ -305,7 +305,7 @@ def _log_homr_gpu_mode() -> None:
 
 
 def _homr_gpu_available() -> bool:
-    """检查 DmlExecutionProvider 是否可用（集显/独显 DirectML 加速）。"""
+    """Return True if DmlExecutionProvider is available (integrated/discrete GPU via DirectML)."""
     try:
         import onnxruntime as rt
         return 'DmlExecutionProvider' in rt.get_available_providers()
@@ -314,19 +314,12 @@ def _homr_gpu_available() -> bool:
 
 
 def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
-    """Homr 专用预处理：几何校正 + 超分 - 激进锐化。
+    """Homr-specific preprocessing: geometry correction + super-resolution, without aggressive sharpening.
 
-    不同于通用预处理，这个函数避免激进的去噪锐化（UnsharpMask radius=3, percent=300）
-    可能会放大 artifacts，导致 Homr SegNet 误识别 staff。
+    不同于通用预处理，跳过激进去噪锐化（UnsharpMask radius=3, percent=300）以避免
+    放大 artifacts 导致 Homr SegNet 误识别 staff。
 
-    步骤：
-    1. 白边裁剪（crop_white_border）
-    2. 旋转校正（detect_and_correct_rotation）
-    3. 梯度修正（correct_gradient）
-    4. 超分辨率（waifu2x, 如果最短边 < 1200px）
-    5. 降采样（如果超过像素上限）
-
-    跳过：激进锐化（denoise_and_sharpen）
+    步骤：白边裁剪 → 旋转校正 → 梯度修正 → 超分辨率（如需）→ 降采样（如需）
     """
     from pathlib import Path
     from ..image.image_preprocess import (
@@ -393,7 +386,7 @@ def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
 
 
 def _merge_homr_musicxml_pages(page_mxl_files: list[Path], output_path: Path) -> bool:
-    """将多个逐页 MusicXML 文件合并为单个 MusicXML 文件。
+    """Merge multiple per-page MusicXML files into a single MusicXML file.
 
     使用 music21 解析每页，将后续页的小节（deepcopy）追加到第一页对应声部末尾，
     并按页偏移小节编号。
@@ -433,7 +426,7 @@ def _run_homr_multipage_pdf(
     use_gpu_inference: Optional[bool] = None,
     progress_fn=None,
 ) -> Optional[Path]:
-    """逐页运行 Homr 推理并合并结果，用于多页 PDF 输入。
+    """Run Homr inference page by page and merge results for multi-page PDF input.
 
     模型权重仅下载一次；GPU→CPU 回退后，后续页也切换为 CPU 模式。
     """

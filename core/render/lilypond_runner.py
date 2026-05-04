@@ -1,5 +1,5 @@
-# core/lilypond_runner.py — LilyPond / jianpu-ly 工具查找与渲染
-# 拆分自 runtime_finder.py
+# core/render/lilypond_runner.py — LilyPond / jianpu-ly tool discovery and rendering.
+# Split from runtime_finder.py.
 import importlib.util
 import logging
 import os

@@ -1,6 +1,7 @@
-﻿# gui/components/jianpu_editor.py — 嵌入式简谱文本编辑器
-# 右侧文本区：加载 .jianpu.txt 文件，支持编辑与保存。
-# 实现与左侧图像区的"点对点"行映射；点击某行时发布 JIANPU_TXT_SELECTED 事件。
+﻿# gui/components/jianpu_editor.py — Embedded jianpu text editor.
+# Right text panel: loads a .jianpu.txt file, supports editing and saving.
+# Implements point-to-point line mapping with the left image panel;
+# clicking a line emits a JIANPU_TXT_SELECTED event.
 
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from ..theme import Palette, section_title
 
 
 class JianpuEditor(ft.Column):
-    """简谱文本编辑器面板。
+    """Jianpu text editor panel.
 
     功能
     ----

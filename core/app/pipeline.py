@@ -1,5 +1,5 @@
-# core/pipeline.py — 批处理管道与入口点
-# 拆分自 convert.py
+# core/app/pipeline.py — Batch conversion pipeline and entry point.
+# Split from convert.py.
 import hashlib
 import logging
 import os
@@ -45,7 +45,7 @@ _subprogress_fn: Optional[object] = None
 
 
 def _report_subprogress(value: float, message: str = '') -> None:
-    """向 GUI 报告当前文件内处理子步骤进度（0.0–1.0）。"""
+    """Report intra-file processing sub-step progress (0.0–1.0) to the GUI."""
     fn = _subprogress_fn
     if fn is not None:
         try:
@@ -106,13 +106,13 @@ def _archive_mxl_to_xml_scores(
     title: str = '',
     tempo_bpm: int = 0,
 ) -> None:
-    """将五线谱 MusicXML 文件复制到 xml_scores_dir（归档供移调器使用）。
+    """Copy the staff-notation MusicXML to xml_scores_dir for use by the transposer.
 
     命名规则：
       - 单引擎或融合后选出的唯一文件：``{source_stem}{ext}``
       - 双引擎均成功，需区分来源：``{source_stem}.{engine_label}{ext}``
 
-    当 title / tempo_bpm 非空时，会直接注入到归档副本，使其与渲染管线使用的元数据一致。
+    title / tempo_bpm 非空时直接注入到归档副本，与渲染管线元数据保持一致。
     """
     try:
         xml_scores_dir.mkdir(parents=True, exist_ok=True)

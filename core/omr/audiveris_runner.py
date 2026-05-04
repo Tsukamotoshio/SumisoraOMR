@@ -1,5 +1,5 @@
-# core/audiveris_runner.py — Audiveris OMR 批处理
-# 拆分自 convert.py
+# core/omr/audiveris_runner.py — Audiveris OMR batch processing.
+# Split from convert.py.
 import hashlib
 import logging
 import shutil
@@ -63,15 +63,11 @@ def _has_cjk_chars(text: str) -> bool:
 
 
 def _choose_ocr_lang(input_path: Path) -> str:
-    """选择 Audiveris 的 Tesseract OCR 语言规格。
+    """Choose the Tesseract OCR language spec for Audiveris.
 
-    逻辑
-    ----
+    逻辑：
     包含中文字符的文件名  →  ``eng+chi_sim``（英文 + 简体中文）
     其他文件              →  ``eng``（拉丁/英文，避免中文 OCR 干扰西洋歌词识别）
-
-    对于英语/法语/西班牙语等拉丁字母歌词丰富的乐谱，仅使用 ``eng`` 可显著减少
-    Audiveris 文字识别子系统的干扰，有助于提高五线谱符号的识别准确率。
     """
     if _has_cjk_chars(input_path.stem):
         return 'eng+chi_sim'
@@ -94,13 +90,11 @@ def _copy_preprocessed_ref(src: Optional[Path], dest_dir: Path) -> None:
 
 
 def _maybe_merge_mvt_files(job_dir: Path) -> None:
-    """若 *job_dir* 中存在多个 Audiveris mvt*.mxl 文件，将其合并为一个完整 MusicXML。
+    """Merge multiple Audiveris mvt*.mxl files in *job_dir* into a single MusicXML when present.
 
-    Audiveris 对单张多谱系统图像的处理有时会将每个谱系统导出为独立 movement 文件
-    （xxxx.mvt1.mxl, xxxx.mvt2.mxl…）。pipeline 通过 find_first_musicxml_file 只取
-    第一个文件，会丢失后续系统的音符。此函数将所有 mvt 文件顺序合并为一个
-    ``{stem}_merged.musicxml`` 文件，以便 pipeline 得到完整乐谱内容。
-
+    Audiveris 有时会将单张多谱系统图像分剔为多个 xxxx.mvt1.mxl, xxxx.mvt2.mxl…
+    pipeline 通过 find_first_musicxml_file 只取第一个文件，会丢失后续系统的音符。
+    此函数将所有 mvt 文件顺序合并为 ``{stem}_merged.musicxml``。
     若只有 1 个 mxl 文件或合并失败，保持不变（不影响后续流程）。
     """
     mvt_files = sorted(job_dir.glob('*.mvt*.mxl'))

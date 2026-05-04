@@ -1,5 +1,5 @@
-# core/runtime_finder.py — 外部工具查找与子进程调用
-# 拆分自 convert.py
+# core/app/runtime_finder.py — External tool discovery and subprocess invocation.
+# Split from convert.py.
 import importlib.util
 import logging
 import os
@@ -19,10 +19,10 @@ _WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 def _win_assign_kill_on_close_job(proc: 'subprocess.Popen') -> None:
     """
-    (Windows-only) 将 *proc* 加入一个设置了 KillOnJobClose 的 Job Object。
-    当前进程（Worker）退出时，OS 自动关闭 Job 句柄，从而递归终止
-    proc 及其所有子进程（如 Audiveris.bat 启动的 java.exe）。
-    对非 Windows 或任何异常静默跳过。
+    (Windows-only) Add *proc* to a Job Object with KillOnJobClose set.
+    When the current process (Worker) exits, the OS automatically closes the Job
+    handle, recursively terminating proc and all its children (e.g. java.exe
+    launched by Audiveris.bat). Silently no-ops on non-Windows or on any error.
     """
     if os.name != 'nt':
         return

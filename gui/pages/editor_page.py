@@ -1,6 +1,6 @@
-# gui/pages/editor_page.py — 简谱编辑套件（Editing Suite）
-# 双栏布局：左侧二值化图像预览（含滚轮缩放和放大镜），右侧简谱文本编辑器。
-# 实现图像坐标 ↔ 文本行的"点对点"联动。
+# gui/pages/editor_page.py — Jianpu Editing Suite.
+# Two-column layout: left — binarised image preview (scroll-zoom + magnifier);
+# right — jianpu text editor with point-to-point image↔text line linking.
 
 from __future__ import annotations
 
@@ -25,11 +25,11 @@ _BLANK_PNG_B64 = (
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 左侧：二值化图像浏览器（InteractiveViewer 内建缩放/平移 + 行高亮）
+# Left panel: binarised image viewer (InteractiveViewer with zoom/pan + line highlight)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _BinaryImageView(ft.Column):
-    """显示预处理后的二值化图像，支持内建缩放/平移和行高亮联动。"""
+    """Displays the preprocessed binarised image with built-in zoom/pan and per-line highlight linking."""
 
     MIN_SCALE = 0.3
     MAX_SCALE = 8.0

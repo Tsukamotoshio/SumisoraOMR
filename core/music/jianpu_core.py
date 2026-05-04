@@ -1,5 +1,5 @@
-# core/jianpu_core.py — 简谱音符/小节转换逻辑
-# 拆分自 convert.py
+# core/music/jianpu_core.py — Jianpu note / measure conversion logic.
+# Split from convert.py.
 from typing import Optional
 
 from music21 import chord as m21chord, meter, note as m21note, stream
