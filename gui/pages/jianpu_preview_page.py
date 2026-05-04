@@ -224,16 +224,6 @@ class JianpuPreviewPage(ft.Row):
             height=28,
         )
 
-        edit_btn = ft.IconButton(
-            icon=ft.Icons.EDIT_OUTLINED,
-            icon_size=15,
-            icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='编辑简谱',
-            on_click=lambda _, p=path: self._on_edit_click(p),
-            width=28,
-            height=28,
-        )
-
         display_name = path.stem[: -len('_jianpu')] if path.stem.endswith('_jianpu') else path.stem
 
         return ft.Container(
@@ -250,7 +240,6 @@ class JianpuPreviewPage(ft.Row):
                         weight=ft.FontWeight.W_700 if is_selected else ft.FontWeight.NORMAL,
                         tooltip=path.name,
                     ),
-                    edit_btn,
                 ],
                 spacing=4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -362,10 +351,6 @@ class JianpuPreviewPage(ft.Row):
             self._state.emit(Event.JIANPU_EDIT_REQUESTED, path=self._current_path)
         else:
             self._state.emit(Event.JIANPU_EDIT_REQUESTED)
-
-    def _on_edit_click(self, path: Path) -> None:
-        self._state.jianpu_edit_source = path
-        self._state.emit(Event.JIANPU_EDIT_REQUESTED, path=path)
 
     # ── 导出 ──────────────────────────────────────────────────────────────────
 

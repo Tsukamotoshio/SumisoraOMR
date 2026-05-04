@@ -45,22 +45,28 @@
 ### Conversion
 
 1. Drop your staff notation files (`.pdf`, `.png`, `.jpg`) into the `Input`
-   folder, or drag them directly into the file sidebar.
+   folder.
 2. Launch the app — double-click the **SumisoraOMR** shortcut or run
    `SumisoraOMR.exe`.
-3. In the file sidebar, check the files you want to convert.
-4. Choose an OMR engine (or leave it on **Auto**), then click **Start Conversion**.
-5. Confirm options in the dialog (MIDI generation, skip duplicates) and
+3. Click **Add Files** in the sidebar to select files (multi-select supported).
+4. Check the files you want to convert.
+5. Choose an OMR engine (or leave it on **Auto**), then click **Start Conversion**.
+6. Confirm options in the dialog (MIDI generation, skip duplicates) and
    click **Start Conversion**.
-6. Converted Jianpu PDFs appear in the `Output` folder.
+7. Converted Jianpu PDFs appear in the `Output` folder.
 
 ### Jianpu Preview
 
 After conversion, switch to the **Jianpu Preview** tab to browse all
 generated PDFs. Check files using the checkboxes, then click the export
 button in the sidebar header to copy them to a folder of your choice.
-Click **Edit Jianpu** in the top bar to open the currently previewed file
-in the editor.
+Click **Edit** to open the currently previewed file in the editor.
+
+### Staff Score Preview
+
+Switch to the **Staff Score Preview** tab to browse re-engraved
+staff-notation PDFs. Supports MIDI playback and batch export to a chosen
+directory. Click **Transpose** to open the transposer sub-page.
 
 ### Jianpu Editor
 
@@ -71,16 +77,16 @@ rebuild the output.
 
 ### Transposer
 
-The transposer reads a MusicXML score from `xml-scores/` and renders it in
-a different key. Three modes are available:
+Accessible from the Staff Score Preview page. Reads a MusicXML score from
+`xml-scores/` and renders it in a different key. Three modes are available:
 
-- **By semitone** — enter an exact semitone offset.
 - **By interval** — choose a named interval (perfect 4th, major 3rd, etc.)
   and direction.
+- **By key** — specify the target key directly; the app calculates the offset.
 - **Diatonic** — shift notes by scale degree within the current key.
 
-Settings auto-preview on any change. The result can be exported as a Jianpu
-PDF or a staff-notation PDF.
+Settings auto-preview on any change. The result can be exported as a
+staff-notation PDF.
 
 ---
 

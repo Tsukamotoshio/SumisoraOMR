@@ -1,7 +1,7 @@
 #define MyAppName "Sumisora OMR"
-#define MyAppVersion "0.3.1"
+#define MyAppVersion "0.3.2"
 
-#define MyAppVersionNumeric "0.3.1.0"
+#define MyAppVersionNumeric "0.3.2.0"
 #define MyAppPublisher "Tsukamotoshio"
 #define MyAppExeName "SumisoraOMR.exe"
 #define MyAppCopyright "Copyright (c) 2026 Tsukamotoshio"
@@ -340,13 +340,35 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   UninstallerPath: String;
   ResultCode: Integer;
+  TempFile: String;
+  TaskListOutput: String;
 begin
   Result := '';
   NeedsRestart := False;
 
-  // 强制终止可能正在运行的 SumisoraOMR 进程，避免文件被锁导致 MoveFile Error 5
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // 安装前确保进程已退出，防止文件被锁导致 Error 5。
+  // 先用 tasklist 精确检测，若检测本身失败则无条件兜底强杀。
+  TempFile := ExpandConstant('{tmp}\sumisora_chk.txt');
+  if Exec(ExpandConstant('{sys}\cmd.exe'),
+         '/C tasklist /FI "IMAGENAME eq SumisoraOMR.exe" /NH /FO CSV > "' + TempFile + '"',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if LoadStringFromFile(TempFile, TaskListOutput) then
+    begin
+      if Pos('SumisoraOMR.exe', TaskListOutput) > 0 then
+        Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+             '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end
+    else
+      // tasklist 输出读取失败，兜底强杀
+      Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    DeleteFile(TempFile);
+  end
+  else
+    // tasklist 执行本身失败，兜底强杀
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SumisoraOMR.exe',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
   if (InstallMode = MODE_UPGRADE) or (InstallMode = MODE_DOWNGRADE) then
   begin

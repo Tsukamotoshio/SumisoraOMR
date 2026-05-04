@@ -103,6 +103,7 @@ from gui.pages.transposer_page import TransposerPage
 from gui.pages.score_preview_page import ScorePreviewPage
 from gui.pages.about_page import AboutPage
 from gui.components.progress_overlay import ProgressOverlay
+from core.config import APP_VERSION
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -375,7 +376,7 @@ async def main(page: ft.Page) -> None:
                             ft.Image(src='Sumisora.png', width=18, height=18),
                             ft.Container(width=6),
                             ft.Text(
-                                'SumisoraOMR  v0.3.1',
+                                f'SumisoraOMR  v{APP_VERSION}',
                                 size=13,
                                 weight=ft.FontWeight.W_600,
                                 color=ft.Colors.ON_SURFACE,
