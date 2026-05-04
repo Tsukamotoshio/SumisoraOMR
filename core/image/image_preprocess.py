@@ -365,6 +365,9 @@ def detect_and_correct_rotation(img: 'Image.Image') -> tuple['Image.Image', floa
                     continue
                 fit = _cv2.fitLine(cnt, _cv2.DIST_L2, 0, 0.01, 0.01)
                 vx, vy = float(fit[0]), float(fit[1])
+                # fitLine 方向向量符号不确定；确保 vx >= 0，使 arctan2 结果落在 (-90°, +90°)
+                if vx < 0:
+                    vx, vy = -vx, -vy
                 angle_deg = float(np.degrees(np.arctan2(vy, vx)))
                 if abs(angle_deg) <= 15:
                     angles.append(angle_deg)
@@ -396,7 +399,8 @@ def detect_and_correct_rotation(img: 'Image.Image') -> tuple['Image.Image', floa
 
     if abs(best_angle) < 0.5:
         return img, best_angle
-    corrected = img.rotate(-best_angle, expand=True, fillcolor=255)
+    # best_angle > 0 表示图像顺时针倾斜；Pillow rotate(+angle) = 逆时针纠偏
+    corrected = img.rotate(best_angle, expand=True, fillcolor=255)
     return corrected, best_angle
 
 

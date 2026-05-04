@@ -273,10 +273,6 @@ class LandingPage(ft.Row):
         ]
 
         # ── 对话框内容 ───────────────────────────────────────────────────
-        self._midi_cb = ft.Checkbox(
-            label='同时生成 MIDI 文件',
-            value=True,
-        )
         self._skip_dup_cb: Optional[ft.Checkbox] = None
         warn_items: list[ft.Control] = []
         if existing:
@@ -313,7 +309,7 @@ class LandingPage(ft.Row):
             skip = bool(self._skip_dup_cb.value) if self._skip_dup_cb is not None else False
             self._start_conversion(
                 files=checked,
-                gen_midi=bool(self._midi_cb.value),
+                gen_midi=True,
                 skip_duplicates=skip,
                 duplicate_files=set(existing),
             )
@@ -326,7 +322,7 @@ class LandingPage(ft.Row):
             ),
             content=ft.Container(
                 content=ft.Column(
-                    [self._midi_cb] + warn_items,
+                    warn_items,
                     tight=True,
                     spacing=8,
                 ),

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import threading
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from core.app.backend import xml_scores_dir, build_dir
+from core.app.backend import xml_scores_dir, build_dir, output_dir
 from ..components.pdf_viewer import PdfViewer
 from ..theme import Palette, with_alpha, section_title
 
@@ -35,7 +36,14 @@ class ScorePreviewPage(ft.Row):
     # ── UI 构建 ───────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self._viewer = PdfViewer()
+        self._play_midi_icon_btn = ft.IconButton(
+            icon=ft.Icons.PLAY_CIRCLE_OUTLINE_ROUNDED,
+            icon_size=18,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltip='播放 MIDI',
+            on_click=self._on_play_midi,
+        )
+        self._viewer = PdfViewer(extra_controls=[self._play_midi_icon_btn])
 
         self._file_list_col = ft.Column(
             spacing=2,
@@ -396,6 +404,32 @@ class ScorePreviewPage(ft.Row):
 
     def _on_mxl_ready(self, path: Path, **_kw) -> None:
         self.reload()
+
+    # ── MIDI 播放 ─────────────────────────────────────────────────────────────
+
+    def _on_play_midi(self, _e) -> None:
+        if self._current_path is None:
+            return
+        midi_path = output_dir(None) / (self._current_path.stem + '.mid')
+        if midi_path.exists():
+            try:
+                os.startfile(str(midi_path))
+            except Exception as exc:
+                try:
+                    self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                        content=ft.Text(f'无法打开 MIDI 文件: {exc}', size=14),
+                        duration=3000,
+                    ))
+                except Exception:
+                    pass
+        else:
+            try:
+                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                    content=ft.Text(f'未找到 MIDI 文件：{midi_path.name}', size=14),
+                    duration=3000,
+                ))
+            except Exception:
+                pass
 
     # ── 导出乐谱（单个）──────────────────────────────────────────────────────
 

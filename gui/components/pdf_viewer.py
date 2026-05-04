@@ -38,7 +38,7 @@ class PdfViewer(ft.Column):
     MAX_SCALE = 5.0
     SCALE_STEP = 0.15
 
-    def __init__(self, on_page_change=None):
+    def __init__(self, on_page_change=None, extra_controls: list | None = None):
         super().__init__(spacing=0, expand=True)
         self._path: Optional[Path] = None
         self._preview_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -47,6 +47,7 @@ class PdfViewer(ft.Column):
         self._page_count: int = 0
         self._current_page: int = 0
         self._on_page_change = on_page_change
+        self._extra_controls: list = extra_controls or []
         self._refresh_pending = False
         self._refresh_waiting = False
         self._fitz_doc = None
@@ -68,6 +69,8 @@ class PdfViewer(ft.Column):
                 ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,      icon_size=18, on_click=self._zoom_out,  tooltip='缩小'),
                 ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,       icon_size=18, on_click=self._zoom_in,   tooltip='放大'),
                 ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,    icon_size=18, on_click=self._zoom_fit,  tooltip='复位缩放'),
+                *(([ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT)] + self._extra_controls)
+                  if self._extra_controls else []),
             ],
             spacing=2,
             alignment=ft.MainAxisAlignment.CENTER,

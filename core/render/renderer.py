@@ -46,9 +46,19 @@ from ..utils import (
 
 
 def render_midi_from_score(score, midi_path: Path) -> bool:
-    """Export a music21 score to a MIDI file; return True on success."""
+    """Export a music21 score to a MIDI file; return True on success.
+    All parts are forced to Piano (MIDI program 1) before export.
+    """
     try:
+        from music21 import instrument as m21instrument
         midi_path.parent.mkdir(parents=True, exist_ok=True)
+        # 统一乐器为钢琴，避免 OMR 引擎写入的乐器编号影响回放音色
+        for part in score.parts:
+            for el in list(part.flatten().getElementsByClass(m21instrument.Instrument)):
+                part.remove(el, recurse=True)
+            piano = m21instrument.Piano()
+            piano.midiProgram = 0  # 0 = Acoustic Grand Piano (GM)
+            part.insert(0, piano)
         score.write('midi', fp=str(midi_path))
         log_message(f'已生成 MIDI 文件: {midi_path.name}')
         return True

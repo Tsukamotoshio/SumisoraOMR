@@ -558,6 +558,47 @@ def _get_voice_ids_in_part(part) -> list[str]:
     return sorted(vid for vid, count in voice_measure_count.items() if count >= 2)
 
 
+def _secondary_voice_overlaps_primary(
+    part, primary_vid: str, secondary_vid: str, overlap_threshold: float = 0.5
+) -> bool:
+    """Return True when the secondary voice is likely OMR false-polyphony.
+
+    For each non-rest note in the secondary voice, checks whether its onset falls
+    *strictly inside* the duration span of any primary-voice note in the same measure
+    (i.e. p_start < onset < p_end).  Notes that start simultaneously with a primary
+    note (chords) or exactly at the primary note's end are intentionally excluded.
+
+    If the fraction of such "inside" notes exceeds *overlap_threshold* the secondary
+    voice is treated as a duplicate detection artifact rather than genuine counterpoint,
+    and the caller should skip it to prevent visual number overlap in the jianpu output.
+    """
+    total = 0
+    inside = 0
+    for measure in part.getElementsByClass(stream.Measure):
+        v_list = list(measure.voices)
+        if not v_list:
+            continue
+        v1 = next((v for v in v_list if str(v.id) == primary_vid), None)
+        v2 = next((v for v in v_list if str(v.id) == secondary_vid), None)
+        if v1 is None or v2 is None:
+            continue
+        # 主声部非休止符元素的时值区间 (onset, onset+dur)
+        p_spans: list[tuple[float, float]] = [
+            (float(el.offset), float(el.offset) + float(el.duration.quarterLength or 0.25))
+            for el in v1.flatten().notesAndRests
+            if isinstance(el, (m21note.Note, m21chord.Chord))
+        ]
+        for el in v2.flatten().notesAndRests:
+            if not isinstance(el, (m21note.Note, m21chord.Chord)):
+                continue
+            total += 1
+            onset = float(el.offset)
+            # 严格落在主声部音符时值内部（不含同时起音和恰好在结束点的情形）
+            if any(p_start < onset < p_end for p_start, p_end in p_spans):
+                inside += 1
+    return total > 0 and (inside / total) >= overlap_threshold
+
+
 def _extract_part_repeat_barlines(part) -> dict[int, dict[str, bool]]:
     """Return {measure_index: {'start': bool, 'end': bool}} for measures with repeat barlines.
 
@@ -1104,15 +1145,25 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                 f'[jianpu] 单声部多声道: {len(_v_ids)} 个声道 ({", ".join(str(v) for v in _v_ids[:4])})',
                 _logging.DEBUG,
             )
+            _primary_vid = _v_ids[0]
+            _group_idxs: list[int] = []
             for i, vid in enumerate(_v_ids[:4]):
+                # 跳过伪复声部：次声部音符 onset 严格落在主声部音符时值内 → OMR 误判
+                if i > 0 and part is not None and _secondary_voice_overlaps_primary(part, _primary_vid, vid):
+                    log_message(
+                        f'[jianpu] 跳过伪复声部 voice={vid}（音符与主声部重叠，判定为 OMR 误判）',
+                        _logging.DEBUG,
+                    )
+                    continue
                 measures, ts = extract_jianpu_measures(
                     score, key_tonic_semitone, _part=part, _voice_id=vid,
                     _multi_voice_mode=True, _is_primary_voice=(i == 0))
                 if not _ts_set:
                     _time_sig, _ts_set = ts, True
                 if measures:
+                    _group_idxs.append(len(_sections))
                     _sections.append(measures)
-            _voice_groups = [list(range(len(_sections)))] if _sections else [[0]]
+            _voice_groups = [_group_idxs] if _group_idxs else [[0]]
     else:
         # Multi-part path: one section per part / voice combination
         for part in _parts:
@@ -1137,7 +1188,15 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                 else:
                     # Multiple voices: one section per voice (max 4)
                     group_indices: list[int] = []
+                    _primary_vid_mp = voice_ids[0]
                     for i, vid in enumerate(voice_ids[:4]):
+                        # 跳过伪复声部：次声部音符 onset 严格落在主声部音符时值内 → OMR 误判
+                        if i > 0 and _secondary_voice_overlaps_primary(part, _primary_vid_mp, vid):
+                            log_message(
+                                f'[jianpu] 跳过伪复声部 voice={vid}（音符与主声部重叠，判定为 OMR 误判）',
+                                _logging.DEBUG,
+                            )
+                            continue
                         measures, ts = extract_jianpu_measures(
                             score, key_tonic_semitone, _part=part, _voice_id=vid,
                             _multi_voice_mode=True, _is_primary_voice=(i == 0))

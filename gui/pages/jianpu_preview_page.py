@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -31,7 +32,14 @@ class JianpuPreviewPage(ft.Row):
     # ── UI 构建 ───────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self._viewer = PdfViewer()
+        self._play_midi_icon_btn = ft.IconButton(
+            icon=ft.Icons.PLAY_CIRCLE_OUTLINE_ROUNDED,
+            icon_size=18,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltip='播放 MIDI',
+            on_click=self._on_play_midi,
+        )
+        self._viewer = PdfViewer(extra_controls=[self._play_midi_icon_btn])
 
         self._file_list_col = ft.Column(
             spacing=2,
@@ -316,6 +324,35 @@ class JianpuPreviewPage(ft.Row):
             self._select_all_btn.update()
         except Exception:
             pass
+
+    # ── MIDI 播放 ─────────────────────────────────────────────────────────────
+
+    def _on_play_midi(self, _e) -> None:
+        if self._current_path is None:
+            return
+        stem = self._current_path.stem
+        if stem.endswith('_jianpu'):
+            stem = stem[: -len('_jianpu')]
+        midi_path = output_dir(None) / (stem + '.mid')
+        if midi_path.exists():
+            try:
+                os.startfile(str(midi_path))
+            except Exception as exc:
+                try:
+                    self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                        content=ft.Text(f'无法打开 MIDI 文件: {exc}', size=14),
+                        duration=3000,
+                    ))
+                except Exception:
+                    pass
+        else:
+            try:
+                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                    content=ft.Text(f'未找到 MIDI 文件：{midi_path.name}', size=14),
+                    duration=3000,
+                ))
+            except Exception:
+                pass
 
     # ── 编辑跳转 ──────────────────────────────────────────────────────────────
 
