@@ -130,7 +130,41 @@ class FileSidebar(ft.Column):
             self._state.select_file(p)
 
         def _on_remove(_e, p=path):
-            self._state.remove_file(p)
+            input_dir = app_base_dir() / 'Input'
+            p_resolved = p.resolve()
+            in_input = p_resolved.parent == input_dir.resolve()
+
+            if not in_input:
+                # File is not in Input/ — just remove from list
+                self._state.remove_file(p)
+                return
+
+            def _do_delete(_ev):
+                self.page.pop_dialog()
+                try:
+                    p_resolved.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                self._state.remove_file(p)
+
+            def _cancel(_ev):
+                self.page.pop_dialog()
+
+            _confirm_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text('删除文件', size=15, weight=ft.FontWeight.W_600),
+                content=ft.Text(
+                    f'将从 Input 文件夹中永久删除：\n{p.name}',
+                    size=13,
+                    color=ft.Colors.ON_SURFACE,
+                ),
+                actions=[
+                    ft.TextButton('取消', on_click=_cancel),
+                    ft.FilledButton('删除', on_click=_do_delete),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            self.page.show_dialog(_confirm_dlg)
 
         def _on_check_change(_e, p=path):
             self._state.toggle_check(p)
@@ -158,7 +192,7 @@ class FileSidebar(ft.Column):
                         icon=ft.Icons.CLOSE_ROUNDED,
                         icon_size=12,
                         icon_color=ft.Colors.OUTLINE,
-                        tooltip='从列表移除',
+                        tooltip='从 Input 文件夹删除',
                         on_click=_on_remove,
                         width=24,
                         height=24,
@@ -246,7 +280,7 @@ class FileSidebar(ft.Column):
             value=0,
             width=340,
             color=Palette.PRIMARY,
-            bgcolor=ft.Colors.SURFACE_VARIANT,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
             border_radius=ft.BorderRadius.all(4),
         )
         _dlg = ft.AlertDialog(
@@ -259,15 +293,15 @@ class FileSidebar(ft.Column):
                 width=360,
             ),
         )
-        self.page.open(_dlg)
-        await self.page.update_async()
+        self.page.show_dialog(_dlg)
+        await asyncio.sleep(0)  # yield so the dialog has a chance to render
 
         # ── Copy loop ────────────────────────────────────────────────────────
         copied: list[Path] = []
         for i, src in enumerate(source_paths):
             _prog_text.value = f'({i + 1}/{n})  {src.name}'
             _prog_bar.value  = i / n
-            await self.page.update_async()
+            self.page.update()  # push progress delta before yielding to copy thread
 
             # Files already inside Input/ need no copy
             try:
@@ -294,12 +328,23 @@ class FileSidebar(ft.Column):
             except Exception:
                 copied.append(src)  # fallback: keep original path
 
-        self.page.close(_dlg)
-        await self.page.update_async()
+        # ── Registration phase (batch, single UI update) ─────────────────────
+        _prog_text.value = f'正在整理 {len(copied)} 个文件…'
+        _prog_bar.value  = 1.0
+        self.page.update()
+        await asyncio.sleep(0)  # let the "整理中" state render
 
+        _supported = {'.pdf', '.png', '.jpg', '.jpeg'}
         for path in copied:
-            self._state.add_file(path)
-        self._refresh_list()
+            resolved = path.resolve()
+            if resolved.suffix.lower() in _supported and resolved not in self._state.pinned_files:
+                self._state.pinned_files.append(resolved)
+                self._state.checked_files.add(resolved)
+
+        self.page.pop_dialog()
+
+        # Single emit – triggers exactly one list rebuild instead of N
+        self._state.emit(Event.FILES_CHANGED, files=list(self._state.pinned_files))
         if copied:
             self._state.emit(Event.FILES_IMPORTED, paths=copied)
 
