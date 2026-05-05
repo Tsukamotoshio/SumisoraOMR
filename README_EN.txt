@@ -4,8 +4,8 @@ SumisoraOMR
 Author:  Tsukamotoshio
 Version: v0.3.2
 
-Batch-convert Western staff notation PDFs into Jianpu (numbered musical
-notation) PDFs, with optional MIDI output.
+Batch-convert Western staff notation (PDF / PNG / JPG) into Jianpu
+(numbered musical notation) PDFs, with a built-in Jianpu editor and transposer.
 
 
 What's New
@@ -172,19 +172,20 @@ What's New
 Usage
 -----
 
-1. Place sheet music files (PDF / PNG / JPG) into the Input folder.
-2. Double-click the "SumisoraOMR" desktop shortcut, or run
+1. Launch the app — double-click the "SumisoraOMR" desktop shortcut, or run
    SumisoraOMR.exe in the installation directory.
-3. Click "Add Files" in the sidebar to select files (multi-select supported).
-4. Check the files you want to convert in the sidebar.
-5. Choose the OMR engine:
+2. In the file sidebar, click "Add Files" (multi-select supported) or
+   "Add Folder" to import sheet music files (PDF / PNG / JPG); selected
+   files are automatically copied into the Input folder and added to the list.
+3. Check the files you want to convert in the sidebar.
+4. Choose the OMR engine:
      Auto (Recommended)  — the app decides automatically; vector PDFs go
                            to Audiveris, images / low-quality scans go to Homr
      Audiveris           — heuristic engine, best for clean typeset PDFs
      Homr (Deep Learning)— better for phone photos or low-quality scans
-6. Confirm options in the dialog (MIDI generation, skip duplicates), then
+5. Confirm options in the dialog (MIDI generation, skip duplicates), then
    click "Start Conversion" to begin.
-7. Results are saved to the Output folder.
+6. Results are saved to the Output folder.
 
 The app also includes:
   Jianpu Preview     — browse converted Jianpu PDFs; check files to batch-export
@@ -249,12 +250,10 @@ Known Limitations
 - Limited polyphony support. Scores with many voices or chords may only
   retain the main melody; some notes may be lost.
 - No lyrics output. Only notes are exported; lyrics are not included.
-- Slow processing. Audiveris/Homr startup takes time; multi-page PDFs may
-  take several minutes to convert.
+- Slow processing. Recognizing a single score can take several minutes;
+  multi-page PDFs take longer.
 - Edge cases in key/time signatures. Uncommon time signatures or
   key changes may yield inaccurate results.
-- Automatic OMR engine routing is temporarily unavailable. The engine must
-  be selected manually (Audiveris or Homr).
 - Homr recognition quality for printed scores may be lower than Audiveris.
 - Homr only captures pitch and rhythm on treble/bass clef. Dynamics,
   articulation, double sharps/flats, and other musical symbols are ignored.
@@ -265,6 +264,6 @@ License
 
 Licensed under the GNU Affero General Public License v3 (AGPL-3.0).
 See the LICENSE file for details.
-This tool bundles third-party components (Audiveris, LilyPond, music21,
-waifu2x-ncnn-vulkan, etc.). Their copyrights and licenses are listed in
+This tool bundles third-party components (Audiveris, Homr, LilyPond, music21,
+waifu2x-ncnn-vulkan, Real-ESRGAN, etc.). Their copyrights and licenses are listed in
 THIRD_PARTY_NOTICES.md.

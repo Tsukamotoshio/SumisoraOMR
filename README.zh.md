@@ -1,6 +1,6 @@
 # SumisoraOMR
 
-> 将五线谱（PDF / PNG / JPG）批量转换为简谱 PDF，并可按需同时生成 MIDI 文件。
+> 将五线谱（PDF / PNG / JPG）批量转换为简谱 PDF，内置简谱编辑器与移调功能。
 
 [![许可证: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![平台: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
@@ -44,14 +44,15 @@
 
 ### 转换（主流程）
 
-1. 将五线谱文件（`.pdf`、`.png`、`.jpg`）放入 `Input` 文件夹。
-2. 启动程序：双击桌面快捷方式 **SumisoraOMR**，或直接运行 `SumisoraOMR.exe`。
-3. 点击首页「**添加文件**」按钮，选择要转换的文件（支持多选）。
-4. 在文件侧边栏中勾选要转换的文件。
-5. 选择 OMR 引擎（或保持**自动选择**），点击**开始转换**。
-6. 在弹出对话框中确认选项（是否生成 MIDI、是否跳过重复文件），点击
+1. 启动程序：双击桌面快捷方式 **SumisoraOMR**，或直接运行 `SumisoraOMR.exe`。
+2. 在左侧文件列表中点击「**添加文件**」（支持多选）或「**添加文件夹**」按钮，
+   导入五线谱文件（`.pdf`、`.png`、`.jpg`）；所选文件会自动复制到 `Input`
+   文件夹并显示在列表中。
+3. 在文件侧边栏中勾选要转换的文件。
+4. 选择 OMR 引擎（或保持**自动选择**），点击**开始转换**。
+5. 在弹出对话框中确认选项（是否生成 MIDI、是否跳过重复文件），点击
    **开始转换**。
-7. 转换后的简谱 PDF 保存在 `Output` 文件夹中。
+6. 转换后的简谱 PDF 保存在 `Output` 文件夹中。
 
 ### 简谱预览
 
@@ -137,7 +138,7 @@ THIRD_PARTY_NOTICES.md   # 第三方组件许可证说明
 - **识别准确率受乐谱质量影响**：扫描模糊或排版复杂的乐谱可能出现错音、漏音。
 - **多声部支持有限**：多声部或和弦密集的乐谱可能只保留主旋律。
 - **不支持歌词输出**：仅输出音符，不含歌词。
-- **处理速度**：Homr 处理图片通常只需数秒；Audiveris 启动较慢，多页 PDF 可能需要数分钟。
+- **处理速度较慢**：单张乐谱的识别可能需要数分钟，多页 PDF 耗时更长。
 - **边缘情况**：少数非常规拍号或中途变调的乐谱可能不准确。
 
 ---
@@ -157,4 +158,4 @@ THIRD_PARTY_NOTICES.md   # 第三方组件许可证说明
 
 本项目采用 **GNU Affero 通用公共许可证第三版（AGPL-3.0）** 授权，详见 [`LICENSE`](LICENSE) 文件。
 
-本工具包含第三方组件（Audiveris、LilyPond、music21、waifu2x-ncnn-vulkan、Real-ESRGAN 等），其各自版权与许可证信息请参见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+本工具包含第三方组件（Audiveris、Homr、LilyPond、music21、waifu2x-ncnn-vulkan、Real-ESRGAN 等），其各自版权与许可证信息请参见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

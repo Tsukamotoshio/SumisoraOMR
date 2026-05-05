@@ -1,6 +1,6 @@
 # SumisoraOMR
 
-> Batch-convert Western staff notation (PDF / PNG / JPG) to Jianpu (numbered musical notation) PDFs, with optional MIDI output.
+> Batch-convert Western staff notation (PDF / PNG / JPG) to Jianpu (numbered musical notation) PDFs, with a built-in Jianpu editor and transposer.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
@@ -44,16 +44,16 @@
 
 ### Conversion
 
-1. Drop your staff notation files (`.pdf`, `.png`, `.jpg`) into the `Input`
-   folder.
-2. Launch the app — double-click the **SumisoraOMR** shortcut or run
+1. Launch the app — double-click the **SumisoraOMR** shortcut or run
    `SumisoraOMR.exe`.
-3. Click **Add Files** in the sidebar to select files (multi-select supported).
-4. Check the files you want to convert.
-5. Choose an OMR engine (or leave it on **Auto**), then click **Start Conversion**.
-6. Confirm options in the dialog (MIDI generation, skip duplicates) and
+2. In the file sidebar, click **Add Files** (multi-select) or **Add Folder**
+   to import sheet music files (`.pdf`, `.png`, `.jpg`). Files are
+   automatically copied into the `Input` folder and appear in the list.
+3. Check the files you want to convert.
+4. Choose an OMR engine (or leave it on **Auto**), then click **Start Conversion**.
+5. Confirm options in the dialog (MIDI generation, skip duplicates) and
    click **Start Conversion**.
-7. Converted Jianpu PDFs appear in the `Output` folder.
+6. Converted Jianpu PDFs appear in the `Output` folder.
 
 ### Jianpu Preview
 
@@ -145,7 +145,7 @@ THIRD_PARTY_NOTICES.md   # Third-party component licenses
 - **Recognition accuracy** depends heavily on scan quality. Blurry or complex scores may produce wrong or missing notes.
 - **Polyphony** — scores with many voices or dense chords may retain only the main melody.
 - **No lyrics** — only note data is exported.
-- **Processing speed** — Homr processes images in seconds; Audiveris startup is slow and multi-page PDFs can take several minutes.
+- **Processing speed** — Recognizing a single score can take several minutes; multi-page PDFs take longer.
 - **Edge cases** — uncommon time signatures or mid-piece key changes may yield inaccurate results.
 
 ---
@@ -165,4 +165,4 @@ When redistributing, please retain this notice and `THIRD_PARTY_NOTICES.md` to d
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** — see the [`LICENSE`](LICENSE) file for details.
 
-This tool bundles third-party components (Audiveris, LilyPond, music21, waifu2x-ncnn-vulkan, Real-ESRGAN, and others). Their respective licenses are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+This tool bundles third-party components (Audiveris, Homr, LilyPond, music21, waifu2x-ncnn-vulkan, Real-ESRGAN, and others). Their respective licenses are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
