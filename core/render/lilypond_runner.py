@@ -357,7 +357,7 @@ def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> str:
     _GENERIC = {'', 'music21', 'composer', 'title', 'score', 'untitled', 'new score', 'unknown'}
     raw_title: str = mxl_path.stem
     try:
-        from ..music.transposer import extract_metadata_from_musicxml
+        from ..notation.transposer import extract_metadata_from_musicxml
         metadata = extract_metadata_from_musicxml(mxl_path)
 
         # Raw title (before ASCII stripping) — returned for CJK overlay use

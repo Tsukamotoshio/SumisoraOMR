@@ -344,7 +344,7 @@ def merge_polyphonic_jianpu_staves(
         Path to the ``.ly`` file to modify **in-place**.
     voice_groups
         A list of section-index groups returned by
-        :func:`~core.music.jianpu_core.build_jianpu_ly_text` with
+        :func:`~core.notation.jianpu.build_jianpu_ly_text` with
         ``_return_groups=True``.  Each inner list contains the 0-based indices
         of the sections that belong to the same musical Part.  Groups with only
         one member are left unchanged.  Groups with 2–4 members have their

@@ -14,7 +14,7 @@ from ..app_state import AppState, Event
 from core.app.backend import xml_scores_dir, build_dir, open_directory
 from ..components.pdf_viewer import PdfViewer
 from ..theme import Palette, section_title
-from core.music.transposer import INTERVALS, DIATONIC_DEGREES, key_display_cn
+from core.notation.transposer import INTERVALS, DIATONIC_DEGREES, key_display_cn
 
 
 # 按五度圈排列的调名列表
@@ -501,7 +501,7 @@ class TransposerPage(ft.Column):
                 return
             if self._orig_mxl is None:
                 return
-            from core.music.transposer import detect_key_from_musicxml
+            from core.notation.transposer import detect_key_from_musicxml
             key = detect_key_from_musicxml(self._orig_mxl)
             if token != self._auto_detect_token:
                 return
@@ -530,7 +530,7 @@ class TransposerPage(ft.Column):
         self._set_busy(True)
         _render_started = False
         try:
-            from core.music.transposer import (
+            from core.notation.transposer import (
                 transpose_musicxml, transpose_by_interval, transpose_diatonic,
             )
             base = build_dir()

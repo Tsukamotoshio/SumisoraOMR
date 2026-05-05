@@ -316,7 +316,7 @@ def run_audiveris_batch(
                     logging.WARNING,
                 )
                 try:
-                    from ..music.transposer import strip_slurs_ties_from_mxl
+                    from ..notation.transposer import strip_slurs_ties_from_mxl
                     strip_slurs_ties_from_mxl(_partial_mxl, backup=True)
                     log_message('  [CURVES 救援] 连音线已删除，继续后续处理。')
                     _maybe_merge_mvt_files(safe_output_dir)

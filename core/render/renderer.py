@@ -17,7 +17,7 @@ from ..config import (
     LOGGER,
     JianpuNote,
 )
-from ..music.jianpu_core import (
+from ..notation.jianpu import (
     build_jianpu_ly_text,
     build_jianpu_ly_text_from_measures,
     choose_measures_per_line,
@@ -539,7 +539,7 @@ def render_score_to_jianpu_pdf(
         _voice_groups = []
         log_message(f'[jianpu] 标准 jianpu-ly 文本生成失败 ({exc})，尝试使用简化处理', logging.WARNING)
         try:
-            from ..music.jianpu_core import parse_score_to_jianpu, build_jianpu_ly_text_from_measures
+            from ..notation.jianpu import parse_score_to_jianpu, build_jianpu_ly_text_from_measures
             measures, header_lines, time_sig = parse_score_to_jianpu(score)
             key_name = header_lines[0].split()[0] if header_lines else '1=C'
             txt_content = build_jianpu_ly_text_from_measures(measures, time_sig, key_name, title,
@@ -553,7 +553,7 @@ def render_score_to_jianpu_pdf(
         log_message(f'已生成 jianpu-ly 文本文件: {txt_path.name}')
 
     try:
-        from ..music.jianpu_core import parse_score_to_jianpu
+        from ..notation.jianpu import parse_score_to_jianpu
         measures, header_lines, _ = parse_score_to_jianpu(score)
     except Exception as exc:
         log_message(f'[jianpu] parse_score_to_jianpu 失败: {exc}，跳过中间产物保存', logging.WARNING)

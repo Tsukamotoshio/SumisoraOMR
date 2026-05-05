@@ -1,4 +1,4 @@
-# core/jianpu_txt_editor.py — 简谱 txt 格式编辑器基础模块
+# core/notation/jianpu/txt_editor.py — 简谱 txt 格式编辑器基础模块
 # 提供 .jianpu.txt 格式的解析、序列化与基础编辑操作，
 # 数据结构设计与后续 GUI 编辑器兼容。
 """
@@ -441,8 +441,8 @@ def _duration_to_underlines(duration: float) -> int:
 def _cli_main() -> None:
     import sys
     if len(sys.argv) < 2:
-        print('用法：python -m core.jianpu_txt_editor <文件.jianpu.txt>')
-        print('       python -m core.jianpu_txt_editor --example')
+        print('用法：python -m core.notation.jianpu.txt_editor <文件.jianpu.txt>')
+        print('       python -m core.notation.jianpu.txt_editor --example')
         sys.exit(0)
 
     if sys.argv[1] == '--example':
