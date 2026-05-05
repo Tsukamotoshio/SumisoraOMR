@@ -37,6 +37,11 @@ audiveris_job_*/
 
 # Install and helper scripts moved into scripts/
 scripts/install_audiveris_local.bat
+scripts/build_zip.bat
+scripts/build_installer.bat
+
+# Installer build config (private distribution setup)
+convert_setup.iss
 scripts/jianpu-ly.py
 
 # Generated conversion artifacts
