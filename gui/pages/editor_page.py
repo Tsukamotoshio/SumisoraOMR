@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import base64
-import io
 import threading
 from pathlib import Path
 from typing import Optional
@@ -15,6 +14,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import editor_workspace_dir
 from ..components.jianpu_editor import JianpuEditor
+from ..components.pdf_viewer import _render_pdf_page
 from ..theme import Palette
 
 # 1×1 透明 PNG，用于保持 InteractiveViewer content 始终 visible=True
@@ -129,24 +129,13 @@ class _BinaryImageView(ft.Column):
             threading.Thread(target=self._load_async, args=(path, token), daemon=True).start()
 
     def _load_pdf_async(self, path: Path, token: int) -> None:
-        """PDF 文件：用 pypdfium2 渲染第一页为 PNG。"""
+        """PDF 文件：用 pdf_viewer._render_pdf_page 渲染第一页（带 _PYPDFIUM2_LOCK）。"""
         try:
-            import pypdfium2 as pdfium
-            doc = pdfium.PdfDocument(str(path))
-            try:
-                page = doc[0]
-                try:
-                    bitmap = page.render(scale=2.0)
-                    try:
-                        buf = io.BytesIO()
-                        bitmap.to_pil().save(buf, 'PNG')
-                        raw_b64 = base64.b64encode(buf.getvalue()).decode()
-                    finally:
-                        bitmap.close()
-                finally:
-                    page.close()
-            finally:
-                doc.close()
+            result = _render_pdf_page(path, 0)
+            if result is None:
+                self._schedule_load_error('PDF 无法渲染', token)
+                return
+            raw_b64, _ = result
             if token != self._load_token:
                 return
             self._schedule_image_load(raw_b64, token)

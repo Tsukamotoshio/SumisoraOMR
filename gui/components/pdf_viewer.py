@@ -24,32 +24,41 @@ _BLANK_PNG_B64 = (
     'AAAABQABpfZFQAAAAABJRU5ErkJggg=='
 )
 
+# PDFium (the C++ library underlying pypdfium2) is NOT thread-safe.
+# Concurrent FPDF_* calls from multiple Python threads can segfault and
+# kill the entire process — which is exactly what was killing the Flet
+# WebSocket and freezing the UI. All pypdfium2 calls must hold this lock.
+_PYPDFIUM2_LOCK = threading.Lock()
+
 
 def _render_pdf_page(path: Path, page_index: int) -> Optional[tuple[str, int]]:
     """Open a PDF, render one page to PNG base64, close everything.
 
     Returns (b64_png, total_page_count) or None on failure.
-    Opens and closes a fresh PdfDocument per call — safe for concurrent use.
+    Serialized via _PYPDFIUM2_LOCK — PDFium native code is not thread-safe.
     """
     import pypdfium2 as pdfium
-    doc = pdfium.PdfDocument(str(path))
-    try:
-        page_count = len(doc)
-        if page_count == 0:
-            return None
-        page = doc[page_index]
+    with _PYPDFIUM2_LOCK:
+        doc = pdfium.PdfDocument(str(path))
+        page = None
+        bitmap = None
         try:
+            page_count = len(doc)
+            if page_count == 0:
+                return None
+            page = doc[page_index]
             bitmap = page.render(scale=2.0)
-            try:
-                buf = io.BytesIO()
-                bitmap.to_pil().save(buf, 'PNG')
-                return base64.b64encode(buf.getvalue()).decode(), page_count
-            finally:
-                bitmap.close()
+            buf = io.BytesIO()
+            bitmap.to_pil().save(buf, 'PNG')
+            return base64.b64encode(buf.getvalue()).decode(), page_count
         finally:
-            page.close()
-    finally:
-        doc.close()
+            for obj in (bitmap, page, doc):
+                if obj is None:
+                    continue
+                try:
+                    obj.close()
+                except Exception:
+                    pass
 
 
 class PdfViewer(ft.Column):
