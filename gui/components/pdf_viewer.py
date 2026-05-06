@@ -25,6 +25,33 @@ _BLANK_PNG_B64 = (
 )
 
 
+def _render_pdf_page(path: Path, page_index: int) -> Optional[tuple[str, int]]:
+    """Open a PDF, render one page to PNG base64, close everything.
+
+    Returns (b64_png, total_page_count) or None on failure.
+    Opens and closes a fresh PdfDocument per call — safe for concurrent use.
+    """
+    import pypdfium2 as pdfium
+    doc = pdfium.PdfDocument(str(path))
+    try:
+        page_count = len(doc)
+        if page_count == 0:
+            return None
+        page = doc[page_index]
+        try:
+            bitmap = page.render(scale=2.0)
+            try:
+                buf = io.BytesIO()
+                bitmap.to_pil().save(buf, 'PNG')
+                return base64.b64encode(buf.getvalue()).decode(), page_count
+            finally:
+                bitmap.close()
+        finally:
+            page.close()
+    finally:
+        doc.close()
+
+
 class PdfViewer(ft.Column):
     """PDF / 图片预览控件。
 
@@ -50,7 +77,6 @@ class PdfViewer(ft.Column):
         self._extra_controls: list = extra_controls or []
         self._refresh_pending = False
         self._refresh_waiting = False
-        self._pdf_doc = None
         self._is_image: bool = False
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._build_ui()
@@ -196,15 +222,7 @@ class PdfViewer(ft.Column):
                 with open(path, 'rb') as f:
                     raw_bytes = f.read()
                 return base64.b64encode(raw_bytes).decode(), 1
-            import pypdfium2 as pdfium
-            from PIL import Image
-            with pdfium.PdfDocument(str(path)) as doc:
-                page_count = len(doc)
-                page = doc[0]
-                bitmap = page.render(scale=2.0)
-                buf = io.BytesIO()
-                bitmap.to_pil().save(buf, 'PNG')
-                return base64.b64encode(buf.getvalue()).decode(), page_count
+            return _render_pdf_page(path, 0)
         except Exception:
             return None
 
@@ -216,13 +234,6 @@ class PdfViewer(ft.Column):
         self._current_page = 0
         self._load_token += 1
         current_token = self._load_token
-
-        if self._pdf_doc is not None:
-            try:
-                self._pdf_doc.close()
-            except Exception:
-                pass
-            self._pdf_doc = None
 
         # 按文件类型切换 InteractiveViewer 模式：
         # 图片用 constrained=True + CONTAIN（防止 Flutter 强制"填满视口"最小缩放）
@@ -251,8 +262,6 @@ class PdfViewer(ft.Column):
             self._page_count = cache['page_count']
             self._set_image_b64(cache['b64'])
             self._update_toolbar()
-            if path.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
-                self._executor.submit(self._ensure_document_loaded, path, current_token)
             return
 
         if path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
@@ -263,12 +272,6 @@ class PdfViewer(ft.Column):
     def will_unmount(self) -> None:
         self._load_token += 1  # 使所有后台任务尽快放弃
         self._executor.shutdown(wait=False)
-        if self._pdf_doc is not None:
-            try:
-                self._pdf_doc.close()
-            except Exception:
-                pass
-            self._pdf_doc = None
 
     def reset(self) -> None:
         """重置为空白占位符状态（无文件）。"""
@@ -277,13 +280,6 @@ class PdfViewer(ft.Column):
         self._page_count = 0
         self._current_page = 0
         self._is_image = False
-
-        if self._pdf_doc is not None:
-            try:
-                self._pdf_doc.close()
-            except Exception:
-                pass
-            self._pdf_doc = None
 
         self._interactive.constrained = False
         self._image.fit = ft.BoxFit.FIT_WIDTH
@@ -314,42 +310,24 @@ class PdfViewer(ft.Column):
 
     def _load_pdf_async(self, path: Path, token: int) -> None:
         try:
-            import pypdfium2 as pdfium
-            doc = pdfium.PdfDocument(str(path))
-            if token != self._load_token:
-                doc.close()
-                return
-            self._page_count = len(doc)
-            self._pdf_doc = doc
-            if self._page_count == 0:
+            result = _render_pdf_page(path, 0)
+            if result is None:
                 if token != self._load_token:
                     return
                 self._show_error('PDF 无法渲染（文件可能已损坏或格式不受支持）')
                 self._update_toolbar()
                 return
-            self._render_current_page(token=token)
+            b64, page_count = result
             if token != self._load_token:
                 return
+            self._page_count = page_count
+            self._cache_preview(path, b64, page_count)
+            self._set_image_b64(b64)
             self._update_toolbar()
         except Exception as exc:
             if token != self._load_token:
                 return
             self._show_error(str(exc))
-
-    def _ensure_document_loaded(self, path: Path, token: int) -> None:
-        """缓存命中时，在后台打开文档以支持翻页，不重新渲染首页。"""
-        if token != self._load_token:
-            return
-        try:
-            import pypdfium2 as pdfium
-            if self._pdf_doc is None:
-                doc = pdfium.PdfDocument(str(path))
-                if token != self._load_token:
-                    doc.close()
-                    return
-                self._pdf_doc = doc
-        except Exception:
-            pass
 
     def _render_current_page(self, token: Optional[int] = None) -> None:
         """渲染当前页为 PNG base64，使用内存缓冲区，不写硬盘。"""
@@ -357,17 +335,17 @@ class PdfViewer(ft.Column):
             token = self._load_token
         if token != self._load_token:
             return
-        if self._pdf_doc is None:
+        path = self._path
+        if path is None:
             return
-        if self._page_count == 0 or self._current_page < 0 or self._current_page >= self._page_count:
+        page_index = self._current_page
+        if self._page_count == 0 or page_index < 0 or page_index >= self._page_count:
             return
         try:
-            import pypdfium2 as pdfium
-            page = self._pdf_doc[self._current_page]
-            bitmap = page.render(scale=2.0)
-            buf = io.BytesIO()
-            bitmap.to_pil().save(buf, 'PNG')
-            b64 = base64.b64encode(buf.getvalue()).decode()
+            result = _render_pdf_page(path, page_index)
+            if result is None:
+                return
+            b64, _ = result
             if token != self._load_token:
                 return
             self._set_image_b64(b64)

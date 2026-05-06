@@ -132,12 +132,21 @@ class _BinaryImageView(ft.Column):
         """PDF 文件：用 pypdfium2 渲染第一页为 PNG。"""
         try:
             import pypdfium2 as pdfium
-            with pdfium.PdfDocument(str(path)) as doc:
+            doc = pdfium.PdfDocument(str(path))
+            try:
                 page = doc[0]
-                bitmap = page.render(scale=2.0)
-                buf = io.BytesIO()
-                bitmap.to_pil().save(buf, 'PNG')
-                raw_b64 = base64.b64encode(buf.getvalue()).decode()
+                try:
+                    bitmap = page.render(scale=2.0)
+                    try:
+                        buf = io.BytesIO()
+                        bitmap.to_pil().save(buf, 'PNG')
+                        raw_b64 = base64.b64encode(buf.getvalue()).decode()
+                    finally:
+                        bitmap.close()
+                finally:
+                    page.close()
+            finally:
+                doc.close()
             if token != self._load_token:
                 return
             self._schedule_image_load(raw_b64, token)
