@@ -233,7 +233,7 @@ def _has_cjk(s: str) -> bool:
 
 
 def _find_cjk_font_for_overlay() -> Optional[Path]:
-    """Locate a CJK-capable TrueType/OpenType font file for fitz text overlay.
+    """Locate a CJK-capable TrueType/OpenType font file for text overlay.
 
     Preference order:
     1. Bundled NotoSansSC font in assets/fonts/ (always available in this repo).
@@ -248,21 +248,16 @@ def _find_cjk_font_for_overlay() -> Optional[Path]:
 def _overlay_cjk_title_on_staff_pdf(pdf_path: Path, title: str) -> None:
     """Overlay a Unicode/CJK title onto the first page of a LilyPond staff PDF.
 
-    When the score title is CJK-only, musicxml2ly emits the raw CJK bytes into
-    the LilyPond ``\\header`` block, and LilyPond's default Century Schoolbook font
-    renders them as empty boxes or partial glyphs.  ``_inject_metadata_to_lilypond``
-    ensures LilyPond always reserves the title-area vertical space (by injecting
-    a ``"."`` placeholder when the MusicXML had no title).  This function then:
+    When the score title is CJK-only, musicxml2ly emits raw CJK bytes into the
+    LilyPond \\header block which LilyPond's default font renders as empty boxes.
+    This function blanks out the garbled title area with a white rectangle and
+    draws the correct CJK text centered above it using ReportLab + pypdf.
 
-    1. Finds the title text block position dynamically via ``page.get_text``.
-    2. Draws a white rectangle over the garbled/placeholder header area.
-    3. Draws the correct CJK title text centered in that area using the
-       bundled Noto Sans SC TTF via PyMuPDF's TextWriter API.
-
-    Note: ``insert_textbox``'s ``fontfile=`` keyword is *not* sufficient for CJK
-    fonts — fitz silently falls back to a built-in font when the supplied file
-    contains non-Latin glyphs.  The correct way is to create a ``fitz.Font`` object
-    from the file and pass it as the ``font=`` keyword argument.
+    Strategy: create a single-page overlay PDF (white rect + CJK title) with
+    ReportLab, then merge it on top of the original PDF with pypdf.  LilyPond
+    always reserves title-area space via the "." placeholder injected by
+    _inject_metadata_to_lilypond, so a fixed cover band (y ≈ 5–40 pt from top)
+    reliably blanks the right region without needing text-position detection.
     """
     if not title:
         return
@@ -271,73 +266,57 @@ def _overlay_cjk_title_on_staff_pdf(pdf_path: Path, title: str) -> None:
         LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 未找到 CJK 字体，跳过叠加')
         return
     try:
-        import fitz  # PyMuPDF
-    except ImportError:
-        return
-    try:
-        doc = fitz.open(str(pdf_path))
-        if len(doc) == 0:
-            doc.close()
-            return
-        page = doc[0]
-        pw = page.rect.width
-        # Dynamically locate the title area using word-level extraction.
-        # PyMuPDF sometimes merges adjacent text blocks (e.g. "." title and
-        # "Piano" instrument label into one block), making block-level y-bounds
-        # unreliable.  Word-level extraction gives individual bounding boxes so
-        # we can filter by x-position: the centered title sits at x > 25 % of
-        # page width, while left-margin instrument/voice labels sit at x ≈ 35 pt.
-        #
-        # Words are kept if:
-        #   • y0 < 45 pt  (title area only; voice labels at y≈39 but x≈35 → excluded)
-        #   • x0 > pw*0.25  (centered, not a left-margin instrument/voice label)
-        #   • more than 50 % of chars are above 0x1F  (not binary music-font data)
-        def _is_readable_word(text: str) -> bool:
-            if not text.strip():
-                return False
-            return sum(1 for c in text if ord(c) > 0x1F) / len(text) > 0.5
+        import io as _io
+        import pypdf
+        from reportlab.pdfgen import canvas as rl_canvas
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.lib.units import pt
 
-        title_words = [
-            (x0, y0, x1, y1)
-            for x0, y0, x1, y1, word, *_ in page.get_text('words')
-            if y0 < 45 and x0 > pw * 0.25 and _is_readable_word(word)
-        ]
-        if title_words:
-            cover_y0 = max(0.0, min(b[1] for b in title_words) - 4)
-            cover_y1 = min(max(b[3] for b in title_words) + 4, 55.0)
-        else:
-            # Fallback: single title-line estimate.  With the "." placeholder
-            # injected by _inject_metadata_to_lilypond, LilyPond always reserves
-            # title space, so the music never starts before y ≈ 25–35 pt.
-            cover_y0, cover_y1 = 5.0, 35.0
-        cover_rect = fitz.Rect(0, cover_y0, pw, cover_y1)
-        title_rect = fitz.Rect(36, cover_y0, pw - 36, cover_y1)
-        # Must use fitz.Font + fitz.TextWriter — passing fontfile= directly to
-        # insert_textbox does not work for CJK glyphs; fitz silently reverts to a
-        # built-in font.  TextWriter.fill_textbox() accepts a fitz.Font object and
-        # correctly embeds CJK glyphs from the TTF file.
-        # Blank out the garbled LilyPond-rendered title area with white, then
-        # draw the correct CJK text on top using the Noto Sans SC font.
-        page.draw_rect(cover_rect, color=(1, 1, 1), fill=(1, 1, 1))
-        cjk_font = fitz.Font(fontfile=str(font_path))
-        tw = fitz.TextWriter(page.rect)
-        tw.fill_textbox(
-            title_rect,
-            title,
-            font=cjk_font,
-            fontsize=15,
-            align=1,  # 1 = TEXT_ALIGN_CENTER
-        )
-        # render_mode=2 (fill + stroke with same color) makes the glyphs appear
-        # slightly bolder.  Note: write_text() does NOT accept border_width or
-        # fill_color — both raise TypeError in PyMuPDF 1.27.x.
-        tw.write_text(page, render_mode=2, color=(0, 0, 0))
-        # Save to a sibling temp file then replace the original.  On Windows,
-        # doc.save(same_path, incremental=False) silently discards the changes
-        # because the original file handle is still held during the write.
+        # ── 读取原始 PDF，取第一页尺寸 ──────────────────────────────────────
+        reader = pypdf.PdfReader(str(pdf_path))
+        if len(reader.pages) == 0:
+            return
+        first_page = reader.pages[0]
+        pw = float(first_page.mediabox.width)   # points
+        ph = float(first_page.mediabox.height)  # points
+
+        # ── 用 ReportLab 生成叠加层（白色遮盖矩形 + CJK 标题文字）──────────
+        # LilyPond 坐标系原点在页面左下角；标题区在顶部，
+        # 即 y ∈ [ph-40, ph-5]（pt）
+        cover_top    = ph - 5.0
+        cover_bottom = ph - 40.0
+
+        font_name = 'NotoSansSC'
+        pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
+
+        overlay_buf = _io.BytesIO()
+        c = rl_canvas.Canvas(overlay_buf, pagesize=(pw, ph))
+        # 白色遮盖矩形
+        c.setFillColorRGB(1, 1, 1)
+        c.setStrokeColorRGB(1, 1, 1)
+        c.rect(0, cover_bottom, pw, cover_top - cover_bottom, fill=1, stroke=0)
+        # CJK 标题文字（居中，字号 15pt）
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont(font_name, 15)
+        text_y = cover_bottom + (cover_top - cover_bottom - 15) / 2
+        c.drawCentredString(pw / 2, text_y, title)
+        c.save()
+        overlay_buf.seek(0)
+
+        # ── 用 pypdf 把叠加层合并到原始 PDF 第一页上 ────────────────────────
+        overlay_reader = pypdf.PdfReader(overlay_buf)
+        overlay_page  = overlay_reader.pages[0]
+        first_page.merge_page(overlay_page)
+
+        writer = pypdf.PdfWriter()
+        writer.add_page(first_page)
+        for p in reader.pages[1:]:
+            writer.add_page(p)
+
         tmp_path = pdf_path.with_suffix('.tmp.pdf')
-        doc.save(str(tmp_path), incremental=False, garbage=4, encryption=fitz.PDF_ENCRYPT_NONE)
-        doc.close()
+        with open(str(tmp_path), 'wb') as f:
+            writer.write(f)
         tmp_path.replace(pdf_path)
         LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 已叠加标题 "%s"', title)
     except Exception as exc:

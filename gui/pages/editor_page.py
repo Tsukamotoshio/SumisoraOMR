@@ -129,20 +129,18 @@ class _BinaryImageView(ft.Column):
             threading.Thread(target=self._load_async, args=(path, token), daemon=True).start()
 
     def _load_pdf_async(self, path: Path, token: int) -> None:
-        """PDF 文件：用 PyMuPDF 渲染第一页为 PNG。"""
+        """PDF 文件：用 pypdfium2 渲染第一页为 PNG。"""
         try:
-            import fitz
-            with fitz.open(str(path)) as doc:
+            import pypdfium2 as pdfium
+            with pdfium.PdfDocument(str(path)) as doc:
                 page = doc[0]
-                mat = fitz.Matrix(2.0, 2.0)
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                buf = io.BytesIO(pix.tobytes('png'))
+                bitmap = page.render(scale=2.0)
+                buf = io.BytesIO()
+                bitmap.to_pil().save(buf, 'PNG')
                 raw_b64 = base64.b64encode(buf.getvalue()).decode()
             if token != self._load_token:
                 return
             self._schedule_image_load(raw_b64, token)
-        except ImportError:
-            self._schedule_load_error('需要安装 PyMuPDF：pip install pymupdf', token)
         except Exception as exc:
             self._schedule_load_error(f'加载失败: {exc}', token)
 

@@ -119,7 +119,14 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # matplotlib — music21 可选可视化依赖，本项目不用图形化显示
+        'matplotlib', 'mpl_toolkits',
+        # tkinter — Flet 用 Flutter，不用 Tk
+        'tkinter', '_tkinter',
+        # 标准库开发/测试工具，运行时不需要
+        'unittest', 'distutils', 'xmlrpc', 'pydoc', 'doctest',
+    ],
     noarchive=False,
     optimize=0,
 )
@@ -142,6 +149,25 @@ def _toc_exclude_cuda(toc):
 
 a.binaries = _toc_exclude_cuda(a.binaries)
 a.datas    = _toc_exclude_cuda(a.datas)
+
+# ── 排除 music21 corpus 语料库（约 50 MB 示例乐谱，运行时完全不需要）──────────────
+def _is_music21_corpus(entry):
+    dest = entry[0].replace('\\', '/')
+    return dest.startswith('music21/corpus/') or '/music21/corpus/' in dest
+
+a.datas = [e for e in a.datas if not _is_music21_corpus(e)]
+
+# ── 排除 cv2 中本项目不用的大文件 ──────────────────────────────────────────────
+# opencv_videoio_ffmpeg*.dll — 视频 I/O，本项目只处理图片（约 27 MB）
+# haarcascade_*.xml          — 人脸/肢体检测分类器，本项目不用（约 8 MB）
+import fnmatch as _fnmatch
+def _is_unused_cv2_data(entry):
+    name = os.path.basename(entry[0])
+    return _fnmatch.fnmatch(name, 'opencv_videoio_ffmpeg*.dll') or \
+           _fnmatch.fnmatch(name, 'haarcascade_*.xml')
+
+a.binaries = [e for e in a.binaries if not _is_unused_cv2_data(e)]
+a.datas    = [e for e in a.datas    if not _is_unused_cv2_data(e)]
 
 pyz = PYZ(a.pure)
 
