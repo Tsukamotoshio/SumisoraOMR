@@ -747,7 +747,8 @@ def generate_jianpu_pdf_from_mxl(
         # Pre-fix MusicXML: convert adjacent backward-repeat pairs (OMR artefact for
         # combined :|.|: barlines) before music21 parses them, so both this jianpu
         # flow and the staff-PDF flow see correct start/end repeat structure.
-        _mxl_for_parse = _fix_adjacent_backward_repeats_in_mxl(mxl_path)
+        # Pass temp_dir so each concurrent worker writes its own isolated copy.
+        _mxl_for_parse = _fix_adjacent_backward_repeats_in_mxl(mxl_path, temp_dir)
         source_score = converter.parse(str(_mxl_for_parse))
 
         # Source file stem (preferred_title) is always authoritative — OMR engines write

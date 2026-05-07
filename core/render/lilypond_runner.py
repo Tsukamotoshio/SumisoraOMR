@@ -117,7 +117,7 @@ def render_lilypond_pdf(ly_path: Path) -> Optional[Path]:
         return None
 
 
-def _fix_adjacent_backward_repeats_in_mxl(mxl_path: Path) -> Path:
+def _fix_adjacent_backward_repeats_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) -> Path:
     """Return a path to a MusicXML file with adjacent backward-repeat barlines fixed.
 
     Some OMR engines (Homr, Audiveris) split a combined ``:|.|:`` barline into
@@ -141,7 +141,9 @@ def _fix_adjacent_backward_repeats_in_mxl(mxl_path: Path) -> Path:
         <barline location="left"><repeat direction="forward"/></barline>
 
     If no fix is needed the original path is returned unchanged.  If a fix is
-    applied a sibling temp file ``_staff_fixed.musicxml`` is written and returned.
+    applied, the corrected file is written to *out_dir* when provided (safe for
+    concurrent callers — each uses its own isolated temp directory), or to a
+    sibling ``_staff_fixed.musicxml`` in ``mxl_path.parent`` as a fallback.
     """
     try:
         content = mxl_path.read_text(encoding='utf-8', errors='ignore')
@@ -193,7 +195,13 @@ def _fix_adjacent_backward_repeats_in_mxl(mxl_path: Path) -> Path:
     for start, end, new_text in sorted(replacements, key=lambda x: x[0], reverse=True):
         new_content = new_content[:start] + new_text + new_content[end:]
 
-    fixed_path = mxl_path.parent / '_staff_fixed.musicxml'
+    # Write to the caller-supplied isolated temp dir when available, so
+    # concurrent render threads each write their own copy and never clobber
+    # each other.  Fall back to a sibling path only when out_dir is not given.
+    if out_dir is not None:
+        fixed_path = out_dir / '_staff_fixed.musicxml'
+    else:
+        fixed_path = mxl_path.parent / '_staff_fixed.musicxml'
     try:
         fixed_path.write_text(new_content, encoding='utf-8')
         LOGGER.debug(
@@ -448,7 +456,9 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
 
     # Step 0: Pre-fix adjacent backward-repeat barlines in the MusicXML (OMR
     # artefact: combined :|.|: barline split into two backward-repeats).
-    mxl_for_ly = _fix_adjacent_backward_repeats_in_mxl(mxl_path)
+    # Pass out_dir so the fixed file is isolated to this call's temp directory,
+    # preventing concurrent render threads from clobbering each other's copy.
+    mxl_for_ly = _fix_adjacent_backward_repeats_in_mxl(mxl_path, out_dir)
 
     # Step 1: musicxml2ly → .ly
     try:
