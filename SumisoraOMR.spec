@@ -117,7 +117,7 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[],
+    hookspath=['build_hooks'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
@@ -126,7 +126,7 @@ a = Analysis(
         # tkinter — Flet 用 Flutter，不用 Tk
         'tkinter', '_tkinter',
         # 标准库开发/测试工具，运行时不需要
-        'unittest', 'distutils', 'xmlrpc', 'pydoc', 'doctest',
+        'unittest', 'xmlrpc', 'pydoc', 'doctest',
     ],
     noarchive=False,
     optimize=0,
