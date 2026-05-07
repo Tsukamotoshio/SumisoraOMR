@@ -222,6 +222,18 @@ class JianpuEditor(ft.Column):
             if not ok:
                 self._state.append_log('jianpu-ly 转换失败，请确认 LilyPond 与 jianpu-ly.py 已安装')
                 return
+            # 规范化 .ly 文件：注入 CJK 字体与 \markup 标题块，与转换流水线保持一致
+            try:
+                _title = ''
+                _txt_content = txt_path.read_text(encoding='utf-8')
+                for _ln in _txt_content.splitlines():
+                    if _ln.strip().startswith('title='):
+                        _title = _ln.strip()[len('title='):]
+                        break
+                from core.render.renderer import sanitize_generated_lilypond_file
+                sanitize_generated_lilypond_file(ly_path, _title)
+            except Exception:
+                pass
             self._state.append_log('正在渲染 PDF…')
             pdf_path = render_lilypond_pdf(ly_path)
             if pdf_path and pdf_path.exists():

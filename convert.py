@@ -3,7 +3,7 @@
 # Pipeline: input image/PDF -> Audiveris (OMR) -> MusicXML -> music21 -> MIDI -> jianpu-ly -> LilyPond -> jianpu PDF
 #
 # Copyright (c) 2026 Tsukamotoshio. All rights reserved.
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 # See LICENSE file for full license text.
 #
 # 本文件是薄包装器（thin wrapper）。所有实现均位于 core/ 目录。

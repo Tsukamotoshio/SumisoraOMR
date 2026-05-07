@@ -322,11 +322,13 @@ def _overlay_cjk_title_on_staff_pdf(pdf_path: Path, title: str) -> None:
     except Exception as exc:
         LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 叠加失败: %s', exc)
 
-def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> str:
+def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> tuple[str, str]:
     """Append a \\header block with title/composer from MusicXML metadata at EOF.
 
-    Returns the raw (pre-ASCII-stripping) title string so callers can use it
-    for post-processing (e.g. CJK overlay) without a second metadata parse.
+    Returns ``(raw_title, raw_composer)`` — the pre-ASCII-stripping values so
+    callers can pass the full Unicode text to the markup-injection step without
+    a second metadata parse.  The appended header always sets ``title = ""``;
+    the actual title display is handled by _apply_title_markup_to_staff_ly().
 
     Appending is safe for any LilyPond file structure, including complex
     multi-voice/multi-staff output from musicxml2ly.  In LilyPond, later
@@ -335,56 +337,72 @@ def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> str:
     """
     _GENERIC = {'', 'music21', 'composer', 'title', 'score', 'untitled', 'new score', 'unknown'}
     raw_title: str = mxl_path.stem
+    raw_composer: str = ''
     try:
         from ..notation.transposer import extract_metadata_from_musicxml
         metadata = extract_metadata_from_musicxml(mxl_path)
 
-        # Raw title (before ASCII stripping) — returned for CJK overlay use
+        # Raw title/composer (before ASCII stripping) — returned for markup use
         _raw = (metadata.get('title', '') or '').strip()
         if _raw and _raw.lower() not in _GENERIC:
             raw_title = _raw
 
-        # 过滤非 ASCII，LilyPond 默认字体不支持 CJK
-        title = _ascii_only(raw_title)
-        if not title or title.lower() in _GENERIC:
-            title = _ascii_only(mxl_path.stem)
-        composer = _ascii_only((metadata.get('composer', '') or '').strip())
-        if composer.lower() in _GENERIC:
-            composer = ''
+        raw_composer = (metadata.get('composer', '') or '').strip()
+        if raw_composer.lower() in _GENERIC:
+            raw_composer = ''
+
+        # ASCII-only composer for the header block (font block will handle CJK
+        # in the markup; the header composer is only a fallback).
+        composer_ascii = _ascii_only(raw_composer)
 
         def _esc(s: str) -> str:
             return s.replace('\\', '\\\\').replace('"', '\\"')
 
         # Build header override block:
+        # - title: always "" — _apply_title_markup_to_staff_ly() injects a
+        #   \markup block with font support before \score {}, which both
+        #   reserves the title area and renders CJK correctly.
         # - subtitle: always cleared (musicxml2ly mirrors title → subtitle).
-        # - composer: always cleared if it's a generic placeholder like "Music21".
-        # - title: only overridden when the ASCII-filtered title is non-empty.
-        #   When the raw title is CJK-only (ascii title == ""), we leave the
-        #   original musicxml2ly CJK title intact so LilyPond preserves its normal
-        #   title-area spacing.  The garbled rendered title is wiped and replaced
-        #   by _overlay_cjk_title_on_staff_pdf() after LilyPond renders the PDF.
+        # - composer: ASCII-stripped fallback; the markup block shows the full text.
         parts: list[str] = [
+            '  title = ""',
             '  subtitle = ""',
-            f'  composer = "{_esc(composer)}"',
+            f'  composer = "{_esc(composer_ascii)}"',
+            '  tagline = ##f',
         ]
-        if title:  # non-empty ASCII title → override
-            parts.insert(0, f'  title = "{_esc(title)}"')
-        elif _has_cjk(raw_title):
-            # CJK-only title: musicxml2ly may or may not have written a title into
-            # the .ly file.  If the MusicXML had no title tag, LilyPond will not
-            # reserve any vertical space for the header, making the music start at
-            # y≈5.  Injecting a visible non-whitespace placeholder forces LilyPond
-            # to always reserve the title area, so the CJK overlay step can later
-            # place the correct text there without covering the first staff line.
-            parts.insert(0, '  title = "."')
 
         ly_content = ly_path.read_text(encoding='utf-8', errors='ignore')
         header_block = '\\header {\n' + '\n'.join(parts) + '\n}\n'
         ly_path.write_text(ly_content.rstrip('\n') + '\n' + header_block, encoding='utf-8')
-        LOGGER.debug('_inject_metadata_to_lilypond: 追加元数据头 title="%s"', title)
+        LOGGER.debug('_inject_metadata_to_lilypond: 追加元数据头 title="%s"', raw_title)
     except Exception as exc:
         LOGGER.debug('_inject_metadata_to_lilypond 失败: %s', exc)
-    return raw_title
+    return raw_title, raw_composer
+
+
+def _apply_title_markup_to_staff_ly(ly_path: Path, raw_title: str, raw_composer: str = '') -> None:
+    """Inject a CJK-capable font block and \\markup title into a staff .ly file.
+
+    Mirrors the title-injection logic in sanitize_generated_lilypond_file() for
+    musicxml2ly-generated staff files: inserts a LilyPond \\markup block (with
+    the bundled CJK font) before the first \\score {}, so both CJK and ASCII
+    titles render correctly without any post-render overlay.
+    """
+    try:
+        from .renderer import ensure_lilypond_font_block, build_lilypond_title_markup
+        text = ly_path.read_text(encoding='utf-8', errors='ignore')
+        text = ensure_lilypond_font_block(text)
+        title_markup = build_lilypond_title_markup(raw_title, raw_composer)
+        if (
+            title_markup
+            and '\\score {' in text
+            and '\\fill-line { \\fontsize #3 \\bold' not in text.split('\\score {', 1)[0]
+        ):
+            text = text.replace('\\score {', title_markup + '\\score {', 1)
+        ly_path.write_text(text, encoding='utf-8')
+        LOGGER.debug('_apply_title_markup_to_staff_ly: 已注入标题标记 "%s"', raw_title)
+    except Exception as exc:
+        LOGGER.debug('_apply_title_markup_to_staff_ly 失败: %s', exc)
 
 
 def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
@@ -457,17 +475,16 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     except Exception:
         pass
 
-    # Step 3: Append title/composer from MusicXML metadata; raw_title is the
-    # pre-ASCII-stripping title (may contain CJK) returned for the overlay step.
-    raw_title = _inject_metadata_to_lilypond(ly_path, mxl_path)
+    # Step 3: Append title/composer from MusicXML metadata.
+    raw_title, raw_composer = _inject_metadata_to_lilypond(ly_path, mxl_path)
+
+    # Step 3b: Inject font block + \markup title block — same approach as the
+    # jianpu rendering pipeline.  This handles both CJK and ASCII titles via
+    # the bundled NotoSansSC font, replacing the previous ReportLab overlay hack.
+    _apply_title_markup_to_staff_ly(ly_path, raw_title, raw_composer)
 
     # Step 4: LilyPond → PDF（使用已有的 render_lilypond_pdf）
     pdf_path = render_lilypond_pdf(ly_path)
-
-    # Step 5: Overlay CJK title if the raw title contains non-ASCII characters
-    # (LilyPond rendered with title="" leaving a blank title area at the top).
-    if pdf_path is not None and _has_cjk(raw_title):
-        _overlay_cjk_title_on_staff_pdf(pdf_path, raw_title)
 
     return pdf_path
 
