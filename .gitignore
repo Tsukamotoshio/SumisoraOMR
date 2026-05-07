@@ -3,6 +3,7 @@ CLAUDE.md
 # Runtime binaries / bundled runtimes
 .venv/
 .vscode/
+*.code-workspace
 .claude/
 jdk/
 package-assets/
