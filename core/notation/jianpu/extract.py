@@ -23,21 +23,43 @@ from .measure import (
 
 
 def _get_voice_ids_in_part(part) -> list[str]:
-    """Return sorted voice IDs that contain at least one non-rest note in 2+ measures.
+    """Return sorted voice IDs that contain significant non-rest content.
 
-    A voice is only considered significant (warranting a separate staff) if it
-    appears with actual notes in at least 2 distinct measures.  This prevents
-    a single polyphonic measure in an otherwise monophonic piece (e.g. a brief
-    harmony chord) from triggering multi-voice extraction for the entire piece,
-    which would produce a nearly-identical duplicate staff.
+    A voice is significant — and warrants its own jianpu polyphony track — when:
+      1. it has actual notes in at least 2 distinct measures (the original guard
+         against single-measure harmony chords triggering multi-voice extraction), AND
+      2. it is either the most prolific voice in the part (always kept), OR
+         it has at least 8 total non-rest notes AND at least 10 % of the
+         primary's note count.
+
+    Rule 2 prevents OMR false-polyphony from being kept as a separate staff:
+    OMR engines (HOMR especially) sometimes invent stray voices that contain
+    only a handful of notes scattered across exactly 2 measures.  Such voices
+    also slip past ``_secondary_voice_overlaps_primary`` because their onsets
+    happen to align with the primary voice's beat positions, so without this
+    guard they end up rendered as nearly-empty duplicate staves whose stray
+    notes overlap visually with the real parts.
     """
-    voice_measure_count: dict[str, int] = {}
+    voice_stats: dict[str, tuple[int, int]] = {}  # vid -> (measure_count, note_count)
     for measure in part.getElementsByClass(stream.Measure):
         for voice in measure.voices:
-            if any(isinstance(e, m21note.Note) for e in voice.flatten().notes):
+            n_notes = sum(1 for e in voice.flatten().notes if isinstance(e, m21note.Note))
+            if n_notes > 0:
                 vid = str(voice.id)
-                voice_measure_count[vid] = voice_measure_count.get(vid, 0) + 1
-    return sorted(vid for vid, count in voice_measure_count.items() if count >= 2)
+                m_count, prev = voice_stats.get(vid, (0, 0))
+                voice_stats[vid] = (m_count + 1, prev + n_notes)
+
+    candidates = [vid for vid, (m_count, _) in voice_stats.items() if m_count >= 2]
+    if len(candidates) <= 1:
+        return sorted(candidates)
+
+    primary_vid = max(candidates, key=lambda v: voice_stats[v][1])
+    primary_notes = voice_stats[primary_vid][1]
+    return sorted(
+        vid for vid in candidates
+        if vid == primary_vid
+        or (voice_stats[vid][1] >= 8 and voice_stats[vid][1] >= primary_notes * 0.10)
+    )
 
 
 def _secondary_voice_overlaps_primary(
@@ -221,8 +243,18 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                 # Do NOT fall back to another voice's content.
                 _flat_all = []
             else:
-                # Single-voice mode fallback: use first available voice
-                _flat_all = list(_voices[0].flatten().notesAndRests)
+                # Single-voice mode fallback: pick the voice with the most non-rest notes.
+                # music21 sometimes places a rest-only Voice container alongside other voices
+                # that hold the actual notes (e.g. when an OMR-tagged sub-voice steals the
+                # measure's content from the nominal main voice); falling back to _voices[0]
+                # in that case would silently drop all real notes for the measure.
+                _best_voice = max(
+                    _voices,
+                    key=lambda v: sum(
+                        1 for e in v.flatten().notes if isinstance(e, m21note.Note)
+                    ),
+                )
+                _flat_all = list(_best_voice.flatten().notesAndRests)
         else:
             if _multi_voice_mode and not _is_primary_voice:
                 # No voice containers in this measure + secondary voice → whole-measure rest.
