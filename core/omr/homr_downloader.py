@@ -116,15 +116,18 @@ from homr.download_utils import unzip_file  # noqa: E402
 
 # Progress callback signature:
 #   on_progress(file_index, filename, bytes_downloaded, file_total_bytes,
-#               overall_done_bytes, overall_total_bytes_estimate)
-# - file_index: 0..len(_WEIGHT_FILES)-1 (relative to "files we still need")
+#               overall_done_bytes, overall_total_bytes_estimate, total_files)
+# - file_index: 0..total_files-1 (index into the list of files we actually need)
 # - bytes_downloaded: bytes for the current file's PRIMARY transfer (the .onnx
 #   on ModelScope, or the .zip on GitHub). Resume-aware: counts from
 #   resumed-byte-offset, not zero.
 # - file_total_bytes: 0 if Content-Length unavailable; otherwise size of this file
 # - overall_done_bytes: sum of bytes for completed files + current file's bytes_downloaded
 # - overall_total_bytes_estimate: best-effort total; may be 0 until first HEAD
-ProgressCallback = Callable[[int, str, int, int, int, int], None]
+# - total_files: number of files this run will actually download (skipping ones
+#   already on disk with valid hashes). UI uses this for the "X / N" label so
+#   it doesn't say "1/6" when only one file actually needs re-downloading.
+ProgressCallback = Callable[[int, str, int, int, int, int, int], None]
 
 
 class DownloadCancelled(Exception):
@@ -148,15 +151,39 @@ def _other_source(base_url: str, all_sources: list[str]) -> Optional[str]:
 
 
 def _file_size_at_source(base_url: str, filename: str) -> int:
-    """HEAD the actual download URL and return Content-Length, or 0 if unknown."""
+    """Return the file's size in bytes at the given source, or 0 if unknown.
+
+    Two-stage probe:
+      1. HEAD request — works for GitHub releases which always return
+         Content-Length on HEAD.
+      2. GET-stream fallback — ModelScope's CDN returns 200 on HEAD but
+         omits Content-Length; only a GET response carries the header.
+         Open the stream, read the header, close immediately without
+         consuming the body. Costs a TCP connection and ~1 round-trip,
+         which is acceptable when called once per missing file.
+    """
+    url = _build_url_for(base_url, filename)
+    # Stage 1: HEAD
     try:
-        r = requests.head(
-            _build_url_for(base_url, filename),
-            timeout=_PROBE_TIMEOUT_SEC,
-            allow_redirects=True,
-        )
+        r = requests.head(url, timeout=_PROBE_TIMEOUT_SEC, allow_redirects=True)
         if 200 <= r.status_code < 300:
-            return int(r.headers.get('content-length', 0))
+            cl = r.headers.get('content-length')
+            if cl:
+                return int(cl)
+    except requests.exceptions.RequestException:
+        pass
+
+    # Stage 2: GET stream, read header only, close without consuming.
+    try:
+        r = requests.get(url, stream=True, timeout=_PROBE_TIMEOUT_SEC,
+                         allow_redirects=True)
+        try:
+            if 200 <= r.status_code < 300:
+                cl = r.headers.get('content-length')
+                if cl:
+                    return int(cl)
+        finally:
+            r.close()
     except requests.exceptions.RequestException:
         pass
     return 0
@@ -344,7 +371,7 @@ def download_all_weights(
                           fname=fname, idx=idx, file_total=file_total):
             bytes_so_far_holder['v'] = bytes_so_far
             on_progress(idx, fname, bytes_so_far, file_total,
-                        overall_done + bytes_so_far, overall_total)
+                        overall_done + bytes_so_far, overall_total, len(todo))
 
         # Primary attempt
         active_source = primary

@@ -54,12 +54,11 @@ class LandingPage(ft.Row):
         self._sidebar = FileSidebar(self._state)
         self._viewer = PdfViewer()
 
-        # 引擎选择
+        # 引擎选择 — 没有下载触发；触发改为「点击开始转换」时检查（_on_convert）。
         self._engine_dd = ft.Dropdown(
             label='OMR 引擎',
             value='auto',
             options=self._build_engine_options(),
-            on_select=self._on_engine_change,
             width=200,
             text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
@@ -129,6 +128,33 @@ class LandingPage(ft.Row):
             ),
         )
 
+        # HOMR 模型权重的显式管理按钮
+        self._download_models_btn = ft.Button(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), ft.Text('下载模型文件')],
+                tight=True, spacing=6,
+            ),
+            on_click=self._on_download_models,
+            style=ft.ButtonStyle(
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+        )
+        self._delete_models_btn = ft.Button(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.DELETE_OUTLINE_ROUNDED, size=16), ft.Text('删除模型文件')],
+                tight=True, spacing=6,
+            ),
+            on_click=self._on_delete_models,
+            style=ft.ButtonStyle(
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+        )
+        self._refresh_model_buttons()
+
         options_panel = ft.Container(
             content=ft.Column(
                 [
@@ -149,6 +175,8 @@ class LandingPage(ft.Row):
                                 ft.Container(height=4),
                                 self._convert_btn,
                                 open_output_btn,
+                                self._download_models_btn,
+                                self._delete_models_btn,
                             ],
                             spacing=10,
                         ),
@@ -173,14 +201,6 @@ class LandingPage(ft.Row):
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
 
     # ── 引擎切换 / 模型下载触发 ───────────────────────────────────────────────
-
-    def _on_engine_change(self, e) -> None:
-        val = e.control.value
-        if val not in ('homr', 'auto'):
-            return
-        if self._state.homr_available:
-            return
-        self._prompt_homr_download(previous_value='audiveris')
 
     def _prompt_homr_download(self, previous_value: str) -> None:
         page = self.page  # Flet Page (available after mount)
@@ -213,7 +233,7 @@ class LandingPage(ft.Row):
                           size=16, weight=ft.FontWeight.W_600),
             content=ft.Text(
                 '使用 HOMR 引擎可以支持图片格式的乐谱识别。\n'
-                '需要下载约 430 MB 模型权重。',
+                '需要下载约 292 MB 模型权重。',
                 size=13,
             ),
             actions=[
@@ -231,6 +251,86 @@ class LandingPage(ft.Row):
         self._engine_dd.options = self._build_engine_options()
         try:
             self._engine_dd.update()
+        except Exception:
+            pass
+        self._refresh_model_buttons()
+
+    def _refresh_model_buttons(self) -> None:
+        """Toggle the 下载/删除 buttons' enabled state based on weights presence."""
+        if not hasattr(self, '_download_models_btn'):
+            return
+        present = self._state.homr_available
+        # Download button: only enabled when models are absent
+        self._download_models_btn.disabled = present
+        # Delete button: only enabled when models exist
+        self._delete_models_btn.disabled = not present
+        try:
+            self._download_models_btn.update()
+            self._delete_models_btn.update()
+        except Exception:
+            pass
+
+    def _on_download_models(self, _e) -> None:
+        """Manually trigger the model download dialog from the Settings button."""
+        if self._state.homr_available:
+            return  # already have them; button should be disabled but guard anyway
+        self._open_model_dialog()
+
+    def _on_delete_models(self, _e) -> None:
+        """Confirm + delete all HOMR weight files from the models/ directory."""
+        if not self._state.homr_available:
+            return
+        page = self.page
+        if page is None:
+            return
+
+        def _do_delete(_):
+            try:
+                page.pop_dialog()
+            except Exception:
+                pass
+            import sys as _sys
+            from core.app.backend import models_dir
+            _homr_src = str(Path(__file__).parent.parent.parent / 'omr_engine' / 'homr')
+            if _homr_src not in _sys.path:
+                _sys.path.insert(0, _homr_src)
+            from homr.main import _WEIGHT_FILES
+            md = models_dir()
+            removed = 0
+            for fname in _WEIGHT_FILES:
+                p = md / fname
+                if p.exists():
+                    try:
+                        p.unlink()
+                        removed += 1
+                    except Exception:
+                        pass
+            self._state.homr_available = False
+            self._refresh_engine_labels()
+            self._show_snack(f'已删除 {removed} 个模型文件。', Palette.INFO)
+
+        def _cancel_delete(_):
+            try:
+                page.pop_dialog()
+            except Exception:
+                pass
+
+        confirm = ft.AlertDialog(
+            modal=True,
+            title=ft.Text('确认删除模型文件', size=16, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                '将删除全部 HOMR 模型权重文件（约 292 MB）。\n'
+                '下次使用 HOMR 引擎时需要重新下载。',
+                size=13,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel_delete),
+                ft.ElevatedButton('删除', on_click=_do_delete),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        try:
+            page.show_dialog(confirm)
         except Exception:
             pass
 

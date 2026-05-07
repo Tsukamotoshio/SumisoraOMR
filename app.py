@@ -653,14 +653,19 @@ def _patch_exe_resources(
     k32 = _ct.windll.kernel32
     k32.BeginUpdateResourceW.restype  = _wt.HANDLE
     k32.BeginUpdateResourceW.argtypes = [_wt.LPCWSTR, _wt.BOOL]
+    # lpType / lpName accept either a string pointer or MAKEINTRESOURCE
+    # (an integer ID stuffed into the low word of a "fake" pointer).
+    # Declare them as c_void_p so we can pass either; declaring LPCWSTR makes
+    # Python 3.14 ctypes reject the integer-pointer cast with a TypeError.
     k32.UpdateResourceW.restype       = _wt.BOOL
-    k32.UpdateResourceW.argtypes      = [_wt.HANDLE, _wt.LPCWSTR, _wt.LPCWSTR,
+    k32.UpdateResourceW.argtypes      = [_wt.HANDLE, _ct.c_void_p, _ct.c_void_p,
                                           _wt.WORD, _ct.c_void_p, _wt.DWORD]
     k32.EndUpdateResourceW.restype    = _wt.BOOL
     k32.EndUpdateResourceW.argtypes   = [_wt.HANDLE, _wt.BOOL]
 
-    def _mir(n):
-        return _ct.cast(_ct.c_size_t(n), _wt.LPCWSTR)
+    def _mir(n: int) -> _ct.c_void_p:
+        # MAKEINTRESOURCE(n): integer ID as a pointer-shaped value.
+        return _ct.c_void_p(n)
 
     h = k32.BeginUpdateResourceW(exe_path, False)
     if not h:
@@ -712,13 +717,16 @@ def _setup_flet_view_name() -> None:
             _base = _Path(getattr(sys, '_MEIPASS',
                           os.path.dirname(os.path.abspath(__file__))))
             _ico  = _base / 'assets' / 'icon.ico'
-            _patch_exe_resources(
+            ok = _patch_exe_resources(
                 str(_exe), str(_ico),
                 'SumisoraOMR', 'SumisoraOMR',
                 'Tsukamotoshio', 'Copyright (C) 2026 Tsukamotoshio',
-                0, 3, 0, 0,
+                0, 3, 3, 0,
             )
-            _rstamp.touch()
+            # Only mark "patched" on success — otherwise leave the stamp absent
+            # so the next launch can retry (e.g. after a code fix).
+            if ok:
+                _rstamp.touch()
 
         if not (_stamp.exists() and _exe.exists()):
             _dir.mkdir(parents=True, exist_ok=True)
@@ -813,6 +821,18 @@ if __name__ == '__main__':
                 0x30,  # MB_ICONWARNING | MB_OK
             )
             sys.exit(0)
+
+        # Explicit AppUserModelID — Windows uses this for taskbar grouping and
+        # for the right-click menu's app-name entry. Without it, the Flutter
+        # window inherits Flet's default identity and shows "Flet description".
+        # Set on the Python parent; flet_desktop's subprocess inherits via env
+        # (we copy os.environ into the subprocess env in _patched_open).
+        try:
+            _ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                'Tsukamotoshio.SumisoraOMR'
+            )
+        except Exception:
+            pass
 
     _setup_flet_view_name()
     _assets_dir = os.path.join(
