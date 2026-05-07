@@ -32,6 +32,7 @@ class Event:
     SCORE_TRANSPOSER_REQUESTED = 'score_transposer_requested' # score_preview requests transposer (path: Path)
     SCORE_TRANSPOSER_BACK      = 'score_transposer_back'      # transposer requests back to score_preview
     THEME_CHANGED         = 'theme_changed'         # theme toggled (dark: bool)
+    MODELS_DOWNLOADED     = 'models_downloaded'     # HOMR weights finished downloading
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -69,6 +70,9 @@ class AppState:
     dark_mode:     bool = False
     is_processing: bool = False
     progress:      float = 0.0
+
+    # Engine availability (HOMR weights presence; set on startup + after download)
+    homr_available: bool = False
 
     # Log
     log_lines: list[str] = field(default_factory=list)

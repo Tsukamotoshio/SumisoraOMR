@@ -40,6 +40,15 @@ class LandingPage(ft.Row):
         state.on(Event.FILE_SELECTED,   self._on_file_selected)
         state.on(Event.FILES_CHANGED,   self._on_files_changed)
         state.on(Event.FILES_IMPORTED,  self._on_files_imported)
+        state.on(Event.MODELS_DOWNLOADED, self._refresh_engine_labels)
+
+    def _build_engine_options(self) -> list:
+        suffix = '' if self._state.homr_available else '（需下载）'
+        return [
+            ft.dropdown.Option('auto',      f'自动选择（推荐）{suffix}'),
+            ft.dropdown.Option('audiveris', 'Audiveris（启发式算法）'),
+            ft.dropdown.Option('homr',      f'Homr（深度学习）{suffix}'),
+        ]
 
     def _build_ui(self) -> None:
         self._sidebar = FileSidebar(self._state)
@@ -49,11 +58,8 @@ class LandingPage(ft.Row):
         self._engine_dd = ft.Dropdown(
             label='OMR 引擎',
             value='auto',
-            options=[
-                ft.dropdown.Option('auto',      '自动选择（推荐）'),
-                ft.dropdown.Option('audiveris', 'Audiveris（启发式算法）'),
-                ft.dropdown.Option('homr',      'Homr（深度学习）'),
-            ],
+            options=self._build_engine_options(),
+            on_select=self._on_engine_change,
             width=200,
             text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
@@ -166,7 +172,90 @@ class LandingPage(ft.Row):
         self.expand = True
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
 
+    # ── 引擎切换 / 模型下载触发 ───────────────────────────────────────────────
+
+    def _on_engine_change(self, e) -> None:
+        val = e.control.value
+        if val not in ('homr', 'auto'):
+            return
+        if self._state.homr_available:
+            return
+        self._prompt_homr_download(previous_value='audiveris')
+
+    def _prompt_homr_download(self, previous_value: str) -> None:
+        page = self.page  # Flet Page (available after mount)
+        if page is None:
+            return
+
+        def _on_yes(_):
+            try:
+                page.pop_dialog()
+            except Exception:
+                pass
+            from ..components.model_download_dialog import ModelDownloadDialog
+            dlg = ModelDownloadDialog(page, self._state)
+            dlg.show()
+
+        def _on_no(_):
+            try:
+                page.pop_dialog()
+            except Exception:
+                pass
+            self._engine_dd.value = previous_value
+            try:
+                self._engine_dd.update()
+            except Exception:
+                pass
+
+        confirm = ft.AlertDialog(
+            modal=True,
+            title=ft.Text('需要下载 HOMR 模型权重',
+                          size=16, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                '使用 HOMR 引擎可以支持图片格式的乐谱识别。\n'
+                '需要下载约 430 MB 模型权重。',
+                size=13,
+            ),
+            actions=[
+                ft.TextButton('暂不下载', on_click=_on_no),
+                ft.ElevatedButton('立即下载', on_click=_on_yes),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        try:
+            page.show_dialog(confirm)
+        except Exception:
+            pass
+
+    def _refresh_engine_labels(self, **_) -> None:
+        self._engine_dd.options = self._build_engine_options()
+        try:
+            self._engine_dd.update()
+        except Exception:
+            pass
+
+    def _open_model_dialog(self) -> None:
+        page = self.page
+        if page is None:
+            return
+        from ..components.model_download_dialog import ModelDownloadDialog
+        dlg = ModelDownloadDialog(page, self._state)
+        dlg.show()
+
     def did_mount(self):
+        # 如果安装器留下 .pending_download 标志，并且模型尚未就绪，
+        # 在下一个事件循环 tick 自动打开模型下载对话框（此时 self.page 已可用）。
+        try:
+            from core.app.backend import models_dir
+            flag = models_dir() / '.pending_download'
+            if flag.exists() and not self._state.homr_available:
+                try:
+                    self.page.loop.call_soon_threadsafe(self._open_model_dialog)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # 延迟扫描：让 did_mount 先返回、Flet 内部锁释放后再推送 UI 更新
         self._scan_token += 1
         current_token = self._scan_token
@@ -263,6 +352,14 @@ class LandingPage(ft.Row):
             self._show_snack('请先勾选至少一个乐谱文件。', Palette.WARNING)
             return
         if self._state.is_processing:
+            return
+
+        # HOMR 模型权重缺失守卫：默认引擎是 auto（会用 HOMR），用户可能从未点过下拉框。
+        # 转换前发现需要 HOMR 但权重不在，弹下载提示，由用户决定是先下载还是改走
+        # 纯 Audiveris 路线。暂不下载 → 强制回退到 audiveris，避免重复弹窗。
+        engine_val = self._engine_dd.value or 'auto'
+        if engine_val in ('homr', 'auto') and not self._state.homr_available:
+            self._prompt_homr_download(previous_value='audiveris')
             return
 
         # 计算输出目录，检测已存在文件
@@ -427,6 +524,15 @@ class LandingPage(ft.Row):
                 extra_kwargs: dict = {}
                 if sys.platform == 'win32':
                     extra_kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+
+                # Inject HOMR_MODELS_DIR so the worker subprocess loads weights
+                # from <app_base_dir>/models/ (where on-demand downloads land)
+                # rather than the legacy submodule paths.
+                from core.app.backend import models_dir as _models_dir
+                _env = os.environ.copy()
+                _env['HOMR_MODELS_DIR'] = str(_models_dir())
+                if 'env' not in extra_kwargs:
+                    extra_kwargs['env'] = _env
 
                 proc = subprocess.Popen(
                     self._build_worker_cmd(),
@@ -600,6 +706,15 @@ class LandingPage(ft.Row):
             extra_kwargs: dict = {}
             if sys.platform == 'win32':
                 extra_kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+
+            # Inject HOMR_MODELS_DIR so the worker subprocess loads weights
+            # from <app_base_dir>/models/ (where on-demand downloads land)
+            # rather than the legacy submodule paths.
+            from core.app.backend import models_dir as _models_dir
+            _env = os.environ.copy()
+            _env['HOMR_MODELS_DIR'] = str(_models_dir())
+            if 'env' not in extra_kwargs:
+                extra_kwargs['env'] = _env
 
             worker_cmd = self._build_worker_cmd()
             procs: list[subprocess.Popen] = []

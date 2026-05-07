@@ -118,6 +118,52 @@ _NAV_ITEMS = [
 ]
 
 
+def _check_homr_models(state: AppState) -> None:
+    """Migrate legacy weights and update state.homr_available.
+
+    Migration: weights bundled by v0.3.2 installers lived under the homr
+    submodule's `homr/segmentation/` and `homr/transformer/` subdirectories.
+    Move any pre-existing .onnx files there into <app_base_dir>/models/ so
+    the v0.3.2 → v0.3.3 upgrade doesn't re-download what's already on disk.
+
+    Verification: after migration, check all 6 expected files exist and pass
+    SHA256. Set state.homr_available accordingly.
+    """
+    import shutil
+    from pathlib import Path
+    from core.app.backend import models_dir
+    _homr_src = Path(__file__).parent / 'omr_engine' / 'homr'
+    if str(_homr_src) not in sys.path:
+        sys.path.insert(0, str(_homr_src))
+    from homr.main import _WEIGHT_FILES, _WEIGHT_HASHES, verify_sha256
+
+    target_dir = models_dir()
+
+    # Migration: scan legacy submodule paths for any pre-existing .onnx files.
+    legacy_dirs = [
+        _homr_src / 'homr' / 'segmentation',
+        _homr_src / 'homr' / 'transformer',
+    ]
+    for legacy in legacy_dirs:
+        if not legacy.is_dir():
+            continue
+        for onnx in legacy.glob('*.onnx'):
+            destination = target_dir / onnx.name
+            if destination.exists():
+                continue  # already migrated or downloaded into the new location
+            try:
+                shutil.move(str(onnx), str(destination))
+            except Exception:
+                pass  # best-effort; runtime download path will catch missing files
+
+    # Verify all 6 are present and (if hashes are filled in) valid.
+    state.homr_available = all(
+        (target_dir / fname).exists()
+        and verify_sha256(str(target_dir / fname), _WEIGHT_HASHES.get(fname, ''))
+        for fname in _WEIGHT_FILES
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main application
 # ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +199,7 @@ async def main(page: ft.Page) -> None:
 
     # ── Global state ──────────────────────────────────────────────────────────
     state = AppState()
+    _check_homr_models(state)
 
     # 将 core/utils.log_message 重定向到 GUI 日志流
     try:

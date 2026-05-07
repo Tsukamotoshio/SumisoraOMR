@@ -20,6 +20,13 @@ def xml_scores_dir() -> Path:
     return path
 
 
+def models_dir() -> Path:
+    """HOMR ONNX model files directory (created on demand)."""
+    path = app_base_dir() / 'models'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def output_dir(output_text: str | None) -> Path:
     if output_text and output_text != '未指定（默认 Output/）':
         return Path(output_text)

@@ -80,5 +80,8 @@ tmp_*
 /editor-workspace/
 /xml-scores/
 
+# HOMR model weights — downloaded on demand at runtime, never committed.
+/models/
+
 # Chinese-language draft docs (not for distribution)
 /docs/

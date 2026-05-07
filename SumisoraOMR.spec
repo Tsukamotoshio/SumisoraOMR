@@ -169,6 +169,17 @@ def _is_unused_cv2_data(entry):
 a.binaries = [e for e in a.binaries if not _is_unused_cv2_data(e)]
 a.datas    = [e for e in a.datas    if not _is_unused_cv2_data(e)]
 
+# ── 排除 HOMR ONNX 权重 — 运行时按需下载，不再随安装包分发 ─────────────────────
+# 6 个 .onnx 文件总计约 430 MB，由 core.omr.homr_downloader 在首次启动或用户
+# 首次选择 HOMR/auto 引擎时下载到 <app_base_dir>/models/。
+def _is_homr_onnx(entry):
+    dest = entry[0].replace('\\', '/')
+    name = os.path.basename(dest)
+    return name.endswith('.onnx') and '/homr/' in dest
+
+a.binaries = [e for e in a.binaries if not _is_homr_onnx(e)]
+a.datas    = [e for e in a.datas    if not _is_homr_onnx(e)]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
