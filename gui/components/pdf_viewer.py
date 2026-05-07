@@ -178,21 +178,22 @@ class PdfViewer(ft.Column):
         """视口尺寸变化时同步图像尺寸。PDF 只同步宽度（允许垂直拖动）；图片同步宽高（CONTAIN 模式）。"""
         w = int(e.width)
         h = int(e.height) if hasattr(e, 'height') else 0
+        # Track container width so _on_page_resize can skip invisible viewers.
+        self._container_width = w
         if self._is_image:
             if w > 0 and h > 0 and (self._image.width != w or self._image.height != h):
                 self._image.width = w
                 self._image.height = h
-                try:
-                    self._image.update()
-                except Exception:
-                    pass
+                # Full PdfViewer rebuild (not just image.update) so the
+                # InteractiveViewer re-measures its content at the new size.
+                self._request_page_refresh()
         else:
             if w > 0 and self._image.width != w:
                 self._image.width = w
-                try:
-                    self._image.update()
-                except Exception:
-                    pass
+                # Full PdfViewer rebuild so the InteractiveViewer re-measures
+                # its content — calling image.update() alone does not trigger
+                # an IV layout pass, causing the old clip width to persist.
+                self._request_page_refresh()
 
     # ── 缓存 ─────────────────────────────────────────────────────────────────
 
@@ -278,9 +279,37 @@ class PdfViewer(ft.Column):
         else:
             self._executor.submit(self._load_pdf_async, path, current_token)
 
+    def did_mount(self) -> None:
+        # Register a page.on_resize handler (chaining any previously registered
+        # handler) so we can force a layout pass when the window is resized.
+        # on_size_change on the scroll_view Container is reliable for gradual
+        # resizes but can lag on instant window actions such as maximize /
+        # restore — page.on_resize closes that gap.
+        self._prev_page_resize_handler = self.page.on_resize
+        self.page.on_resize = self._on_page_resize
+
+    def _on_page_resize(self, _e) -> None:
+        """Window maximized / restored: chain to previous handler then force a
+        full PdfViewer rebuild so on_size_change fires with the new size."""
+        prev = getattr(self, '_prev_page_resize_handler', None)
+        if prev is not None:
+            try:
+                prev(_e)
+            except Exception:
+                pass
+        # Only refresh visible viewers (container width > 0 from last resize).
+        # Invisible viewers (inside visible=False containers) have width=0 so
+        # updating them is a no-op; skip to avoid unnecessary IPC messages.
+        if getattr(self, '_container_width', 0) > 0:
+            self._request_page_refresh()
+
     def will_unmount(self) -> None:
         self._load_token += 1  # 使所有后台任务尽快放弃
         self._executor.shutdown(wait=False)
+        try:
+            self.page.on_resize = getattr(self, '_prev_page_resize_handler', None)
+        except Exception:
+            pass
 
     def reset(self) -> None:
         """重置为空白占位符状态（无文件）。"""
