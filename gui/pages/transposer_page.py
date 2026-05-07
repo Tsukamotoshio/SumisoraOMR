@@ -605,9 +605,11 @@ class TransposerPage(ft.Column):
 
     async def _export_transposed_async(self) -> None:
         assert self._transposed_mxl is not None
+        _fname = f'{self._transposed_mxl.stem}_staff.pdf'
+        self._export_dir_picker.file_name = _fname
         dest_str = await self._export_dir_picker.save_file(
             dialog_title='导出移调版 PDF',
-            file_name=f'{self._transposed_mxl.stem}_staff.pdf',
+            file_name=_fname,
             allowed_extensions=['pdf'],
         )
         if not dest_str:
@@ -626,9 +628,11 @@ class TransposerPage(ft.Column):
 
     async def _export_original_async(self) -> None:
         assert self._orig_mxl is not None
+        _fname = f'{self._orig_mxl.stem}_staff.pdf'
+        self._export_dir_picker.file_name = _fname
         dest_str = await self._export_dir_picker.save_file(
             dialog_title='导出原调乐谱 PDF',
-            file_name=f'{self._orig_mxl.stem}_staff.pdf',
+            file_name=_fname,
             allowed_extensions=['pdf'],
         )
         if not dest_str:

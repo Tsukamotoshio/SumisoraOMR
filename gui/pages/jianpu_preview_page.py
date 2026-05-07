@@ -121,6 +121,22 @@ class JianpuPreviewPage(ft.Row):
 
         self._export_picker = ft.FilePicker()
         self._export_picker.on_result = self._on_export_result
+        self._save_picker = ft.FilePicker()
+
+        export_jianpu_btn = ft.OutlinedButton(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), ft.Text('导出简谱', size=14)],
+                tight=True,
+                spacing=6,
+            ),
+            on_click=self._on_export_single_click,
+            style=ft.ButtonStyle(
+                color=Palette.PRIMARY,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, Palette.PRIMARY)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+                padding=ft.Padding.symmetric(horizontal=16, vertical=10),
+            ),
+        )
 
         edit_jianpu_btn = ft.OutlinedButton(
             content=ft.Row(
@@ -157,7 +173,7 @@ class JianpuPreviewPage(ft.Row):
 
         top_bar = ft.Container(
             content=ft.Row(
-                [ft.Container(expand=True), edit_jianpu_btn],
+                [ft.Container(expand=True), export_jianpu_btn, edit_jianpu_btn],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -179,6 +195,7 @@ class JianpuPreviewPage(ft.Row):
 
     def did_mount(self) -> None:
         self.page._services.register_service(self._export_picker)  # type: ignore[attr-defined]
+        self.page._services.register_service(self._save_picker)    # type: ignore[attr-defined]
 
     def will_unmount(self) -> None:
         self._viewer.will_unmount()
@@ -352,7 +369,39 @@ class JianpuPreviewPage(ft.Row):
         else:
             self._state.emit(Event.JIANPU_EDIT_REQUESTED)
 
-    # ── 导出 ──────────────────────────────────────────────────────────────────
+    # ── 单文件导出 ────────────────────────────────────────────
+
+    def _on_export_single_click(self, _e) -> None:
+        if self._current_path is None:
+            try:
+                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                    content=ft.Text('请先选择要导出的简谱文件', size=14),
+                    duration=2000,
+                ))
+            except Exception:
+                pass
+            return
+        self.page.run_task(self._export_single_async)  # type: ignore[attr-defined]
+
+    async def _export_single_async(self) -> None:
+        if self._current_path is None:
+            return
+        pdf = self._current_path
+        self._save_picker.file_name = pdf.name
+        dest_str = await self._save_picker.save_file(
+            dialog_title='导出简谱 PDF',
+            file_name=pdf.name,
+            allowed_extensions=['pdf'],
+        )
+        if not dest_str:
+            return
+        try:
+            shutil.copy2(str(pdf), dest_str)
+            self._state.emit(Event.PROGRESS_DONE, message=f'已导出 → {Path(dest_str).name}')
+        except Exception as exc:
+            self._state.emit(Event.PROGRESS_DONE, message=f'导出失败: {exc}')
+
+    # ── 批量导出 ────────────────────────────────────────────────
 
     def _on_export_click(self, _e) -> None:
         if not self._checked:

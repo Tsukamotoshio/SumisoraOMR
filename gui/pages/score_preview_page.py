@@ -442,8 +442,11 @@ class ScorePreviewPage(ft.Row):
     async def _export_single_async(self) -> None:
         assert self._current_path is not None
         mxl = self._current_path
-        cached = self._preview_pdf_cache.get(mxl)
-        default_name = (cached.name if cached else mxl.stem + '_staff.pdf')
+        # Always derive the default filename from the MXL stem — the cache entry
+        # is stored as '_staff.pdf' (fixed basename from render_musicxml_staff_pdf)
+        # and would give every file the same name if used directly.
+        default_name = mxl.stem + '_staff.pdf'
+        self._export_picker.file_name = default_name
         dest_str = await self._export_picker.save_file(
             dialog_title='导出五线谱 PDF',
             file_name=default_name,
