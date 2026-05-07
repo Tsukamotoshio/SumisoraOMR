@@ -27,7 +27,7 @@
 | Engine | Best for | Notes |
 |--------|----------|-------|
 | **Audiveris** | Digital PDFs | Reads PDFs exported from notation software (MuseScore, Sibelius, Finale, etc.). Fast and accurate on clean vector files — no GPU needed. |
-| **Homr** | Scans & photos | AI-powered engine for PNG/JPG images of printed or photographed sheet music. Handles noise and real-world imperfections; GPU-accelerated (CUDA / DirectML). |
+| **Homr** | Scans & photos | AI-powered engine for PNG/JPG images of printed or photographed sheet music. Handles noise and real-world imperfections; GPU-accelerated (CUDA / DirectML). Model weights (~290 MB) are downloaded automatically on first use. |
 
 > Auto mode picks **Audiveris** for PDF files and **Homr** for images (PNG/JPG) automatically.
 
@@ -134,6 +134,7 @@ Input/                   # Drop source files here
 Output/                  # Converted Jianpu PDFs and MIDIs
 editor-workspace/        # Intermediate .jianpu.txt files for manual editing
 xml-scores/              # MusicXML archives (used by the transposer)
+models/                  # HOMR ONNX weights (downloaded on first use)
 logs/                    # Runtime logs
 THIRD_PARTY_NOTICES.md   # Third-party component licenses
 ```

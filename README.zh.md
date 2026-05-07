@@ -27,7 +27,7 @@
 | 引擎 | 适合场景 | 说明 |
 |------|---------|------|
 | **Audiveris** | 数字 PDF | 识别由记谱软件（MuseScore、Sibelius、Finale 等）导出的 PDF，速度快、准确率高，无需 GPU。 |
-| **Homr** | 扫描件与照片 | AI 驱动的引擎，处理印刷乐谱的 PNG/JPG 图像，能应对噪点与真实拍摄的各种干扰；GPU 加速（CUDA / DirectML）。 |
+| **Homr** | 扫描件与照片 | AI 驱动的引擎，处理印刷乐谱的 PNG/JPG 图像，能应对噪点与真实拍摄的各种干扰；GPU 加速（CUDA / DirectML）。模型权重（约 290 MB）首次使用时自动下载。 |
 
 > 自动模式下：PDF 文件使用 **Audiveris**，图片文件（PNG/JPG）使用 **Homr**，无需手动切换。
 
@@ -127,6 +127,7 @@ Input/                   # 放入原始五线谱文件
 Output/                  # 生成的简谱 PDF / MIDI
 editor-workspace/        # 供手动校对的 .jianpu.txt 中间文件
 xml-scores/              # MusicXML 存档（移调功能使用）
+models/                  # Homr ONNX 权重（首次使用时自动下载）
 logs/                    # 运行日志
 THIRD_PARTY_NOTICES.md   # 第三方组件许可证说明
 ```

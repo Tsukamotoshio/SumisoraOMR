@@ -2,7 +2,7 @@ SumisoraOMR
 ===========
 
 Author:  Tsukamotoshio
-Version: v0.3.2
+Version: v0.3.3
 
 Batch-convert Western staff notation (PDF / PNG / JPG) into Jianpu
 (numbered musical notation) PDFs, with a built-in Jianpu editor and transposer.
@@ -11,7 +11,22 @@ Batch-convert Western staff notation (PDF / PNG / JPG) into Jianpu
 What's New
 ----------
 
-0.3.2 (current)
+0.3.3 (current)
+  - HOMR model weights are now downloaded on demand: the installer no longer
+    bundles the ~290 MB ONNX weights; they are downloaded automatically the
+    first time Homr is selected and cached locally for subsequent use.
+    A ModelScope mirror is available as fallback if GitHub is unreachable.
+  - Reduced installer size: replaced PyMuPDF (fitz) with pypdfium2, further
+    shrinking the bundle.
+  Bug fixes:
+  - Staff score preview: fixed rendering failures that occurred in certain
+    cases (concurrent renders overwriting each other's temp files; malformed
+    tuplet elements in OMR-generated MusicXML crashing musicxml2ly).
+  - Jianpu rendering: fixed style errors caused by Homr recognition noise
+    (spurious duplicate voices; sharp-note measure-line stripping).
+  - Various UI fixes and usability improvements.
+
+0.3.2
   - New staff score preview page: dedicated page for browsing re-engraved
     staff-notation PDFs; supports checkbox selection and batch export to a
     directory of your choice; the transposer is now a sub-page within this

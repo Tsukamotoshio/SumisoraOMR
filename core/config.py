@@ -51,7 +51,7 @@ AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris', 'audiveris-5.10.2')
 HOMR_SOURCE_DIR_NAME = 'homr'
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 7
-APP_VERSION = '0.3.2'
+APP_VERSION = '0.3.3'
 AUDIVERIS_MSI_NAMES = [
     'Audiveris-5.10.2-windows-x86_64.msi',
     'Audiveris.msi',
