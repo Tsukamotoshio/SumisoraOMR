@@ -80,11 +80,12 @@ if os.path.isdir(r'omr_engine\homr'):
     else:
         # 回退：仓库结构不符合预期时打包整个仓库根目录
         collect_tree(r'omr_engine\homr', 'omr_engine/homr')
-    # homr 权重文件会随 omr_engine/homr/homr 一起打包。
-    # 只要这些本地模型文件存在，运行时就不会再联网下载缺失权重。
-    # homr 运行时依赖：rapidocr（含 ONNX 模型）与 musicxml（乐谱序列化）
-    # 这两个包不会被 PyInstaller 静态分析到（homr 以数据文件方式收集），
-    # 需在此手动声明，否则分发包中无法 import。
+    # HOMR Python package is bundled; .onnx weights are intentionally excluded
+    # (see the _is_homr_onnx filter below) and downloaded on demand at runtime
+    # by core.omr.homr_downloader into <app_base_dir>/models/.
+    # homr runtime deps: rapidocr (with its own ONNX models) and musicxml are
+    # not found by PyInstaller static analysis because homr is collected as data,
+    # so they must be declared explicitly here.
     tmp_ret = collect_all('rapidocr')
     datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
     tmp_ret = collect_all('musicxml')
