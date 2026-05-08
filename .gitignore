@@ -22,6 +22,7 @@ audiveris_job_*/
 /installer_test/
 /build_log.txt
 /publish_release_out.txt
+/build_hooks/
 
 # Root-only build helper scripts and temp files
 /build_installer.bat
@@ -86,3 +87,15 @@ tmp_*
 
 # Chinese-language draft docs (not for distribution)
 /docs/
+
+# User-facing plain-text docs (bundled into installer, not needed in repo)
+/读我.txt
+/README_EN.txt
+
+# Build metadata and packaging config
+/SumisoraOMR.spec
+/version_info.txt
+
+# Personal VS Code workspace settings
+Project_Convert.code-workspace
+.vscode/settings.json
