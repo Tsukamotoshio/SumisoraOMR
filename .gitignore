@@ -53,6 +53,7 @@ scripts/jianpu-ly.py
 /conversion_history.json
 /test_score.png
 /test_score.ly
+/%STAGING%
 
 # Python cache
 __pycache__/
