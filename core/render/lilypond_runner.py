@@ -213,6 +213,453 @@ def _fix_adjacent_backward_repeats_in_mxl(mxl_path: Path, out_dir: Optional[Path
         return mxl_path
 
 
+def _fix_omr_artifacts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) -> Path:
+    """Remove OMR artifacts that cause messy LilyPond staff rendering.
+
+    Four classes of fix are applied in order before passing the file to musicxml2ly:
+
+    1. *Phantom-position triplets*: ``<forward> + <note><rest measure="yes"/></note>
+       + <backup>`` sequences injected by music21 as whole-measure placeholder rests
+       for staves that have no content at that cursor position.  musicxml2ly treats
+       each such rest as an extra voice, producing spacer bloat (``s1*13/24``) and
+       phantom voice containers (VoiceSix, VoiceSeven, etc.) that make the final
+       score unreadable.  These triplets are safe to remove because the surrounding
+       ``<backup>`` elements already handle resetting the cursor to measure-start for
+       the real voices that follow.
+
+    2. *Overfull voices*: when a (staff, voice) pair's non-chord note durations sum
+       to more than the measure's expected duration (derived from the time signature),
+       trailing notes that push over the limit are removed.  This mirrors music21's
+       own offset-clipping behaviour (notes whose offset >= measure_length are skipped)
+       and prevents musicxml2ly from creating overflow voice containers.
+       Only untied trailing notes are removed; tie-stop notes are preserved.
+
+    3. *All-rest phantom voices*: voices that carry only ``<rest>`` elements and no
+       ``<pitch>`` across the entire part are OMR detection artifacts.  They are
+       removed together with the ``<backup>`` that precedes each group so that the
+       cursor remains consistent for the real voices that follow.  musicxml2ly would
+       otherwise create a spurious voice container (e.g. ``PartPOneVoiceSeven``)
+       whose ``\\voiceN`` directive scatters rest glyphs to wrong staff positions.
+
+    4. *OMR-split chords*: when two voices within the same staff have ALL their
+       pitched notes at identical ``(onset, duration)`` positions, the OMR engine
+       split what should be a chord into separate voice streams.  The secondary voice
+       is merged into the primary (lower-numbered) voice by inserting its notes as
+       ``<chord>`` elements immediately after their matching primaries and removing the
+       ``<backup>`` that introduced the secondary section.
+
+    A final cursor-consistency pass clamps any ``<backup>`` values that exceed the
+    current cursor position after the above removals.
+
+    If no fixes are needed, the original path is returned unchanged.
+    """
+    try:
+        content = mxl_path.read_text(encoding='utf-8', errors='ignore')
+    except Exception:
+        return mxl_path
+
+    import xml.etree.ElementTree as ET
+
+    # Preserve XML declaration + DOCTYPE as raw preamble (ElementTree drops them).
+    preamble_lines: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('<score-partwise') or stripped.startswith('<score-timewise'):
+            break
+        preamble_lines.append(line)
+    preamble = '\n'.join(preamble_lines) + '\n' if preamble_lines else ''
+
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return mxl_path
+
+    # Determine divisions from the first <attributes> block (divisions are
+    # constant for a MusicXML file; time signature is tracked per measure).
+    divisions = 10080
+    first_attrs = root.find('.//attributes')
+    if first_attrs is not None:
+        divs_el = first_attrs.find('divisions')
+        if divs_el is not None and divs_el.text:
+            try:
+                divisions = int(divs_el.text)
+            except ValueError:
+                pass
+
+    # Current time signature state — updated whenever a <time> element is
+    # encountered inside a measure's <attributes> block.  This ensures Fix 2
+    # uses the correct expected duration for each measure even when the piece
+    # changes time signatures mid-score (e.g. 3/4 → 4/4).
+    cur_beats = 4
+    cur_beat_type = 4
+
+    # ── Pre-pass: identify globally all-rest voices ──────────────────────────
+    # A (part_id, voice_num) pair is "all-rest" if every note in the entire
+    # part carries a <rest> child and no <pitch> element.  These are phantom
+    # OMR voices — injected as placeholder rests that produce spurious LilyPond
+    # voice containers (e.g. PartPOneVoiceSeven) whose \voiceN directives
+    # scatter rest glyphs to wrong staff positions.
+    _voice_has_pitch: dict[tuple[str, str], bool] = {}
+    for _part in root.findall('part'):
+        _pid = _part.get('id', '')
+        for _m in _part.findall('measure'):
+            for _n in _m.findall('note'):
+                _v = _n.find('voice')
+                if _v is None or not _v.text:
+                    continue
+                _key = (_pid, _v.text)
+                if _key not in _voice_has_pitch:
+                    _voice_has_pitch[_key] = False
+                if _n.find('rest') is None:   # has a pitch element
+                    _voice_has_pitch[_key] = True
+    _all_rest_voices: frozenset[tuple[str, str]] = frozenset(
+        k for k, has_pitch in _voice_has_pitch.items() if not has_pitch
+    )
+
+    fixes = 0
+
+    for part in root.findall('part'):
+        for measure in part.findall('measure'):
+            # Update time signature from this measure's <attributes>, if present.
+            for attrs in measure.findall('attributes'):
+                time_el = attrs.find('time')
+                if time_el is not None:
+                    b_el = time_el.find('beats')
+                    bt_el = time_el.find('beat-type')
+                    if b_el is not None and b_el.text and bt_el is not None and bt_el.text:
+                        try:
+                            cur_beats = int(b_el.text)
+                            cur_beat_type = int(bt_el.text)
+                        except ValueError:
+                            pass
+            expected = divisions * cur_beats * 4 // cur_beat_type
+
+            children = list(measure)
+            to_remove: set[int] = set()  # indices in `children`
+
+            # ── Fix 1: remove forward + measure-rest + backup triplets ───────
+            for idx, child in enumerate(children):
+                if child.tag != 'note':
+                    continue
+                rest_el = child.find('rest')
+                if rest_el is None or rest_el.get('measure') != 'yes':
+                    continue
+                # Only remove when sandwiched by <forward> … <backup> AND the
+                # backup value equals forward + rest duration (music21 invariant).
+                if idx == 0 or children[idx - 1].tag != 'forward':
+                    continue
+                if idx + 1 >= len(children) or children[idx + 1].tag != 'backup':
+                    continue
+                fwd_dur_el = children[idx - 1].find('duration')
+                rest_dur_el = child.find('duration')
+                bak_dur_el = children[idx + 1].find('duration')
+                if (fwd_dur_el is None or rest_dur_el is None or bak_dur_el is None
+                        or not fwd_dur_el.text or not rest_dur_el.text or not bak_dur_el.text):
+                    continue
+                try:
+                    fwd_dur = int(fwd_dur_el.text)
+                    rest_dur = int(rest_dur_el.text)
+                    bak_dur = int(bak_dur_el.text)
+                except ValueError:
+                    continue
+                # Backup must exactly undo the forward + rest movement.
+                if bak_dur != fwd_dur + rest_dur:
+                    continue
+                to_remove.update({idx - 1, idx, idx + 1})
+                fixes += 1
+
+            for i in sorted(to_remove, reverse=True):
+                measure.remove(children[i])
+
+            # ── Fix 2: trim overfull voices ───────────────────────────────────
+            children = list(measure)
+            # Group non-chord notes by (staff, voice).
+            voice_notes: dict[tuple[str, str], list] = {}
+            for child in children:
+                if child.tag != 'note':
+                    continue
+                v_el = child.find('voice')
+                s_el = child.find('staff')
+                if v_el is None or not v_el.text:
+                    continue
+                key = ((s_el.text or '1') if s_el is not None else '1', v_el.text)
+                voice_notes.setdefault(key, []).append(child)
+
+            for key, notes in voice_notes.items():
+                total = sum(
+                    int(n.find('duration').text)
+                    for n in notes
+                    if n.find('chord') is None and n.find('duration') is not None and n.find('duration').text
+                )
+                if total <= expected:
+                    continue
+                for note_el in reversed(notes):
+                    if total <= expected:
+                        break
+                    if note_el.find('chord') is not None:
+                        continue
+                    dur_el = note_el.find('duration')
+                    if dur_el is None or not dur_el.text:
+                        continue
+                    # Preserve tie-stop notes (they continue a tie from the prev measure).
+                    tie_el = note_el.find('tie')
+                    if tie_el is not None and tie_el.get('type') == 'stop':
+                        continue
+                    measure.remove(note_el)
+                    total -= int(dur_el.text)
+                    fixes += 1
+
+            # ── Fix 3: remove globally all-rest voices ────────────────────────
+            # Notes whose voice is in _all_rest_voices carry no pitch and exist
+            # only as phantom OMR placeholders.  Remove them along with the
+            # <backup> that immediately precedes each group so the cursor stays
+            # consistent for the real voices that follow.
+            if _all_rest_voices:
+                children = list(measure)
+                to_remove_4: set[int] = set()
+                for idx, child in enumerate(children):
+                    if child.tag != 'note':
+                        continue
+                    v_el = child.find('voice')
+                    if v_el is None or not v_el.text:
+                        continue
+                    if (part.get('id', ''), v_el.text) not in _all_rest_voices:
+                        continue
+                    to_remove_4.add(idx)
+                    # Remove the immediately preceding <backup> so the cursor
+                    # position is not disturbed for subsequent voices.
+                    if (idx > 0
+                            and children[idx - 1].tag == 'backup'
+                            and (idx - 1) not in to_remove_4):
+                        to_remove_4.add(idx - 1)
+                if to_remove_4:
+                    for i in sorted(to_remove_4, reverse=True):
+                        measure.remove(children[i])
+                    fixes += len(to_remove_4)
+
+            # ── Fix 4: merge chord-identical voices into single-voice chords ─────
+            # When two voices in the same staff have ALL their pitched notes at
+            # IDENTICAL (onset, duration) positions, the OMR engine split what
+            # should be a chord into separate voice streams.  Consolidate by
+            # converting secondary voice notes to <chord> notes and inserting
+            # them immediately after the corresponding primary note, then
+            # removing the <backup> that introduced the secondary voice section.
+            # Only pitched notes are compared (rests are never merged as chords).
+            children = list(measure)
+
+            # Compute note onset ticks by simulating cursor movement.
+            _cur5 = 0
+            _last_onset = 0
+            _note_onset: dict[int, int] = {}
+            for _i5, _ch5 in enumerate(children):
+                if _ch5.tag == 'note':
+                    if _ch5.find('chord') is not None:
+                        _note_onset[_i5] = _last_onset
+                    else:
+                        _note_onset[_i5] = _cur5
+                        _last_onset = _cur5
+                        _d5 = _ch5.find('duration')
+                        if _d5 is not None and _d5.text:
+                            try:
+                                _cur5 += int(_d5.text)
+                            except ValueError:
+                                pass
+                elif _ch5.tag == 'forward':
+                    _d5 = _ch5.find('duration')
+                    if _d5 is not None and _d5.text:
+                        try:
+                            _cur5 += int(_d5.text)
+                        except ValueError:
+                            pass
+                elif _ch5.tag == 'backup':
+                    _d5 = _ch5.find('duration')
+                    if _d5 is not None and _d5.text:
+                        try:
+                            _cur5 = max(0, _cur5 - int(_d5.text))
+                        except ValueError:
+                            pass
+
+            # Build pitch-note timeline per (staff, voice):
+            # [(onset, duration, child_index), ...]
+            _tl5: dict[tuple[str, str], list[tuple[int, int, int]]] = {}
+            for _i5, _ch5 in enumerate(children):
+                if _ch5.tag != 'note':
+                    continue
+                if _ch5.find('chord') is not None:
+                    continue
+                if _ch5.find('rest') is not None:
+                    continue  # rests are never chord candidates
+                _v5 = _ch5.find('voice')
+                _s5 = _ch5.find('staff')
+                if _v5 is None or not _v5.text:
+                    continue
+                _sn5 = (_s5.text or '1') if _s5 is not None else '1'
+                _d5 = _ch5.find('duration')
+                if _d5 is None or not _d5.text:
+                    continue
+                try:
+                    _dur5 = int(_d5.text)
+                except ValueError:
+                    continue
+                _tl5.setdefault((_sn5, _v5.text), []).append(
+                    (_note_onset.get(_i5, 0), _dur5, _i5)
+                )
+
+            # Find (secondary, primary) voice pairs with identical timelines.
+            _stv5: dict[str, list[str]] = {}
+            for _sn5, _vn5 in _tl5:
+                _stv5.setdefault(_sn5, []).append(_vn5)
+
+            _mmap5: dict[tuple[str, str], tuple[str, str]] = {}
+            for _sn5, _vns5 in _stv5.items():
+                _sorted5 = sorted(_vns5, key=lambda x: int(x) if x.isdigit() else x)
+                for _pi5, _vp5 in enumerate(_sorted5):
+                    _pk5 = (_sn5, _vp5)
+                    _ptl5 = [(_o, _d) for _o, _d, _ in _tl5[_pk5]]
+                    for _vs5 in _sorted5[_pi5 + 1:]:
+                        _sk5 = (_sn5, _vs5)
+                        if _sk5 in _mmap5:
+                            continue
+                        if [(_o, _d) for _o, _d, _ in _tl5[_sk5]] == _ptl5:
+                            _mmap5[_sk5] = _pk5
+
+            if _mmap5:
+                # Build {secondary_key: {onset: [note_element, ...]}} lookup.
+                _snotes5: dict[tuple[str, str], dict[int, list]] = {}
+                for _sk5 in _mmap5:
+                    _snotes5[_sk5] = {}
+                    for _o, _d, _idx in _tl5[_sk5]:
+                        _snotes5[_sk5].setdefault(_o, []).append(children[_idx])
+
+                # Indices of secondary notes to skip in normal output (they are
+                # reinserted as chord notes immediately after their primary).
+                _skip5: set[int] = {
+                    _idx for _sk5 in _mmap5 for _, _, _idx in _tl5[_sk5]
+                }
+
+                # Mark backups immediately preceding a secondary voice section.
+                for _i5, _ch5 in enumerate(children):
+                    if _ch5.tag != 'backup':
+                        continue
+                    for _j5 in range(_i5 + 1, len(children)):
+                        _nx5 = children[_j5]
+                        if _nx5.tag in ('barline', 'attributes', 'direction', 'forward'):
+                            continue
+                        if _nx5.tag == 'note' and _nx5.find('chord') is None:
+                            _v5 = _nx5.find('voice')
+                            _s5 = _nx5.find('staff')
+                            if _v5 is not None and _v5.text:
+                                _snc5 = (_s5.text if _s5 is not None else '1', _v5.text)
+                                if _snc5 in _mmap5:
+                                    _skip5.add(_i5)
+                        break
+
+                # Rebuild measure children with chord notes interleaved.
+                _new5: list = []
+                for _i5, _ch5 in enumerate(children):
+                    if _i5 in _skip5:
+                        continue
+                    _new5.append(_ch5)
+                    if _ch5.tag == 'note' and _ch5.find('chord') is None:
+                        _v5 = _ch5.find('voice')
+                        _s5 = _ch5.find('staff')
+                        if _v5 is not None and _v5.text:
+                            _sn5 = _s5.text if _s5 is not None else '1'
+                            _on5 = _note_onset.get(_i5, -1)
+                            for _sk5, _pk5 in _mmap5.items():
+                                if _pk5 != (_sn5, _v5.text):
+                                    continue
+                                for _cn5 in _snotes5[_sk5].get(_on5, []):
+                                    if _cn5.find('chord') is None:
+                                        _cn5.insert(0, ET.Element('chord'))
+                                    _cv5 = _cn5.find('voice')
+                                    if _cv5 is not None:
+                                        _cv5.text = _v5.text
+                                    _new5.append(_cn5)
+                                    fixes += 1
+
+                for _old5 in list(measure):
+                    measure.remove(_old5)
+                for _nc5 in _new5:
+                    measure.append(_nc5)
+
+            # ── Fix 3: correct <backup> values that now exceed cursor position ─
+            # After note removal, backups may over-shoot; clamp to actual cursor.
+            children = list(measure)
+            cursor = 0
+            for child in children:
+                if child.tag == 'note':
+                    if child.find('chord') is None:
+                        dur_el = child.find('duration')
+                        if dur_el is not None and dur_el.text:
+                            cursor += int(dur_el.text)
+                elif child.tag == 'forward':
+                    dur_el = child.find('duration')
+                    if dur_el is not None and dur_el.text:
+                        cursor += int(dur_el.text)
+                elif child.tag == 'backup':
+                    dur_el = child.find('duration')
+                    if dur_el is not None and dur_el.text:
+                        orig = int(dur_el.text)
+                        clamped = min(orig, cursor)
+                        if clamped != orig:
+                            dur_el.text = str(clamped)
+                            fixes += 1
+                        cursor = max(0, cursor - orig)
+
+    if not fixes:
+        return mxl_path
+
+    try:
+        modified_xml = ET.tostring(root, encoding='unicode', xml_declaration=False)
+        if out_dir is not None:
+            fixed_path = out_dir / '_staff_fixed.musicxml'
+        else:
+            fixed_path = mxl_path.parent / '_staff_fixed.musicxml'
+        fixed_path.write_text(preamble + modified_xml, encoding='utf-8')
+        LOGGER.debug(
+            '_fix_omr_artifacts_in_mxl: applied %d fix(es) in %s',
+            fixes, mxl_path.name,
+        )
+        return fixed_path
+    except Exception:
+        return mxl_path
+
+
+def _fix_rest_positions_in_ly(ly_path: Path) -> None:
+    r"""Center rests in all \voiceN contexts of a musicxml2ly-generated .ly file.
+
+    musicxml2ly assigns ``\voiceOne``, ``\voiceTwo`` … ``\voiceFour`` directives
+    to voices beyond the first in multi-voice staves.  These directives force
+    rest glyphs to fixed above/below-staff positions suited for hand-engraved
+    genuine polyphony.  OMR-generated scores often carry multiple voice numbers
+    due to recognition fragmentation rather than true simultaneous independent
+    voices, so the displaced rests look wrong.
+
+    Inserts ``\override Rest.staff-position = #0`` and
+    ``\override MultiMeasureRest.staff-position = #0`` immediately after each
+    ``\voiceN`` directive that precedes a variable reference (``\PartXxx``).
+    Stem direction and note-head placement from ``\voiceN`` are preserved;
+    only rest glyphs are centred on the middle staff line.
+    """
+    try:
+        text = ly_path.read_text(encoding='utf-8', errors='ignore')
+        fixed = re.sub(
+            r'(\\voice(?:One|Two|Three|Four|Five|Six|Seven|Eight))'
+            r'(\s+)(\\[A-Z])',
+            r'\1\2'
+            r'\\override Rest.staff-position = #0 '
+            r'\\override MultiMeasureRest.staff-position = #0 '
+            r'\3',
+            text,
+        )
+        if fixed != text:
+            ly_path.write_text(fixed, encoding='utf-8')
+            LOGGER.debug('_fix_rest_positions_in_ly: centred rests in %s', ly_path.name)
+    except Exception as exc:
+        LOGGER.debug('_fix_rest_positions_in_ly: %s', exc)
+
+
 def _fix_deprecated_ly_syntax(text: str) -> str:
     r"""Convert deprecated LilyPond #'property syntax to .property dot notation.
 
@@ -454,11 +901,16 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     # is safe.  The final PDF is renamed to include the stem at the end.
     ly_path = out_dir / '_staff.ly'
 
-    # Step 0: Pre-fix adjacent backward-repeat barlines in the MusicXML (OMR
+    # Step 0a: Pre-fix adjacent backward-repeat barlines in the MusicXML (OMR
     # artefact: combined :|.|: barline split into two backward-repeats).
     # Pass out_dir so the fixed file is isolated to this call's temp directory,
     # preventing concurrent render threads from clobbering each other's copy.
     mxl_for_ly = _fix_adjacent_backward_repeats_in_mxl(mxl_path, out_dir)
+
+    # Step 0b: Remove OMR rendering artefacts — phantom-position triplets and
+    # overfull voice durations that cause musicxml2ly to emit excessive spacers
+    # and ghost voice containers (VoiceSix, VoiceSeven, etc.).
+    mxl_for_ly = _fix_omr_artifacts_in_mxl(mxl_for_ly, out_dir)
 
     # Step 1: musicxml2ly → .ly
     try:
@@ -475,6 +927,11 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     except Exception as exc:
         log_message(f'musicxml2ly 执行出错: {exc}', logging.WARNING)
         return None
+
+    # Step 1.5: Centre rests in all \voiceN contexts.  OMR-fragmented voices
+    # produce displaced rest glyphs; centering them via staff-position overrides
+    # avoids rest scatter without affecting note stems or head placement.
+    _fix_rest_positions_in_ly(ly_path)
 
     # Step 2: Fix deprecated #'property syntax emitted by older musicxml2ly builds
     try:

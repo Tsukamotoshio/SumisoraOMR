@@ -29,6 +29,7 @@ from ..notation.jianpu import (
 )
 from .lilypond_runner import (
     _fix_adjacent_backward_repeats_in_mxl,
+    _fix_omr_artifacts_in_mxl,
     render_lilypond_pdf,
 )
 from .jianpu_runner import (
@@ -749,6 +750,11 @@ def generate_jianpu_pdf_from_mxl(
         # flow and the staff-PDF flow see correct start/end repeat structure.
         # Pass temp_dir so each concurrent worker writes its own isolated copy.
         _mxl_for_parse = _fix_adjacent_backward_repeats_in_mxl(mxl_path, temp_dir)
+        # Remove phantom voices, overfull notes, and merge chord-identical voices
+        # so that music21 sees a clean score.  Chord-consolidated voices become
+        # music21 Chord objects; clone_monophonic_element() then keeps only the
+        # highest pitch per chord — correct monophonic behaviour for jianpu.
+        _mxl_for_parse = _fix_omr_artifacts_in_mxl(_mxl_for_parse, temp_dir)
         source_score = converter.parse(str(_mxl_for_parse))
 
         # Source file stem (preferred_title) is always authoritative — OMR engines write
