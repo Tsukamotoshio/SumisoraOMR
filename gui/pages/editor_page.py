@@ -7,7 +7,7 @@ from __future__ import annotations
 import base64
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import flet as ft
 
@@ -16,6 +16,47 @@ from core.app.backend import editor_workspace_dir
 from ..components.jianpu_editor import JianpuEditor
 from ..components.pdf_viewer import _render_pdf_page
 from ..theme import Palette
+
+def _do_render_preview(txt_path: Path) -> tuple[Optional[str], Optional[str]]:
+    """Render jianpu txt → LilyPond → PDF → PNG base64.
+
+    Runs in a background thread. Returns (b64_png, None) on success or
+    (None, error_message) on failure. Cleans up all temp files before returning.
+    """
+    import tempfile
+    import shutil as _shutil
+    from core.render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix='sumisora_preview_'))
+    try:
+        ly_path = tmp_dir / txt_path.with_suffix('.ly').name
+        if not render_jianpu_ly(txt_path, ly_path):
+            return None, 'jianpu-ly 转换失败，请确认安装'
+
+        try:
+            title = ''
+            for ln in txt_path.read_text(encoding='utf-8').splitlines():
+                if ln.strip().startswith('title='):
+                    title = ln.strip()[len('title='):]
+                    break
+            from core.render.renderer import sanitize_generated_lilypond_file
+            sanitize_generated_lilypond_file(ly_path, title)
+        except Exception:
+            pass
+
+        pdf_path = render_lilypond_pdf(ly_path)
+        if not pdf_path or not pdf_path.exists():
+            return None, 'LilyPond 渲染失败，请检查文件语法'
+
+        result = _render_pdf_page(pdf_path, 0)
+        if result is None:
+            return None, 'PDF 无法解析'
+        return result[0], None
+    except Exception as exc:
+        return None, f'渲染出错: {exc}'
+    finally:
+        _shutil.rmtree(str(tmp_dir), ignore_errors=True)
+
 
 # 1×1 透明 PNG，用于保持 InteractiveViewer content 始终 visible=True
 _BLANK_PNG_B64 = (
@@ -35,25 +76,48 @@ class _BinaryImageView(ft.Column):
     MAX_SCALE = 8.0
     SCALE_STEP = 0.15
 
-    def __init__(self, state: AppState):
+    def __init__(self, state: AppState, on_preview_requested: Optional[Callable[[], None]] = None):
         super().__init__(spacing=0, expand=True)
         self._state = state
+        self._on_preview_requested = on_preview_requested or (lambda: None)
         self._path: Optional[Path] = None
         self._raw_b64: Optional[str] = None
         self._highlighted_line: int = -1
         self._load_token: int = 0
+        self._active_tab: str = 'source'
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_line_selected)
 
     def _build_ui(self) -> None:
+        self._tab_source_btn = ft.TextButton(
+            '源图像',
+            on_click=self._on_tab_source,
+            style=ft.ButtonStyle(color=Palette.PRIMARY),
+        )
+        self._tab_preview_btn = ft.TextButton(
+            '简谱预览',
+            on_click=self._on_tab_preview,
+            style=ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT),
+        )
+
         toolbar = ft.Container(
             content=ft.Row(
                 [
-                    ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,    icon_size=18, on_click=self._zoom_out, tooltip='缩小'),
-                    ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,     icon_size=18, on_click=self._zoom_in,  tooltip='放大'),
-                    ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,  icon_size=18, on_click=self._zoom_fit, tooltip='适应'),
+                    ft.Row(
+                        [
+                            ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,    icon_size=18, on_click=self._zoom_out, tooltip='缩小'),
+                            ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,     icon_size=18, on_click=self._zoom_in,  tooltip='放大'),
+                            ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,  icon_size=18, on_click=self._zoom_fit, tooltip='适应'),
+                        ],
+                        spacing=2,
+                    ),
+                    ft.Row(
+                        [self._tab_source_btn, self._tab_preview_btn],
+                        spacing=0,
+                    ),
                 ],
-                spacing=2,
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
@@ -64,13 +128,10 @@ class _BinaryImageView(ft.Column):
             src=_BLANK_PNG_B64, fit=ft.BoxFit.FIT_WIDTH,
             visible=True, gapless_playback=True,
         )
-        # GestureDetector 仅用于 tap-to-line 联动，不处理滚轮/悬停
         self._tap_detector = ft.GestureDetector(
             content=self._image,
             on_tap=self._on_tap,
         )
-        # constrained=False：允许内容超出视口高度，从而可垂直拖动；
-        # 宽度由 _on_viewer_resize 动态设定。
         self._interactive = ft.InteractiveViewer(
             content=self._tap_detector,
             pan_enabled=True,
@@ -104,7 +165,59 @@ class _BinaryImageView(ft.Column):
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
             on_size_change=self._on_viewer_resize,
         )
-        self.controls = [toolbar, self._view_container]
+
+        # ── Preview area ─────────────────────────────────────────────────────
+        self._preview_loading_col = ft.Column(
+            [
+                ft.ProgressRing(width=28, height=28, stroke_width=3),
+                ft.Text('渲染中…', size=12, color=ft.Colors.OUTLINE),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=12,
+        )
+        self._preview_img = ft.Image(
+            src=_BLANK_PNG_B64,
+            fit=ft.BoxFit.FIT_WIDTH,
+            visible=True,
+            gapless_playback=True,
+        )
+        self._preview_img_container = ft.Container(
+            content=self._preview_img,
+            expand=True,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            on_size_change=self._on_preview_resize,
+            visible=False,
+        )
+        self._preview_placeholder_col = ft.Column(
+            [
+                ft.Icon(ft.Icons.PREVIEW_OUTLINED, size=40, color=ft.Colors.OUTLINE),
+                ft.Text('点击「简谱预览」生成渲染预览', size=12,
+                        color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        self._preview_state_container = ft.Container(
+            content=self._preview_placeholder_col,
+            expand=True,
+            alignment=ft.Alignment(0, 0),
+        )
+        self._preview_area = ft.Container(
+            content=ft.Stack(
+                [self._preview_img_container, self._preview_state_container],
+                expand=True,
+            ),
+            expand=True,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            visible=False,
+        )
+
+        self.controls = [
+            toolbar,
+            ft.Stack([self._view_container, self._preview_area], expand=True),
+        ]
         self.expand = True
 
     def _on_viewer_resize(self, e) -> None:
@@ -114,6 +227,15 @@ class _BinaryImageView(ft.Column):
             self._image.width = w
             try:
                 self._image.update()
+            except Exception:
+                pass
+
+    def _on_preview_resize(self, e) -> None:
+        w = int(e.width)
+        if w > 0 and self._preview_img.width != w:
+            self._preview_img.width = w
+            try:
+                self._preview_img.update()
             except Exception:
                 pass
 
@@ -210,6 +332,31 @@ class _BinaryImageView(ft.Column):
     async def _zoom_fit(self, _e=None) -> None:
         await self._interactive.reset()
 
+    # ── Tab 切换 ─────────────────────────────────────────────────────────────
+
+    def _on_tab_source(self, _e) -> None:
+        self._active_tab = 'source'
+        self._tab_source_btn.style  = ft.ButtonStyle(color=Palette.PRIMARY)
+        self._tab_preview_btn.style = ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT)
+        self._view_container.visible  = True
+        self._preview_area.visible = False
+        try:
+            self.update()
+        except Exception:
+            pass
+
+    def _on_tab_preview(self, _e) -> None:
+        self._active_tab = 'preview'
+        self._tab_source_btn.style  = ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT)
+        self._tab_preview_btn.style = ft.ButtonStyle(color=Palette.PRIMARY)
+        self._view_container.visible  = False
+        self._preview_area.visible = True
+        try:
+            self.update()
+        except Exception:
+            pass
+        self._on_preview_requested()
+
     # ── 行联动 ───────────────────────────────────────────────────────────────
 
     def _on_tap(self, e: ft.TapEvent) -> None:
@@ -233,12 +380,64 @@ class _BinaryImageView(ft.Column):
         """外部（文本编辑器）选中行时记录状态（供未来扩展行高亮）。"""
         self._highlighted_line = line_no
 
+    def show_preview_loading(self) -> None:
+        if not self._preview_area.visible:
+            return
+        self._preview_img_container.visible = False
+        self._preview_state_container.content = self._preview_loading_col
+        self._preview_state_container.visible = True
+        try:
+            self._preview_area.update()
+        except Exception:
+            pass
+
+    def show_preview_image(self, b64: str) -> None:
+        if not self._preview_area.visible:
+            return
+        self._preview_img.src = b64
+        self._preview_img_container.visible = True
+        self._preview_state_container.visible = False
+        try:
+            self._preview_area.update()
+        except Exception:
+            pass
+
+    def show_preview_error(self, message: str) -> None:
+        if not self._preview_area.visible:
+            return
+        error_col = ft.Column(
+            [
+                ft.Icon(ft.Icons.ERROR_OUTLINE_ROUNDED, size=36, color=Palette.ERROR),
+                ft.Text(message, size=12, color=Palette.ERROR,
+                        text_align=ft.TextAlign.CENTER),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=8,
+        )
+        self._preview_img_container.visible = False
+        self._preview_state_container.content = error_col
+        self._preview_state_container.visible = True
+        try:
+            self._preview_area.update()
+        except Exception:
+            pass
+
     def reset(self) -> None:
         self._path = None
         self._raw_b64 = None
         self._highlighted_line = -1
         self._image.src = _BLANK_PNG_B64
         self._placeholder.visible = True
+        self._active_tab = 'source'
+        self._tab_source_btn.style  = ft.ButtonStyle(color=Palette.PRIMARY)
+        self._tab_preview_btn.style = ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT)
+        self._view_container.visible  = True
+        self._preview_area.visible = False
+        self._preview_img.src = _BLANK_PNG_B64
+        self._preview_img_container.visible = False
+        self._preview_state_container.content = self._preview_placeholder_col
+        self._preview_state_container.visible = True
         try:
             self.update()
         except Exception:
@@ -256,7 +455,7 @@ class EditorPage(ft.Row):
         super().__init__(spacing=0, expand=True)
         self._state = state
         self._has_been_shown = False
-        self._img_view = _BinaryImageView(state)
+        self._img_view = _BinaryImageView(state, on_preview_requested=self._render_preview)
         self._editor   = JianpuEditor(state)
         self._open_picker = ft.FilePicker()
         self._build_ui()
@@ -475,6 +674,33 @@ class EditorPage(ft.Row):
         if path is not None:
             self.load_from_output_pdf(path)
         self._has_been_shown = True
+
+    def _render_preview(self) -> None:
+        txt_path = self._state.current_jianpu_txt
+        if txt_path is None or not txt_path.exists():
+            self._img_view.show_preview_error('未加载简谱文件')
+            return
+        self._editor.save()
+        self._img_view.show_preview_loading()
+        threading.Thread(
+            target=self._render_preview_thread,
+            args=(txt_path,),
+            daemon=True,
+        ).start()
+
+    def _render_preview_thread(self, txt_path: Path) -> None:
+        b64, err = _do_render_preview(txt_path)
+        try:
+            if self.page is not None:
+                self.page.run_task(self._async_preview_done, b64, err)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    async def _async_preview_done(self, b64: Optional[str], err: Optional[str]) -> None:
+        if b64:
+            self._img_view.show_preview_image(b64)
+        else:
+            self._img_view.show_preview_error(err or '渲染失败')
 
     def reset_view(self) -> None:
         self._img_view.reset()
