@@ -57,6 +57,24 @@ class JianpuEditor(ft.Column):
 
     def _build_ui(self) -> None:
         self._title = section_title('简谱编辑器', self._state.dark_mode)
+        self._undo_btn = ft.IconButton(
+            icon=ft.Icons.UNDO_ROUNDED,
+            icon_size=16,
+            tooltip='撤销 (Ctrl+Z)',
+            on_click=self._on_undo,
+            disabled=True,
+            width=32,
+            height=32,
+        )
+        self._redo_btn = ft.IconButton(
+            icon=ft.Icons.REDO_ROUNDED,
+            icon_size=16,
+            tooltip='重做 (Ctrl+Y)',
+            on_click=self._on_redo,
+            disabled=True,
+            width=32,
+            height=32,
+        )
         save_btn = ft.TextButton(
             '保存',
             icon=ft.Icons.SAVE_OUTLINED,
@@ -73,7 +91,7 @@ class JianpuEditor(ft.Column):
 
         toolbar = ft.Container(
             content=ft.Row(
-                [self._title, ft.Row([export_btn, save_btn], spacing=4)],
+                [self._title, ft.Row([self._undo_btn, self._redo_btn, export_btn, save_btn], spacing=2)],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -167,9 +185,24 @@ class JianpuEditor(ft.Column):
     def _apply_loaded_content(self, text: str, token: int) -> None:
         if token != self._load_token:
             return
+        if self._snapshot_timer is not None:
+            self._snapshot_timer.cancel()
+            self._snapshot_timer = None
         self._lines = text.splitlines()
         self._editor.value = text
+        self._undo_stack = [text]
+        self._redo_stack = []
+        self._dirty = False
+        self._update_title()
         self._refresh_component()
+        if hasattr(self, 'page') and self.page is not None:
+            try:
+                self.page.run_task(self._async_update_undo_redo_after_load)
+            except Exception:
+                pass
+
+    async def _async_update_undo_redo_after_load(self) -> None:
+        self._update_undo_redo_buttons()
 
     def _apply_load_error(self, message: str, token: int) -> None:
         if token != self._load_token:
@@ -233,15 +266,56 @@ class JianpuEditor(ft.Column):
             self._on_redo(None)
 
     def _on_undo(self, _e) -> None:
-        pass  # implemented in Task 2
+        if self._snapshot_timer is not None:
+            self._snapshot_timer.cancel()
+            self._snapshot_timer = None
+        if len(self._undo_stack) <= 1:
+            return
+        current = self._editor.value or ''
+        self._redo_stack.append(current)
+        self._undo_stack.pop()
+        prev = self._undo_stack[-1]
+        self._editor.value = prev
+        self._lines = prev.splitlines()
+        self._dirty = True
+        self._update_title()
+        self._update_undo_redo_buttons()
+        self._refresh_component()
 
     def _on_redo(self, _e) -> None:
-        pass  # implemented in Task 2
+        if self._snapshot_timer is not None:
+            self._snapshot_timer.cancel()
+            self._snapshot_timer = None
+        if not self._redo_stack:
+            return
+        current = self._editor.value or ''
+        self._undo_stack.append(current)
+        nxt = self._redo_stack.pop()
+        self._editor.value = nxt
+        self._lines = nxt.splitlines()
+        self._dirty = True
+        self._update_title()
+        self._update_undo_redo_buttons()
+        self._refresh_component()
 
     def _push_snapshot(self, text: str) -> None:
         # Called from a background threading.Timer thread.
         # MUST NOT touch any Flet control directly — use page.run_task for UI updates.
-        pass  # implemented in Task 2
+        if self._undo_stack and self._undo_stack[-1] == text:
+            return
+        self._undo_stack.append(text)
+        self._redo_stack.clear()
+        if len(self._undo_stack) > 50:
+            self._undo_stack.pop(0)
+
+    def _update_undo_redo_buttons(self) -> None:
+        self._undo_btn.disabled = len(self._undo_stack) <= 1
+        self._redo_btn.disabled = not self._redo_stack
+        try:
+            self._undo_btn.update()
+            self._redo_btn.update()
+        except Exception:
+            pass
 
     def save(self) -> None:
         """Public save — callable from parent page."""
@@ -348,9 +422,17 @@ class JianpuEditor(ft.Column):
             pass
 
     def reset(self) -> None:
+        if self._snapshot_timer is not None:
+            self._snapshot_timer.cancel()
+            self._snapshot_timer = None
         self._path = None
         self._lines = []
         self._editor.value = ''
+        self._undo_stack = []
+        self._redo_stack = []
+        self._dirty = False
+        self._update_title()
+        self._update_undo_redo_buttons()
         self._request_page_refresh()
 
     # ── 对外 API ─────────────────────────────────────────────────────────────
