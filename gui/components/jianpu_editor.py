@@ -89,9 +89,19 @@ class JianpuEditor(ft.Column):
             tooltip='将当前简谱文件通过 LilyPond 渲染为 PDF',
         )
 
+        symbol_btn = ft.IconButton(
+            icon=ft.Icons.HELP_OUTLINE_ROUNDED,
+            icon_size=16,
+            tooltip='简谱符号速查',
+            on_click=self._show_symbol_ref,
+            width=32,
+            height=32,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
         toolbar = ft.Container(
             content=ft.Row(
-                [self._title, ft.Row([self._undo_btn, self._redo_btn, export_btn, save_btn], spacing=2)],
+                [self._title, ft.Row([symbol_btn, self._undo_btn, self._redo_btn, export_btn, save_btn], spacing=2)],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -131,6 +141,57 @@ class JianpuEditor(ft.Column):
             ft.Container(content=editor_row, expand=True),
         ]
         self.expand = True
+
+    def _show_symbol_ref(self, _e) -> None:
+        def _row(symbol: str, meaning: str) -> ft.Row:
+            return ft.Row(
+                [
+                    ft.Container(
+                        ft.Text(symbol, size=13,
+                                style=ft.TextStyle(font_family='Consolas'),
+                                color=ft.Colors.ON_SURFACE),
+                        width=130,
+                    ),
+                    ft.Text(meaning, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                ],
+                spacing=8,
+            )
+
+        rows = [
+            _row('1 2 3 4 5 6 7', 'Do Re Mi Fa Sol La Si'),
+            _row('0', '休止符'),
+            _row('#1  b3', '升 Do / 降 Mi（写在数字前）'),
+            _row("1'  1''", '高八度 / 超高八度'),
+            _row('1,  1,,', '低八度 / 超低八度'),
+            _row('1', '四分音符（1 拍）'),
+            _row('1 -', '二分音符（2 拍）'),
+            _row('1 - - -', '全音符（4 拍）'),
+            _row('q1', '八分音符（½ 拍）'),
+            _row('s1', '十六分音符（¼ 拍）'),
+            _row('d1', '三十二分音符（⅛ 拍）'),
+            _row('1.', '附点四分（1.5 拍）'),
+            _row('q1.', '附点八分（0.75 拍）'),
+            _row('|', '小节线'),
+            _row('NextPart', '强制换行（不影响音高）'),
+            _row('title=曲名', '标题（文件头部）'),
+            _row('1=C  1=G', '调号'),
+            _row('4/4,8', '拍号（分母=最小时值）'),
+        ]
+
+        dlg = ft.AlertDialog(
+            title=ft.Text('简谱符号速查', size=15, weight=ft.FontWeight.W_700),
+            content=ft.Container(
+                content=ft.Column(rows, spacing=6, tight=True,
+                                  scroll=ft.ScrollMode.AUTO),
+                width=380,
+                height=420,
+            ),
+            actions=[
+                ft.TextButton('关闭', on_click=lambda _: self.page.pop_dialog()),  # type: ignore[attr-defined]
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.show_dialog(dlg)  # type: ignore[attr-defined]
 
     def _update_title(self) -> None:
         self._title.value = '简谱编辑器' + (' *' if self._dirty else '')
