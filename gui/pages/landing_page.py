@@ -34,7 +34,7 @@ class LandingPage(ft.Row):
         self._state = state
         self._overlay = overlay
         self._scan_token: int = 0
-        self._preloaded_paths: set[str] = set()
+        self._preloaded_paths: set[Path] = set()
         self._worker_procs: list[subprocess.Popen] = []
         self._build_ui()
         state.on(Event.FILE_SELECTED,   self._on_file_selected)
@@ -408,8 +408,11 @@ class LandingPage(ft.Row):
         for path in files:
             if token != self._scan_token:
                 return
+            if path in self._preloaded_paths:
+                continue
             try:
                 self._viewer.preload(path)
+                self._preloaded_paths.add(path)
             except Exception:
                 pass
 
@@ -433,11 +436,16 @@ class LandingPage(ft.Row):
                 pass
 
     def _show_snack(self, msg: str, color: str = Palette.INFO) -> None:
-        self.page.show_dialog(ft.SnackBar(
-            content=ft.Text(msg, color='#FFFFFF'),
-            bgcolor=color,
-            duration=3500,
-        ))
+        if self.page is None:
+            return
+        try:
+            self.page.show_dialog(ft.SnackBar(
+                content=ft.Text(msg, color='#FFFFFF'),
+                bgcolor=color,
+                duration=3500,
+            ))
+        except Exception:
+            pass
 
     def _on_open_output_dir(self, _e) -> None:
         try:

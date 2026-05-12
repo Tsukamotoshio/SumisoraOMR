@@ -81,6 +81,9 @@ def _bootstrap_venv() -> None:
     sys.exit(1)
 
 _bootstrap_venv()
+if sys.platform == 'win32' and '--worker' not in sys.argv:
+    os.environ.setdefault('FLET_APP_USER_MODEL_ID', 'Tsukamotoshio.SumisoraOMR')
+    os.environ.setdefault('FLET_HIDE_WINDOW_ON_START', 'true')
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Worker subprocess early exit: branch before flet/GUI imports, saving memory and startup time
@@ -135,7 +138,7 @@ def _check_homr_models(state: AppState) -> None:
     _homr_src = Path(__file__).parent / 'omr_engine' / 'homr'
     if str(_homr_src) not in sys.path:
         sys.path.insert(0, str(_homr_src))
-    from homr.main import _WEIGHT_FILES, _WEIGHT_HASHES, verify_sha256
+    from homr.main import _WEIGHT_FILES, _WEIGHT_HASHES, verify_sha256  # type: ignore[import-not-found]
 
     target_dir = models_dir()
 
@@ -787,19 +790,22 @@ def _setup_flet_view_name() -> None:
         # 直接指定 SumisoraOMR.exe，跳过 flet_desktop 内部的路径发现逻辑，
         # 避免对 os.getcwd() / build/windows/ 的依赖
         _exe_str = str(_exe)
+        _orig_open = _fd.open_flet_view_async
 
         async def _patched_open(page_url, assets_dir, hidden):
             import asyncio as _aio
             import tempfile as _tmp
             import os as _o
             _pid  = str(_Path(_tmp.gettempdir()) / _rstr(20))
-            _args = [_exe_str, page_url, _pid]
-            if assets_dir:
-                _args.append(assets_dir)
             _env = {**_o.environ}
-            if hidden:
-                _env['FLET_HIDE_WINDOW_ON_START'] = 'true'
-            return (await _aio.create_subprocess_exec(_args[0], *_args[1:], env=_env), _pid)
+            _env['FLET_APP_USER_MODEL_ID'] = 'Tsukamotoshio.SumisoraOMR'
+            _env['FLET_HIDE_WINDOW_ON_START'] = 'true'
+            if _exe.exists():
+                _args = [_exe_str, page_url, _pid]
+                if assets_dir:
+                    _args.append(assets_dir)
+                return (await _aio.create_subprocess_exec(_args[0], *_args[1:], env=_env), _pid)
+            return await _orig_open(page_url, assets_dir, True)
 
         _fd.open_flet_view_async = _patched_open
 
@@ -831,6 +837,8 @@ if __name__ == '__main__':
             _ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
                 'Tsukamotoshio.SumisoraOMR'
             )
+            os.environ['FLET_APP_USER_MODEL_ID'] = 'Tsukamotoshio.SumisoraOMR'
+            os.environ['FLET_HIDE_WINDOW_ON_START'] = 'true'
         except Exception:
             pass
 
@@ -839,4 +847,8 @@ if __name__ == '__main__':
         getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__))),
         'assets',
     )
-    ft.run(main, assets_dir=_assets_dir)
+    ft.run(
+        main,
+        assets_dir=_assets_dir,
+        view=ft.AppView.FLET_APP_HIDDEN,
+    )

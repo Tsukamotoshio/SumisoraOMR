@@ -87,6 +87,7 @@ class PdfViewer(ft.Column):
         self._refresh_pending = False
         self._refresh_waiting = False
         self._is_image: bool = False
+        self._container_width: int = 0
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._build_ui()
 
@@ -120,7 +121,8 @@ class PdfViewer(ft.Column):
 
         # ft.Image 始终 visible=True（InteractiveViewer 要求 content 必须可见）。
         # gapless_playback=True：切换 src 时保持旧帧，避免灰色闪烁。
-        # 宽度由 _on_viewer_resize 动态注入，使图像填满视口宽度（无黑边）。
+        # PDF 模式：宽度由 _on_viewer_resize 注入（FIT_WIDTH）。
+        # 图片模式：不设显式尺寸，InteractiveViewer(constrained=True) 自动填满视口。
         self._image = ft.Image(
             src=_BLANK_PNG_B64,
             fit=ft.BoxFit.FIT_WIDTH,
@@ -144,8 +146,8 @@ class PdfViewer(ft.Column):
             alignment=ft.Alignment(0, 0),
         )
 
-        # InteractiveViewer(constrained=False)：允许内容高于视口，从而可垂直拖动查看完整乐谱。
-        # 图像宽度由 _on_viewer_resize 设定；自然高度 = 宽度 × 宽高比，超出视口部分可平移。
+        # 初始为 constrained=False（PDF 模式）：允许内容高于视口，可垂直拖动查看完整乐谱。
+        # 图片模式下切换为 constrained=True：Flutter 以视口大小为紧约束传给 Image，自动填满。
         self._interactive = ft.InteractiveViewer(
             content=self._image,
             pan_enabled=True,
@@ -175,25 +177,15 @@ class PdfViewer(ft.Column):
         self.expand = True
 
     def _on_viewer_resize(self, e) -> None:
-        """视口尺寸变化时同步图像尺寸。PDF 只同步宽度（允许垂直拖动）；图片同步宽高（CONTAIN 模式）。"""
+        """视口尺寸变化时同步 PDF 图像宽度；图片模式由 Flutter 布局自动处理，无需 Python 干预。"""
         w = int(e.width)
-        h = int(e.height) if hasattr(e, 'height') else 0
         # Track container width so _on_page_resize can skip invisible viewers.
         self._container_width = w
-        if self._is_image:
-            if w > 0 and h > 0 and (self._image.width != w or self._image.height != h):
-                self._image.width = w
-                self._image.height = h
-                # Full PdfViewer rebuild (not just image.update) so the
-                # InteractiveViewer re-measures its content at the new size.
-                self._request_page_refresh()
-        else:
-            if w > 0 and self._image.width != w:
-                self._image.width = w
-                # Full PdfViewer rebuild so the InteractiveViewer re-measures
-                # its content — calling image.update() alone does not trigger
-                # an IV layout pass, causing the old clip width to persist.
-                self._request_page_refresh()
+        self._apply_viewer_size()
+        # Image mode: no Python-side refresh needed — Flutter resizes the image
+        # automatically via InteractiveViewer(constrained=True) layout constraints.
+        if not self._is_image and w > 0:
+            self._request_page_refresh()
 
     # ── 缓存 ─────────────────────────────────────────────────────────────────
 
@@ -210,6 +202,19 @@ class PdfViewer(ft.Column):
         self._preview_cache[key] = {'b64': b64, 'page_count': page_count}
         while len(self._preview_cache) > self._max_preview_cache:
             self._preview_cache.popitem(last=False)
+
+    def _apply_viewer_size(self) -> None:
+        # Image mode: InteractiveViewer(constrained=True) passes tight constraints
+        # equal to the viewport to its child, so the Image fills the viewport
+        # automatically via Flutter's layout system — no explicit Python dimensions
+        # needed. Setting them would fight the tight constraints and cause stale
+        # sizing when the window is maximized/restored and on_size_change lags.
+        if self._is_image:
+            return
+        if self._container_width <= 0:
+            return
+        self._image.width = self._container_width
+        self._image.height = None
 
     def preload(self, path: Path) -> None:
         key = self._cache_key(path)
@@ -246,15 +251,18 @@ class PdfViewer(ft.Column):
         current_token = self._load_token
 
         # 按文件类型切换 InteractiveViewer 模式：
-        # 图片用 constrained=True + CONTAIN（防止 Flutter 强制"填满视口"最小缩放）
-        # PDF 用 constrained=False + FIT_WIDTH（允许高页面垂直拖动）
+        # 图片用 constrained=True + CONTAIN：Flutter 以视口尺寸为紧约束自动填满，无需 Python 追踪尺寸；
+        # PDF 用 constrained=False + FIT_WIDTH：允许高页面垂直拖动，宽度由 _on_viewer_resize 注入。
         is_image = path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.webp')
         if is_image != self._is_image:
             self._is_image = is_image
             self._interactive.constrained = is_image
             self._image.fit = ft.BoxFit.CONTAIN if is_image else ft.BoxFit.FIT_WIDTH
-            if not is_image:
-                self._image.height = None  # PDF 模式不锁定高度
+            if is_image:
+                # Clear any previously set dimensions so Flutter sizes the image
+                # via InteractiveViewer(constrained=True) tight constraints.
+                self._image.width = None
+                self._image.height = None
 
         # 立即进入加载中状态（显示占位符，图像重置为透明占位）
         self._image.src = _BLANK_PNG_B64
@@ -274,7 +282,7 @@ class PdfViewer(ft.Column):
             self._update_toolbar()
             return
 
-        if path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
+        if is_image:
             self._executor.submit(self._load_image_async, path, current_token)
         else:
             self._executor.submit(self._load_pdf_async, path, current_token)
@@ -290,17 +298,18 @@ class PdfViewer(ft.Column):
 
     def _on_page_resize(self, _e) -> None:
         """Window maximized / restored: chain to previous handler then force a
-        full PdfViewer rebuild so on_size_change fires with the new size."""
+        PDF width re-apply in case on_size_change lagged behind the window event."""
         prev = getattr(self, '_prev_page_resize_handler', None)
         if prev is not None:
             try:
                 prev(_e)
             except Exception:
                 pass
-        # Only refresh visible viewers (container width > 0 from last resize).
-        # Invisible viewers (inside visible=False containers) have width=0 so
-        # updating them is a no-op; skip to avoid unnecessary IPC messages.
-        if getattr(self, '_container_width', 0) > 0:
+        # Image mode: Flutter's layout system handles resizing automatically via
+        # InteractiveViewer(constrained=True) — no Python refresh needed here.
+        # PDF mode: on_size_change is reliable for gradual drags but can lag on
+        # instant maximize/restore; nudge a refresh so the width stays correct.
+        if not self._is_image and getattr(self, '_container_width', 0) > 0:
             self._request_page_refresh()
 
     def will_unmount(self) -> None:
@@ -321,6 +330,7 @@ class PdfViewer(ft.Column):
 
         self._interactive.constrained = False
         self._image.fit = ft.BoxFit.FIT_WIDTH
+        self._image.width = None
         self._image.height = None
         self._image.src = _BLANK_PNG_B64
         self._placeholder_col.controls = [
@@ -397,6 +407,7 @@ class PdfViewer(ft.Column):
     def _set_image_b64(self, b64: str) -> None:
         self._image.src = b64
         self._placeholder.visible = False
+        self._apply_viewer_size()
         self._request_page_refresh()
 
     def _show_error(self, msg: str) -> None:
