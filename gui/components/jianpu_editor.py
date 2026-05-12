@@ -32,12 +32,26 @@ class JianpuEditor(ft.Column):
         self._lines: list[str] = []
         self._load_token: int = 0
         self._file_lock = threading.Lock()
+        self._dirty: bool = False
+        self._undo_stack: list[str] = []
+        self._redo_stack: list[str] = []
+        self._snapshot_timer: Optional[threading.Timer] = None
+        # buttons stored for enable/disable; created in _build_ui
+        self._undo_btn: ft.IconButton
+        self._redo_btn: ft.IconButton
         self._export_dir_picker = ft.FilePicker()
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_external_select)
 
     def did_mount(self) -> None:
         self.page._services.register_service(self._export_dir_picker)  # type: ignore[attr-defined]
+        self.page.on_keyboard_event = self._handle_keyboard
+
+    def will_unmount(self) -> None:
+        self.page.on_keyboard_event = None
+        if self._snapshot_timer is not None:
+            self._snapshot_timer.cancel()
+            self._snapshot_timer = None
 
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
@@ -99,6 +113,13 @@ class JianpuEditor(ft.Column):
             ft.Container(content=editor_row, expand=True),
         ]
         self.expand = True
+
+    def _update_title(self) -> None:
+        self._title.value = '简谱编辑器' + (' *' if self._dirty else '')
+        try:
+            self._title.update()
+        except Exception:
+            pass
 
     # ── 加载 / 保存 ──────────────────────────────────────────────────────────
 
@@ -168,8 +189,24 @@ class JianpuEditor(ft.Column):
                 pass
 
     def _on_text_change(self, e) -> None:
-        if self._editor.value:
-            self._lines = self._editor.value.splitlines()
+        if not hasattr(self, 'page') or self.page is None:
+            return
+        current = self._editor.value or ''
+        self._lines = current.splitlines()
+        if not self._dirty:
+            self._dirty = True
+            self._update_title()
+        # Enable undo button eagerly (snapshot is debounced but state will be pushable)
+        if getattr(self, '_undo_btn', None) is not None and self._undo_stack and self._undo_btn.disabled:
+            self._undo_btn.disabled = False
+            try:
+                self._undo_btn.update()
+            except Exception:
+                pass
+        if self._snapshot_timer is not None:
+            self._snapshot_timer.cancel()
+        self._snapshot_timer = threading.Timer(0.8, self._push_snapshot, args=(current,))
+        self._snapshot_timer.start()
 
     def _on_save(self, _e) -> None:
         if self._path is None:
@@ -178,9 +215,37 @@ class JianpuEditor(ft.Column):
             content = self._editor.value or ''
             with self._file_lock:
                 self._path.write_text(content, encoding='utf-8')
+            self._dirty = False
+            self._update_title()
             self._state.append_log(f'已保存: {self._path.name}')
         except Exception as exc:
             self._state.append_log(f'保存失败: {exc}')
+
+    def _handle_keyboard(self, e: ft.KeyboardEvent) -> None:
+        if not e.ctrl:
+            return
+        key = e.key.lower()
+        if key == 's':
+            self._on_save(None)
+        elif key == 'z':
+            self._on_undo(None)
+        elif key == 'y':
+            self._on_redo(None)
+
+    def _on_undo(self, _e) -> None:
+        pass  # implemented in Task 2
+
+    def _on_redo(self, _e) -> None:
+        pass  # implemented in Task 2
+
+    def _push_snapshot(self, text: str) -> None:
+        # Called from a background threading.Timer thread.
+        # MUST NOT touch any Flet control directly — use page.run_task for UI updates.
+        pass  # implemented in Task 2
+
+    def save(self) -> None:
+        """Public save — callable from parent page."""
+        self._on_save(None)
 
     # ── 导出 PDF ─────────────────────────────────────────────────────────────
 
