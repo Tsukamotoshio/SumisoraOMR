@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
@@ -73,10 +74,25 @@ def _build_url_for(base_url: str, filename: str) -> str:
     return f'{base}/{basename}.zip'
 
 
-def probe_sources(urls: Optional[list[str]] = None) -> Optional[str]:
-    """HEAD-probe each base URL. Return the lowest-latency 2xx-returning one.
+def _probe_one(base: str) -> Optional[tuple[str, float]]:
+    """HEAD-probe a single base URL. Returns (base, elapsed_sec) on success, None otherwise."""
+    probe_url = _build_url_for(base, _PROBE_TARGET_FILENAME)
+    t0 = time.monotonic()
+    try:
+        r = requests.head(probe_url, timeout=_PROBE_TIMEOUT_SEC, allow_redirects=True)
+        elapsed = time.monotonic() - t0
+        if 200 <= r.status_code < 300:
+            return (base, elapsed)
+    except requests.exceptions.RequestException:
+        pass
+    return None
 
-    Returns None if all sources fail.
+
+def probe_sources(urls: Optional[list[str]] = None) -> Optional[str]:
+    """HEAD-probe all base URLs concurrently. Return the lowest-latency 2xx source.
+
+    Runs all probes in parallel so total wait time is max(individual_times)
+    instead of sum(individual_times). Returns None if all sources fail.
 
     Note: ICMP ping is unreliable on Windows (firewalls block it, doesn't
     reflect the HTTPS CDN path). HEAD is the right HTTPS-layer proxy.
@@ -85,20 +101,10 @@ def probe_sources(urls: Optional[list[str]] = None) -> Optional[str]:
         urls = _WEIGHT_BASE_URLS
 
     results: list[tuple[str, float]] = []
-    for base in urls:
-        probe_url = _build_url_for(base, _PROBE_TARGET_FILENAME)
-        t0 = time.monotonic()
-        try:
-            r = requests.head(
-                probe_url,
-                timeout=_PROBE_TIMEOUT_SEC,
-                allow_redirects=True,
-            )
-            elapsed = time.monotonic() - t0
-            if 200 <= r.status_code < 300:
-                results.append((base, elapsed))
-        except requests.exceptions.RequestException:
-            continue
+    with ThreadPoolExecutor(max_workers=len(urls)) as executor:
+        for result in executor.map(_probe_one, urls):
+            if result is not None:
+                results.append(result)
 
     if not results:
         return None
@@ -348,16 +354,25 @@ def download_all_weights(
     if not todo:
         return
 
-    # Best-effort overall total via HEAD on each file (cheap; happens before any
-    # byte transfer). Allows the dialog to show "X of Y MB" up front.
+    # Best-effort overall total via HEAD on each file (concurrent; cheap).
+    # Allows the dialog to show "X of Y MB" up front.
+    # For GitHub the sizes are zip sizes (compressed); for ModelScope they are
+    # onnx sizes (uncompressed). overall_done must use the same units as
+    # overall_total so the progress bar stays consistent.
     file_sizes: dict[str, int] = {}
     overall_total = 0
-    for fname in todo:
-        if cancel_event.is_set():
-            raise DownloadCancelled()
-        sz = _file_size_at_source(primary, fname)
-        file_sizes[fname] = sz
-        overall_total += sz
+    with ThreadPoolExecutor(max_workers=min(6, len(todo))) as executor:
+        future_to_fname = {
+            executor.submit(_file_size_at_source, primary, fname): fname
+            for fname in todo
+        }
+        for future in as_completed(future_to_fname):
+            if cancel_event.is_set():
+                raise DownloadCancelled()
+            fname = future_to_fname[future]
+            sz = future.result()
+            file_sizes[fname] = sz
+            overall_total += sz
 
     overall_done = 0
     for idx, fname in enumerate(todo):
@@ -383,7 +398,9 @@ def download_all_weights(
 
         # Hash check
         if verify_sha256(str(target), _WEIGHT_HASHES.get(fname, '')):
-            overall_done += target.stat().st_size if target.exists() else 0
+            # Use the pre-fetched transfer size (not the extracted onnx size)
+            # so overall_done stays in the same units as overall_total.
+            overall_done += file_sizes.get(fname, 0)
             continue
 
         # Hash mismatch → delete and try the alternate source once.
@@ -402,4 +419,4 @@ def download_all_weights(
                                    _per_chunk_cb, cancel_event)
         if not verify_sha256(str(target), _WEIGHT_HASHES.get(fname, '')):
             raise HashMismatch(f'{fname}: corrupt on both sources')
-        overall_done += target.stat().st_size if target.exists() else 0
+        overall_done += file_sizes.get(fname, 0)

@@ -76,48 +76,37 @@ class _BinaryImageView(ft.Column):
     MAX_SCALE = 8.0
     SCALE_STEP = 0.15
 
-    def __init__(self, state: AppState, on_preview_requested: Optional[Callable[[], None]] = None):
+    def __init__(self, state: AppState,
+                 on_refresh: Optional[Callable[[], None]] = None):
         super().__init__(spacing=0, expand=True)
         self._state = state
-        self._on_preview_requested = on_preview_requested or (lambda: None)
+        self._on_refresh = on_refresh
         self._path: Optional[Path] = None
         self._raw_b64: Optional[str] = None
         self._highlighted_line: int = -1
         self._load_token: int = 0
-        self._active_tab: str = 'source'
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_line_selected)
 
     def _build_ui(self) -> None:
-        self._tab_source_btn = ft.TextButton(
-            '源图像',
-            on_click=self._on_tab_source,
-            style=ft.ButtonStyle(color=Palette.PRIMARY),
+        self._refresh_btn = ft.IconButton(
+            ft.Icons.REFRESH_ROUNDED,
+            icon_size=18,
+            on_click=self._on_refresh_click,
+            tooltip='重新渲染简谱',
+            width=32,
+            height=32,
+            visible=False,
         )
-        self._tab_preview_btn = ft.TextButton(
-            '简谱预览',
-            on_click=self._on_tab_preview,
-            style=ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT),
-        )
-
         toolbar = ft.Container(
             content=ft.Row(
                 [
-                    ft.Row(
-                        [
-                            ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,    icon_size=18, on_click=self._zoom_out, tooltip='缩小'),
-                            ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,     icon_size=18, on_click=self._zoom_in,  tooltip='放大'),
-                            ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,  icon_size=18, on_click=self._zoom_fit, tooltip='适应'),
-                        ],
-                        spacing=2,
-                    ),
-                    ft.Row(
-                        [self._tab_source_btn, self._tab_preview_btn],
-                        spacing=0,
-                    ),
+                    ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,   icon_size=18, on_click=self._zoom_out, tooltip='缩小'),
+                    ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,    icon_size=18, on_click=self._zoom_in,  tooltip='放大'),
+                    ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED, icon_size=18, on_click=self._zoom_fit, tooltip='适应'),
+                    self._refresh_btn,
                 ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=2,
             ),
             bgcolor=ft.Colors.SURFACE,
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
@@ -192,7 +181,7 @@ class _BinaryImageView(ft.Column):
         self._preview_placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.PREVIEW_OUTLINED, size=40, color=ft.Colors.OUTLINE),
-                ft.Text('点击「简谱预览」生成渲染预览', size=12,
+                ft.Text('点击「简谱」生成渲染预览', size=12,
                         color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -242,6 +231,10 @@ class _BinaryImageView(ft.Column):
     # ── 加载图像 ─────────────────────────────────────────────────────────────
 
     def load(self, path: Path) -> None:
+        # always return to source view when a new image is loaded
+        self._refresh_btn.visible = False
+        self._view_container.visible = True
+        self._preview_area.visible = False
         self._path = path
         self._load_token += 1
         token = self._load_token
@@ -332,30 +325,29 @@ class _BinaryImageView(ft.Column):
     async def _zoom_fit(self, _e=None) -> None:
         await self._interactive.reset()
 
-    # ── Tab 切换 ─────────────────────────────────────────────────────────────
+    # ── 视图切换（由 EditorPage 调用）────────────────────────────────────────
 
-    def _on_tab_source(self, _e) -> None:
-        self._active_tab = 'source'
-        self._tab_source_btn.style  = ft.ButtonStyle(color=Palette.PRIMARY)
-        self._tab_preview_btn.style = ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT)
-        self._view_container.visible  = True
+    def switch_to_source(self) -> None:
+        self._refresh_btn.visible = False
+        self._view_container.visible = True
         self._preview_area.visible = False
         try:
             self.update()
         except Exception:
             pass
 
-    def _on_tab_preview(self, _e) -> None:
-        self._active_tab = 'preview'
-        self._tab_source_btn.style  = ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT)
-        self._tab_preview_btn.style = ft.ButtonStyle(color=Palette.PRIMARY)
-        self._view_container.visible  = False
+    def switch_to_preview(self) -> None:
+        self._refresh_btn.visible = True
+        self._view_container.visible = False
         self._preview_area.visible = True
         try:
             self.update()
         except Exception:
             pass
-        self._on_preview_requested()
+
+    def _on_refresh_click(self, _e) -> None:
+        if self._on_refresh:
+            self._on_refresh()
 
     # ── 行联动 ───────────────────────────────────────────────────────────────
 
@@ -429,10 +421,8 @@ class _BinaryImageView(ft.Column):
         self._highlighted_line = -1
         self._image.src = _BLANK_PNG_B64
         self._placeholder.visible = True
-        self._active_tab = 'source'
-        self._tab_source_btn.style  = ft.ButtonStyle(color=Palette.PRIMARY)
-        self._tab_preview_btn.style = ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT)
-        self._view_container.visible  = True
+        self._refresh_btn.visible = False
+        self._view_container.visible = True
         self._preview_area.visible = False
         self._preview_img.src = _BLANK_PNG_B64
         self._preview_img_container.visible = False
@@ -455,8 +445,8 @@ class EditorPage(ft.Row):
         super().__init__(spacing=0, expand=True)
         self._state = state
         self._has_been_shown = False
-        self._img_view = _BinaryImageView(state, on_preview_requested=self._render_preview)
-        self._editor   = JianpuEditor(state)
+        self._img_view = _BinaryImageView(state, on_refresh=self._render_preview)
+        self._editor   = JianpuEditor(state, on_view_toggle=self._on_view_toggle)
         self._open_picker = ft.FilePicker()
         self._build_ui()
         state.on(Event.FILE_SELECTED,        self._on_file_selected)
@@ -674,6 +664,13 @@ class EditorPage(ft.Row):
         if path is not None:
             self.load_from_output_pdf(path)
         self._has_been_shown = True
+
+    def _on_view_toggle(self, preview_active: bool) -> None:
+        if preview_active:
+            self._img_view.switch_to_preview()
+            self._render_preview()
+        else:
+            self._img_view.switch_to_source()
 
     def _render_preview(self) -> None:
         txt_path = self._state.current_jianpu_txt

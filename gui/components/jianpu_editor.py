@@ -25,20 +25,25 @@ class JianpuEditor(ft.Column):
     - 发出 JIANPU_TXT_SELECTED 事件（line_no: int, 0-indexed）
     """
 
-    def __init__(self, state: AppState):
+    def __init__(self, state: AppState,
+                 on_view_toggle: Optional[Callable[[bool], None]] = None):
         super().__init__(spacing=0, expand=True)
         self._state = state
+        self._on_view_toggle = on_view_toggle
+        self._preview_active: bool = False
         self._path: Optional[Path] = None
         self._lines: list[str] = []
         self._load_token: int = 0
         self._file_lock = threading.Lock()
-        self._dirty: bool = False
+        self._file_header: str = ''
+        self._is_dirty: bool = False
         self._undo_stack: list[str] = []
         self._redo_stack: list[str] = []
         self._snapshot_timer: Optional[threading.Timer] = None
         # buttons stored for enable/disable; created in _build_ui
         self._undo_btn: ft.IconButton
         self._redo_btn: ft.IconButton
+        self._view_toggle_btn: ft.TextButton
         self._export_dir_picker = ft.FilePicker()
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_external_select)
@@ -89,19 +94,28 @@ class JianpuEditor(ft.Column):
             tooltip='将当前简谱文件通过 LilyPond 渲染为 PDF',
         )
 
-        symbol_btn = ft.IconButton(
+        self._symbol_btn = ft.IconButton(
             icon=ft.Icons.HELP_OUTLINE_ROUNDED,
             icon_size=16,
             tooltip='简谱符号速查',
-            on_click=self._show_symbol_ref,
+            on_click=self._toggle_symbol_panel,
             width=32,
             height=32,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
         )
+        self._view_toggle_btn = ft.TextButton(
+            '简谱',
+            on_click=self._on_view_toggle_click,
+            style=ft.ButtonStyle(color=Palette.PRIMARY),
+        )
 
         toolbar = ft.Container(
             content=ft.Row(
-                [self._title, ft.Row([symbol_btn, self._undo_btn, self._redo_btn, export_btn, save_btn], spacing=2)],
+                [self._title, ft.Row(
+                    [self._view_toggle_btn,
+                     self._symbol_btn, self._undo_btn, self._redo_btn, export_btn, save_btn],
+                    spacing=2,
+                )],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -136,13 +150,16 @@ class JianpuEditor(ft.Column):
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
+        self._symbol_panel = self._build_symbol_panel()
+
         self.controls = [
             toolbar,
             ft.Container(content=editor_row, expand=True),
+            # _symbol_panel is NOT in controls by default; inserted by _toggle_symbol_panel
         ]
         self.expand = True
 
-    def _show_symbol_ref(self, _e) -> None:
+    def _build_symbol_panel(self) -> ft.Container:
         def _row(symbol: str, meaning: str) -> ft.Row:
             return ft.Row(
                 [
@@ -152,17 +169,27 @@ class JianpuEditor(ft.Column):
                                 color=ft.Colors.ON_SURFACE),
                         width=130,
                     ),
-                    ft.Text(meaning, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(meaning, size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                            expand=True),
                 ],
                 spacing=8,
             )
 
+        def _section(label: str) -> ft.Container:
+            return ft.Container(
+                ft.Text(label, size=11, weight=ft.FontWeight.W_600,
+                        color=ft.Colors.ON_SURFACE_VARIANT),
+                padding=ft.Padding.only(top=6, bottom=2),
+            )
+
         rows = [
+            _section('── 音符'),
             _row('1 2 3 4 5 6 7', 'Do Re Mi Fa Sol La Si'),
             _row('0', '休止符'),
             _row('#1  b3', '升 Do / 降 Mi（写在数字前）'),
             _row("1'  1''", '高八度 / 超高八度'),
             _row('1,  1,,', '低八度 / 超低八度'),
+            _section('── 时值'),
             _row('1', '四分音符（1 拍）'),
             _row('1 -', '二分音符（2 拍）'),
             _row('1 - - -', '全音符（4 拍）'),
@@ -171,36 +198,71 @@ class JianpuEditor(ft.Column):
             _row('d1', '三十二分音符（⅛ 拍）'),
             _row('1.', '附点四分（1.5 拍）'),
             _row('q1.', '附点八分（0.75 拍）'),
+            _section('── 结构'),
             _row('|', '小节线'),
-            _row('NextPart', '强制换行（不影响音高）'),
             _row('title=曲名', '标题（文件头部）'),
             _row('1=C  1=G', '调号'),
             _row('4/4,8', '拍号（分母=最小时值）'),
+            _section('── 多声部'),
+            _row('NextPart', '分隔声部；每个声部单独渲染'),
+            _row('NextPart  4/4,8  ...', '换声部后必须立即重写拍号'),
+            _row('声部1 / NextPart\n4/4,8 / 声部2', '同组声部并排显示在同一行谱上'),
         ]
 
-        dlg = ft.AlertDialog(
-            title=ft.Text('简谱符号速查', size=15, weight=ft.FontWeight.W_700),
-            content=ft.Container(
-                content=ft.Column(rows, spacing=6, tight=True,
-                                  scroll=ft.ScrollMode.AUTO),
-                width=380,
-                height=420,
-            ),
-            actions=[
-                ft.TextButton('关闭', on_click=lambda _: self.page.pop_dialog()),  # type: ignore[attr-defined]
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
+        return ft.Container(
+            content=ft.Column(rows, spacing=4, tight=True,
+                              scroll=ft.ScrollMode.AUTO),
+            expand=True,
+            border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
+            bgcolor=ft.Colors.SURFACE,
+            padding=ft.Padding.symmetric(horizontal=12, vertical=8),
         )
-        self.page.show_dialog(dlg)  # type: ignore[attr-defined]
+
+    def _toggle_symbol_panel(self, _e) -> None:
+        if self._symbol_panel in self.controls:
+            self.controls.remove(self._symbol_panel)
+            self._symbol_btn.icon_color = ft.Colors.ON_SURFACE_VARIANT
+        else:
+            self.controls.append(self._symbol_panel)
+            self._symbol_btn.icon_color = Palette.PRIMARY
+        try:
+            self.update()
+            self._symbol_btn.update()
+        except Exception:
+            pass
+
+    def _on_view_toggle_click(self, _e) -> None:
+        self._preview_active = not self._preview_active
+        self._view_toggle_btn.content = '原图' if self._preview_active else '简谱'
+        self._view_toggle_btn.style = ft.ButtonStyle(
+            color=ft.Colors.ON_SURFACE_VARIANT if self._preview_active else Palette.PRIMARY,
+        )
+        try:
+            self._view_toggle_btn.update()
+        except Exception:
+            pass
+        if self._on_view_toggle:
+            self._on_view_toggle(self._preview_active)
 
     def _update_title(self) -> None:
-        self._title.value = '简谱编辑器' + (' *' if self._dirty else '')
+        self._title.value = '简谱编辑器' + (' *' if self._is_dirty else '')
         try:
             self._title.update()
         except Exception:
             pass
 
     # ── 加载 / 保存 ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _split_header(text: str) -> tuple[str, str]:
+        """Split leading # comment block (+ one trailing blank separator) from body."""
+        lines = text.splitlines(keepends=True)
+        i = 0
+        while i < len(lines) and lines[i].lstrip().startswith('#'):
+            i += 1
+        if i < len(lines) and lines[i].strip() == '':
+            i += 1
+        return ''.join(lines[:i]), ''.join(lines[i:])
 
     def load(self, path: Path) -> None:
         self._path = path
@@ -249,11 +311,16 @@ class JianpuEditor(ft.Column):
         if self._snapshot_timer is not None:
             self._snapshot_timer.cancel()
             self._snapshot_timer = None
-        self._lines = text.splitlines()
-        self._editor.value = text
-        self._undo_stack = [text]
+        if self._preview_active:
+            self._preview_active = False
+            self._view_toggle_btn.content = '简谱'
+            self._view_toggle_btn.style = ft.ButtonStyle(color=Palette.PRIMARY)
+        self._file_header, body = self._split_header(text)
+        self._lines = body.splitlines()
+        self._editor.value = body
+        self._undo_stack = [body]
         self._redo_stack = []
-        self._dirty = False
+        self._is_dirty = False
         self._update_title()
         self._refresh_component()
         if hasattr(self, 'page') and self.page is not None:
@@ -268,6 +335,7 @@ class JianpuEditor(ft.Column):
     def _apply_load_error(self, message: str, token: int) -> None:
         if token != self._load_token:
             return
+        self._file_header = ''
         self._editor.value = message
         self._refresh_component()
 
@@ -287,8 +355,8 @@ class JianpuEditor(ft.Column):
             return
         current = self._editor.value or ''
         self._lines = current.splitlines()
-        if not self._dirty:
-            self._dirty = True
+        if not self._is_dirty:
+            self._is_dirty = True
             self._update_title()
         # Enable undo button eagerly (snapshot is debounced but state will be pushable)
         if getattr(self, '_undo_btn', None) is not None and self._undo_stack and self._undo_btn.disabled:
@@ -306,10 +374,10 @@ class JianpuEditor(ft.Column):
         if self._path is None:
             return
         try:
-            content = self._editor.value or ''
+            content = self._file_header + (self._editor.value or '')
             with self._file_lock:
                 self._path.write_text(content, encoding='utf-8')
-            self._dirty = False
+            self._is_dirty = False
             self._update_title()
             self._state.append_log(f'已保存: {self._path.name}')
         except Exception as exc:
@@ -338,7 +406,7 @@ class JianpuEditor(ft.Column):
         prev = self._undo_stack[-1]
         self._editor.value = prev
         self._lines = prev.splitlines()
-        self._dirty = True
+        self._is_dirty = True
         self._update_title()
         self._update_undo_redo_buttons()
         self._refresh_component()
@@ -354,7 +422,7 @@ class JianpuEditor(ft.Column):
         nxt = self._redo_stack.pop()
         self._editor.value = nxt
         self._lines = nxt.splitlines()
-        self._dirty = True
+        self._is_dirty = True
         self._update_title()
         self._update_undo_redo_buttons()
         self._refresh_component()
@@ -394,7 +462,7 @@ class JianpuEditor(ft.Column):
             return
         # 先保存最新内容
         try:
-            content = self._editor.value or ''
+            content = self._file_header + (self._editor.value or '')
             with self._file_lock:
                 self._path.write_text(content, encoding='utf-8')
         except Exception as exc:
@@ -487,21 +555,22 @@ class JianpuEditor(ft.Column):
             self._snapshot_timer.cancel()
             self._snapshot_timer = None
         self._path = None
+        self._file_header = ''
         self._lines = []
         self._editor.value = ''
         self._undo_stack = []
         self._redo_stack = []
-        self._dirty = False
+        self._is_dirty = False
+        self._preview_active = False
+        self._view_toggle_btn.content = '简谱'
+        self._view_toggle_btn.style = ft.ButtonStyle(color=Palette.PRIMARY)
+        if self._symbol_panel in self.controls:
+            self.controls.remove(self._symbol_panel)
+            self._symbol_btn.icon_color = ft.Colors.ON_SURFACE_VARIANT
         self._update_title()
         self._update_undo_redo_buttons()
         self._request_page_refresh()
 
-    # ── 对外 API ─────────────────────────────────────────────────────────────
-
-    def scroll_to_line(self, line_no: int) -> None:
-        """滚动编辑区到指定行（近似，Flet TextField 不支持精确滚动）。"""
-        # 当前编辑器不包含独立行号视图，仅保留方法接口。
-        return
 
     @property
     def text(self) -> str:

@@ -95,7 +95,7 @@ class ModelDownloadDialog:
             size=12, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
         )
         intro = ft.Text(
-            "选择下载源后点击「开始下载」。HOMR 模型约 292 MB，下载到 models/ 目录。",
+            "选择下载源后点击「开始下载」。HOMR 模型约 292 MB（GitHub 源以压缩包分发，实际下载约 265 MB），下载到 models/ 目录。",
             size=12, color=ft.Colors.ON_SURFACE_VARIANT,
         )
 
