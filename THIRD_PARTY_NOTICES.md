@@ -14,7 +14,7 @@ This file provides license and attribution notices for third-party components di
 - Upstream: <https://lilypond.org/>
 
 ## music21
-- Version: `9.9.1`
+- Version: `9.9.2`
 - License: BSD-3-Clause
 - Upstream: <https://github.com/cuthbertLab/music21>
 - Documentation: <https://www.music21.org/music21docs/>
@@ -28,7 +28,7 @@ This file provides license and attribution notices for third-party components di
   sharpening, brightness/contrast enhancement) before OMR recognition.
 
 ## ReportLab
-- Version: `4.4.10`
+- Version: `4.5.1`
 - License: BSD-3-Clause
 - Official site: <https://www.reportlab.com/>
 
@@ -39,7 +39,7 @@ This file provides license and attribution notices for third-party components di
 - Note: Used for advanced image preprocessing and line/staff detection in the OMER pipeline.
 
 ## ONNX Runtime (DirectML)
-- Version: `1.20.0`
+- Version: `1.26.0`
 - License: MIT
 - Upstream: <https://github.com/microsoft/onnxruntime>
 - Note: Windows DirectML backend for GPU-accelerated inference used by the Homr engine.
@@ -113,17 +113,17 @@ This file provides license and attribution notices for third-party components di
 - Note: Bundled as the Java runtime required by Audiveris.
 
 ## Flet
-- Version: `0.84`
+- Version: `0.85`
 - License: Apache-2.0
 - Upstream: <https://github.com/flet-dev/flet>
 - Documentation: <https://flet.dev/>
 - Note: Used as the GUI framework for the desktop application.
 
-## PyMuPDF (fitz)
-- Version: `>=1.24.0`
-- License: AGPL-3.0 (free tier) / commercial
-- Upstream: <https://github.com/pymupdf/PyMuPDF>
-- Note: Used for PDF page rendering and preview in the packaged application. Bundled into the distributed executable when shipping PDF input support.
+## pypdfium2
+- Version: `>=4.0.0`
+- License: Apache-2.0 (Python bindings) / BSD-3-Clause (PDFium)
+- Upstream: <https://github.com/pypdfium2-team/pypdfium2>
+- Note: Used for PDF page rendering and preview. Replaced PyMuPDF (fitz) as of v0.3.3 to reduce bundle size and avoid AGPL-3.0 licensing requirements.
 ---
 
 ## Important note
