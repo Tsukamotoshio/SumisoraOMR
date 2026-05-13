@@ -749,7 +749,9 @@ class TransposerPage(ft.Column):
             if pdf and pdf.exists():
                 import shutil
                 shutil.copy2(str(pdf), str(out))
+                shutil.rmtree(tmp, ignore_errors=True)
                 return out
+            shutil.rmtree(tmp, ignore_errors=True)
             return None
         except Exception as exc:
             self._set_status(f'预览渲染失败: {exc}')

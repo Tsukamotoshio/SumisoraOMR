@@ -385,12 +385,18 @@ class ScorePreviewPage(ft.Row):
             tmp.mkdir(exist_ok=True)
             pdf = render_musicxml_staff_pdf(path, tmp)
             if token != self._render_token:
+                shutil.rmtree(tmp, ignore_errors=True)
                 return
             if pdf and pdf.exists():
-                self._viewer.load(pdf)
-                self._preview_pdf_cache[path] = pdf
+                # 将渲染产物复制到扁平路径后立即删除临时目录
+                flat_pdf = build_dir() / f'_score_preview_{path.stem}.pdf'
+                shutil.copy2(str(pdf), str(flat_pdf))
+                shutil.rmtree(tmp, ignore_errors=True)
+                self._viewer.load(flat_pdf)
+                self._preview_pdf_cache[path] = flat_pdf
                 self._set_status(f'已加载: {path.name}')
             else:
+                shutil.rmtree(tmp, ignore_errors=True)
                 self._set_status('预览渲染失败：LilyPond 不可用或文件有误')
         except Exception as exc:
             if token != self._render_token:
@@ -477,12 +483,18 @@ class ScorePreviewPage(ft.Row):
             tmp.mkdir(exist_ok=True)
             pdf = render_musicxml_staff_pdf(self._current_path, tmp)
             if token != self._export_token:
+                shutil.rmtree(tmp, ignore_errors=True)
                 return
             if pdf and pdf.exists():
                 shutil.copy2(str(pdf), str(dest_path))
-                self._preview_pdf_cache[self._current_path] = pdf
+                # 同时缓存一份扁平预览文件，避免下次预览重新渲染
+                flat_pdf = build_dir() / f'_score_preview_{self._current_path.stem}.pdf'
+                shutil.copy2(str(pdf), str(flat_pdf))
+                shutil.rmtree(tmp, ignore_errors=True)
+                self._preview_pdf_cache[self._current_path] = flat_pdf
                 self._set_status(f'导出完成 → {dest_path}')
             else:
+                shutil.rmtree(tmp, ignore_errors=True)
                 self._set_status('导出失败：无法生成五线谱 PDF，请检查 LilyPond 是否可用。')
         except Exception as exc:
             if token != self._export_token:
@@ -529,10 +541,14 @@ class ScorePreviewPage(ft.Row):
                 pdf = render_musicxml_staff_pdf(mxl, tmp)
                 if pdf and pdf.exists():
                     shutil.copy2(str(pdf), str(dest / pdf.name))
-                    self._preview_pdf_cache[mxl] = pdf
+                    flat_pdf = build_dir() / f'_score_preview_{mxl.stem}.pdf'
+                    shutil.copy2(str(pdf), str(flat_pdf))
+                    shutil.rmtree(tmp, ignore_errors=True)
+                    self._preview_pdf_cache[mxl] = flat_pdf
                     exported += 1
                     self._set_status(f'导出中... {exported}/{len(mxl_files)}')
                 else:
+                    shutil.rmtree(tmp, ignore_errors=True)
                     failed.append(mxl.name)
             except Exception as exc:
                 failed.append(f'{mxl.name}: {exc}')

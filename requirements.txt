@@ -1,12 +1,12 @@
-flet>=0.84.0
-music21>=9.9.1
+flet>=0.85.0
+music21>=9.9.2
 pillow>=12.2.0
 opencv-python-headless>=4.8.0
-reportlab>=4.4.10
-rich>=14.3.3
-pyinstaller>=6.19.0
+reportlab>=4.5.1
+rich>=15.0.0
+pyinstaller>=6.20.0
 pypdfium2>=4.0.0
-pypdf>=4.0.0
+pypdf>=6.11.0
 
 # ── ONNX Runtime 后端 ────────────────────────────────────────────────────────
 # 三种包互斥，仅能安装其一：
@@ -17,4 +17,4 @@ pypdf>=4.0.0
 # homr 推理优先级（代码层面）：CUDAExecutionProvider → DmlExecutionProvider → CPUExecutionProvider
 #   onnxruntime-gpu 分发：NVIDIA 用户走 CUDA，其余走 CPU
 #   onnxruntime-directml 分发：AMD/Intel 用户走 DirectML，其余走 CPU
-onnxruntime-gpu>=1.20.0
+onnxruntime-gpu>=1.26.0

@@ -259,6 +259,10 @@ def run_worker() -> None:
                 _send({'type': 'result', 'success': False, 'output_pdf': None, 'archived_mxl': None,
                        'reason': f'异常: {reason}'})
                 continue
+            finally:
+                # 无论成功还是失败，立即清理当前文件的临时目录
+                import shutil as _shutil
+                _shutil.rmtree(temp_dir, ignore_errors=True)
 
             if ok:
                 success_count += 1

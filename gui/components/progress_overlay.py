@@ -64,6 +64,7 @@ class ProgressOverlay(ft.Stack):
         self._log_list = ft.ListView(
             spacing=2,
             expand=True,
+            scroll=ft.ScrollMode.AUTO,
             auto_scroll=True,
             on_scroll=self._on_log_scroll,
         )
