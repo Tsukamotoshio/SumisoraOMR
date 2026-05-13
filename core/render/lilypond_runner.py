@@ -480,8 +480,10 @@ def _fix_omr_artifacts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) ->
                             pass
 
             # Build pitch-note timeline per (staff, voice):
-            # [(onset, duration, child_index), ...]
-            _tl5: dict[tuple[str, str], list[tuple[int, int, int]]] = {}
+            # [(onset, duration, pitch_key, child_index), ...]
+            # pitch_key 格式："{step}{alter}{octave}"，用于区分同节奏不同音高的声部（如卡农）。
+            # 只有 onset+duration+pitch 三者完全相同的声部才视为 OMR 误拆的和弦。
+            _tl5: dict[tuple[str, str], list[tuple[int, int, str, int]]] = {}
             for _i5, _ch5 in enumerate(children):
                 if _ch5.tag != 'note':
                     continue
@@ -501,11 +503,21 @@ def _fix_omr_artifacts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) ->
                     _dur5 = int(_d5.text)
                 except ValueError:
                     continue
+                _pt5 = _ch5.find('pitch')
+                if _pt5 is not None:
+                    _pkey5 = (
+                        f"{_pt5.findtext('step', '?')}"
+                        f"{_pt5.findtext('alter', '')}"
+                        f"{_pt5.findtext('octave', '0')}"
+                    )
+                else:
+                    _pkey5 = '?'
                 _tl5.setdefault((_sn5, _v5.text), []).append(
-                    (_note_onset.get(_i5, 0), _dur5, _i5)
+                    (_note_onset.get(_i5, 0), _dur5, _pkey5, _i5)
                 )
 
             # Find (secondary, primary) voice pairs with identical timelines.
+            # 必须 onset、duration、pitch 三者全部相同才合并，避免将卡农等真实多声部误判为 OMR 误拆和弦。
             _stv5: dict[str, list[str]] = {}
             for _sn5, _vn5 in _tl5:
                 _stv5.setdefault(_sn5, []).append(_vn5)
@@ -515,12 +527,12 @@ def _fix_omr_artifacts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) ->
                 _sorted5 = sorted(_vns5, key=lambda x: int(x) if x.isdigit() else x)
                 for _pi5, _vp5 in enumerate(_sorted5):
                     _pk5 = (_sn5, _vp5)
-                    _ptl5 = [(_o, _d) for _o, _d, _ in _tl5[_pk5]]
+                    _ptl5 = [(_o, _d, _p) for _o, _d, _p, _ in _tl5[_pk5]]
                     for _vs5 in _sorted5[_pi5 + 1:]:
                         _sk5 = (_sn5, _vs5)
                         if _sk5 in _mmap5:
                             continue
-                        if [(_o, _d) for _o, _d, _ in _tl5[_sk5]] == _ptl5:
+                        if [(_o, _d, _p) for _o, _d, _p, _ in _tl5[_sk5]] == _ptl5:
                             _mmap5[_sk5] = _pk5
 
             if _mmap5:
@@ -528,13 +540,13 @@ def _fix_omr_artifacts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) ->
                 _snotes5: dict[tuple[str, str], dict[int, list]] = {}
                 for _sk5 in _mmap5:
                     _snotes5[_sk5] = {}
-                    for _o, _d, _idx in _tl5[_sk5]:
+                    for _o, _d, _p, _idx in _tl5[_sk5]:
                         _snotes5[_sk5].setdefault(_o, []).append(children[_idx])
 
                 # Indices of secondary notes to skip in normal output (they are
                 # reinserted as chord notes immediately after their primary).
                 _skip5: set[int] = {
-                    _idx for _sk5 in _mmap5 for _, _, _idx in _tl5[_sk5]
+                    _idx for _sk5 in _mmap5 for _, _, _, _idx in _tl5[_sk5]
                 }
 
                 # Mark backups immediately preceding a secondary voice section.
@@ -658,6 +670,34 @@ def _fix_rest_positions_in_ly(ly_path: Path) -> None:
             LOGGER.debug('_fix_rest_positions_in_ly: centred rests in %s', ly_path.name)
     except Exception as exc:
         LOGGER.debug('_fix_rest_positions_in_ly: %s', exc)
+
+
+def _convert_spacer_rests_to_visible_rests(ly_path: Path) -> None:
+    r"""Replace LilyPond spacer rests with visible regular rests.
+
+    music21's voicesToParts() exports empty measures as spacer rests (``s``).
+    musicxml2ly converts these to ``s4``, ``s1.``, ``s8*15`` etc. which are
+    invisible — they occupy time but show no glyph, leaving the staff blank
+    where rest symbols should appear.
+
+    This function converts every standalone spacer duration token to the
+    equivalent regular rest token so all measures show visible rest symbols.
+    """
+    try:
+        text = ly_path.read_text(encoding='utf-8', errors='ignore')
+        # Match 's' followed by a duration number (and optional dot / multiplier),
+        # preceded by a word boundary and followed by whitespace, bar-line, or
+        # structural punctuation.  Does not touch '\set', '\skip', or similar.
+        fixed = re.sub(
+            r'(?<![\\a-zA-Z])s(\d+\.?)(\*\d+)?(?=[\s\|\[\]<>{}\\]|$)',
+            r'r\1\2',
+            text,
+        )
+        if fixed != text:
+            ly_path.write_text(fixed, encoding='utf-8')
+            LOGGER.debug('_convert_spacer_rests_to_visible_rests: converted spacers in %s', ly_path.name)
+    except Exception as exc:
+        LOGGER.debug('_convert_spacer_rests_to_visible_rests: %s', exc)
 
 
 def _fix_deprecated_ly_syntax(text: str) -> str:
@@ -860,6 +900,56 @@ def _apply_title_markup_to_staff_ly(ly_path: Path, raw_title: str, raw_composer:
         LOGGER.debug('_apply_title_markup_to_staff_ly 失败: %s', exc)
 
 
+def _split_multivoice_parts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) -> Path:
+    """将含多声部（voice）的 part 拆分为多个单声部 part。
+
+    使用 music21 的 voicesToParts() 完成拆分，与简谱管线的声部识别逻辑保持一致，
+    避免手工 XML 操作对复杂小节结构（含 backup/forward/chord）的误判。
+
+    - 若某 part 的任一小节含 Voice 对象，则对整个 part 调用 voicesToParts()
+    - 无 Voice 的 part 原样保留
+    - 若无任何 part 需要拆分则原样返回
+    """
+    try:
+        import music21
+    except ImportError:
+        LOGGER.debug('_split_multivoice_parts_in_mxl: music21 not available, skipping')
+        return mxl_path
+
+    try:
+        score = music21.converter.parse(str(mxl_path))
+    except Exception as exc:
+        LOGGER.debug('_split_multivoice_parts_in_mxl: music21 parse failed: %s', exc)
+        return mxl_path
+
+    def _part_has_voices(part: 'music21.stream.Part') -> bool:
+        return any(
+            list(m.getElementsByClass(music21.stream.Voice))
+            for m in part.getElementsByClass(music21.stream.Measure)
+        )
+
+    if not any(_part_has_voices(p) for p in score.parts):
+        return mxl_path  # 无需拆分
+
+    new_score = music21.stream.Score()
+    for part in score.parts:
+        if _part_has_voices(part):
+            split = part.voicesToParts()
+            for p in split.parts:
+                new_score.append(p)
+        else:
+            new_score.append(part)
+
+    try:
+        out_path = (out_dir if out_dir else mxl_path.parent) / '_staff_m21_split.musicxml'
+        new_score.write('musicxml', fp=str(out_path))
+        LOGGER.debug('_split_multivoice_parts_in_mxl: music21 split → %s', out_path.name)
+        return out_path
+    except Exception as exc:
+        LOGGER.debug('_split_multivoice_parts_in_mxl: write failed: %s', exc)
+        return mxl_path
+
+
 def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     """将 MusicXML 渲染为标准五线谱 PDF（不经简谱转换）。
 
@@ -912,6 +1002,12 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     # and ghost voice containers (VoiceSix, VoiceSeven, etc.).
     mxl_for_ly = _fix_omr_artifacts_in_mxl(mxl_for_ly, out_dir)
 
+    # Step 0c: Split multi-voice parts into separate single-voice parts.
+    # musicxml2ly renders one staff per part; voices within a single part appear
+    # as polyphonic layers on the same staff.  For independent voice lines (e.g.
+    # canons), splitting ensures each voice gets its own staff.
+    mxl_for_ly = _split_multivoice_parts_in_mxl(mxl_for_ly, out_dir)
+
     # Step 1: musicxml2ly → .ly
     try:
         result = subprocess.run(
@@ -932,6 +1028,10 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     # produce displaced rest glyphs; centering them via staff-position overrides
     # avoids rest scatter without affecting note stems or head placement.
     _fix_rest_positions_in_ly(ly_path)
+
+    # Step 1.6: Convert spacer rests to visible rests.  music21's voicesToParts()
+    # exports empty measures as 's' spacers; these are invisible in LilyPond.
+    _convert_spacer_rests_to_visible_rests(ly_path)
 
     # Step 2: Fix deprecated #'property syntax emitted by older musicxml2ly builds
     try:

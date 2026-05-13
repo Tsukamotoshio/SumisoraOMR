@@ -5,13 +5,15 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
+import threading
 from pathlib import Path
 from typing import Optional
 
 import flet as ft
 
 from ..app_state import AppState, Event
-from core.app.backend import output_dir
+from core.app.backend import output_dir, editor_workspace_dir, build_dir
 from ..components.pdf_viewer import PdfViewer
 from ..theme import Palette, with_alpha, section_title
 
@@ -138,6 +140,22 @@ class JianpuPreviewPage(ft.Row):
             ),
         )
 
+        self._regen_btn = ft.OutlinedButton(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.REFRESH_ROUNDED, size=15), ft.Text('重新渲染', size=14)],
+                tight=True,
+                spacing=6,
+            ),
+            tooltip='从编辑器文本重新生成简谱 PDF（无需重跑识别）',
+            on_click=self._on_regenerate_click,
+            style=ft.ButtonStyle(
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+                padding=ft.Padding.symmetric(horizontal=16, vertical=10),
+            ),
+        )
+
         edit_jianpu_btn = ft.OutlinedButton(
             content=ft.Row(
                 [ft.Icon(ft.Icons.EDIT_NOTE_ROUNDED, size=16), ft.Text('简谱编辑', size=14)],
@@ -173,7 +191,7 @@ class JianpuPreviewPage(ft.Row):
 
         top_bar = ft.Container(
             content=ft.Row(
-                [ft.Container(expand=True), export_jianpu_btn, edit_jianpu_btn],
+                [ft.Container(expand=True), export_jianpu_btn, self._regen_btn, edit_jianpu_btn],
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -211,6 +229,9 @@ class JianpuPreviewPage(ft.Row):
         self._rebuild_list()
         if paths and (self._current_path is None or self._current_path not in paths):
             self._select_file(paths[0])
+        elif self._current_path in paths:
+            # 当前文件可能已被转换更新，重新加载（mtime 变化会绕过缓存，刷新视图）
+            self._viewer.load(self._current_path)
         elif not paths:
             self._viewer.reset()
             self._current_path = None
@@ -359,6 +380,114 @@ class JianpuPreviewPage(ft.Row):
                 ))
             except Exception:
                 pass
+
+    # ── 重新渲染 PDF ──────────────────────────────────────────────────────────
+
+    def _on_regenerate_click(self, _e) -> None:
+        if self._current_path is None:
+            try:
+                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                    content=ft.Text('请先选择要重新渲染的简谱文件', size=14),
+                    duration=2000,
+                ))
+            except Exception:
+                pass
+            return
+        # 从 PDF stem 推导对应的 .jianpu.txt stem
+        pdf_stem = self._current_path.stem
+        txt_stem = pdf_stem[: -len('_jianpu')] if pdf_stem.endswith('_jianpu') else pdf_stem
+        txt_path = editor_workspace_dir() / f'{txt_stem}.jianpu.txt'
+        if not txt_path.exists():
+            try:
+                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                    content=ft.Text(f'未找到对应的简谱文本文件：{txt_path.name}', size=14),
+                    duration=3000,
+                ))
+            except Exception:
+                pass
+            return
+        self._regen_btn.disabled = True
+        self._ui_update(self._regen_btn)
+        threading.Thread(
+            target=self._regenerate_pdf_thread,
+            args=(txt_path, self._current_path),
+            daemon=True,
+        ).start()
+
+    def _regenerate_pdf_thread(self, txt_path: Path, out_pdf: Path) -> None:
+        """从 .jianpu.txt 重新渲染 PDF 并覆写到 out_pdf（Output/ 中的旧文件）。"""
+        tmp_dir: Optional[Path] = None
+        try:
+            from core.render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
+            from core.render.renderer import sanitize_generated_lilypond_file
+
+            tmp_dir = Path(tempfile.mkdtemp(prefix='regen_', dir=str(build_dir())))
+            ly_path = tmp_dir / '_regen.ly'
+
+            # jianpu-ly 文本 → .ly
+            ok = render_jianpu_ly(txt_path, ly_path)
+            if not ok or not ly_path.exists():
+                self._show_snack('重新渲染失败：jianpu-ly 转换出错')
+                return
+
+            # 注入 CJK 字体与标题
+            title = ''
+            try:
+                for ln in txt_path.read_text(encoding='utf-8').splitlines():
+                    if ln.strip().startswith('title='):
+                        title = ln.strip()[len('title='):]
+                        break
+            except Exception:
+                pass
+            sanitize_generated_lilypond_file(ly_path, title)
+
+            # .ly → PDF
+            pdf_path = render_lilypond_pdf(ly_path)
+            if pdf_path is None or not pdf_path.exists():
+                self._show_snack('重新渲染失败：LilyPond 未能生成 PDF')
+                return
+
+            # 覆写 Output/ 中的旧 PDF
+            shutil.copy2(str(pdf_path), str(out_pdf))
+
+            # 刷新预览 viewer（必须在 UI 线程执行）
+            if self._current_path == out_pdf:
+                p = self.page
+                if p is not None:
+                    try:
+                        p.loop.call_soon_threadsafe(self._viewer.load, out_pdf)  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+
+            self._show_snack(f'重新渲染完成 → {out_pdf.name}')
+        except Exception as exc:
+            self._show_snack(f'重新渲染出错: {exc}')
+        finally:
+            if tmp_dir is not None:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+            self._regen_btn.disabled = False
+            self._ui_update(self._regen_btn)
+
+    def _ui_update(self, control) -> None:
+        """Thread-safe control update (mirrors score_preview_page pattern)."""
+        p = self.page
+        if p is not None:
+            try:
+                p.loop.call_soon_threadsafe(p.update, control)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+    def _show_snack(self, msg: str) -> None:
+        p = self.page
+        if p is None:
+            return
+        try:
+            p.loop.call_soon_threadsafe(  # type: ignore[attr-defined]
+                p.open,
+                ft.SnackBar(content=ft.Text(msg, size=14), duration=3000),
+            )
+        except Exception:
+            pass
 
     # ── 编辑跳转 ──────────────────────────────────────────────────────────────
 

@@ -190,7 +190,13 @@ class PdfViewer(ft.Column):
     # ── 缓存 ─────────────────────────────────────────────────────────────────
 
     def _cache_key(self, path: Path) -> str:
-        return str(path.resolve())
+        # 将文件修改时间纳入缓存键：文件被覆写后 mtime 变化，
+        # 确保不会返回旧内容的缓存，解决重新渲染后预览未刷新的问题。
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        return f"{path.resolve()}@{mtime}"
 
     def _get_cached_preview(self, path: Path) -> Optional[dict[str, Any]]:
         return self._preview_cache.get(self._cache_key(path))

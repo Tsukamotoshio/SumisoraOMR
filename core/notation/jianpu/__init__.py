@@ -213,8 +213,12 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                         _voice_groups.append([len(_sections)])
                         _sections.append(measures)
                 else:
-                    # Multiple voices: one section per voice (max 4)
-                    group_indices: list[int] = []
+                    # Multiple voices: one section per voice (max 4).
+                    # In a multi-part score each Part already maps to a separate staff;
+                    # when a Part contains multiple voice IDs (e.g. due to OMR chord
+                    # encoding), each voice is an independent melodic line and should
+                    # get its own staff row — NOT be merged into a shared polyphonic
+                    # staff (that path is reserved for the single-part case above).
                     _primary_vid_mp = voice_ids[0]
                     for i, vid in enumerate(voice_ids[:4]):
                         # 跳过伪复声部：次声部音符 onset 严格落在主声部音符时值内 → OMR 误判
@@ -230,10 +234,8 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                         if not _ts_set:
                             _time_sig, _ts_set = ts, True
                         if measures:
-                            group_indices.append(len(_sections))
+                            _voice_groups.append([len(_sections)])
                             _sections.append(measures)
-                    if group_indices:
-                        _voice_groups.append(group_indices)
 
     # ── Assemble jianpu-ly text ───────────────────────────────────────────────
     header = ['% jianpu-ly.py', f'title={title}']

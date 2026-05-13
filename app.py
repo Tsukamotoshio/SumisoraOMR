@@ -495,6 +495,9 @@ async def main(page: ft.Page) -> None:
     def _on_done(message: str = '完成', **_kw) -> None:
         async def _do():
             _show_snack(message, Palette.SUCCESS)
+            # 转换完成后刷新两个预览页（mtime 缓存键确保新 PDF 不会命中旧缓存）
+            jianpu_preview_page.reload()
+            score_preview_page.reload()
         page.run_task(_do)
 
     state.on(Event.PROGRESS_ERROR, _on_error)

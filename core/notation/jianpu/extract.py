@@ -29,16 +29,19 @@ def _get_voice_ids_in_part(part) -> list[str]:
       1. it has actual notes in at least 2 distinct measures (the original guard
          against single-measure harmony chords triggering multi-voice extraction), AND
       2. it is either the most prolific voice in the part (always kept), OR
-         it has at least 8 total non-rest notes AND at least 10 % of the
-         primary's note count.
+         it meets the secondary-voice significance test (see below).
 
-    Rule 2 prevents OMR false-polyphony from being kept as a separate staff:
-    OMR engines (HOMR especially) sometimes invent stray voices that contain
-    only a handful of notes scattered across exactly 2 measures.  Such voices
-    also slip past ``_secondary_voice_overlaps_primary`` because their onsets
-    happen to align with the primary voice's beat positions, so without this
-    guard they end up rendered as nearly-empty duplicate staves whose stray
-    notes overlap visually with the real parts.
+    Secondary-voice significance test (both of the following must be true):
+      a. note count >= 10 % of the primary voice's note count, AND
+      b. EITHER note count >= 8 (the original guard against 2-measure OMR stray voices)
+         OR the voice spans at least 4 distinct measures.
+
+    Rationale for the OR branch: OMR stray voices typically appear in exactly 2
+    (occasionally 3) consecutive measures with a handful of notes.  A voice spread
+    across 4 or more measures — even with fewer than 8 total notes — is far more
+    likely to be a genuine polyphonic voice (e.g. a later-entering canon voice that
+    is only sparsely tagged with voice numbers in the MusicXML) than an OMR artefact.
+    The 10 % floor prevents near-empty one-off notes from being promoted regardless.
     """
     voice_stats: dict[str, tuple[int, int]] = {}  # vid -> (measure_count, note_count)
     for measure in part.getElementsByClass(stream.Measure):
@@ -58,7 +61,10 @@ def _get_voice_ids_in_part(part) -> list[str]:
     return sorted(
         vid for vid in candidates
         if vid == primary_vid
-        or (voice_stats[vid][1] >= 8 and voice_stats[vid][1] >= primary_notes * 0.10)
+        or (
+            voice_stats[vid][1] >= primary_notes * 0.10
+            and (voice_stats[vid][1] >= 8 or voice_stats[vid][0] >= 4)
+        )
     )
 
 
@@ -257,9 +263,21 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                 _flat_all = list(_best_voice.flatten().notesAndRests)
         else:
             if _multi_voice_mode and not _is_primary_voice:
-                # No voice containers in this measure + secondary voice → whole-measure rest.
-                # The flat content belongs to the primary voice only.
-                _flat_all = []
+                # No voice containers in this measure + secondary voice.
+                # HOMR sometimes encodes 2-voice polyphony with <chord/> tags instead of
+                # separate <voice> containers.  When chord objects exist, the lower pitch
+                # belongs to the secondary voice; recover those notes rather than emitting
+                # a whole-measure rest.  Single notes (no chord sibling) belong solely to
+                # the primary voice and are left alone.
+                _chord_lowers: list[m21note.Note] = []
+                for _el in measure_src.flatten().notesAndRests:
+                    if isinstance(_el, m21chord.Chord) and len(_el.pitches) >= 2:
+                        _lower_p = min(_el.pitches, key=lambda p: p.midi)
+                        _lower_n = m21note.Note(_lower_p)
+                        _lower_n.duration.quarterLength = float(_el.duration.quarterLength or 0.25)
+                        _lower_n.offset = float(_el.offset)
+                        _chord_lowers.append(_lower_n)
+                _flat_all = _chord_lowers  # remains [] when no chords → whole-measure rest
             else:
                 _flat_all = list(measure_src.flatten().notesAndRests)
 
