@@ -2,6 +2,7 @@
 
 > Batch-convert Western staff notation (PDF / PNG / JPG) to Jianpu (numbered musical notation) PDFs, with a built-in Jianpu editor and transposer.
 
+[![Version: v0.3.4](https://img.shields.io/badge/Version-v0.3.4-green.svg)]()
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)]()
@@ -60,7 +61,9 @@
 After conversion, switch to the **Jianpu Preview** tab to browse all
 generated PDFs. Check files using the checkboxes, then click the export
 button in the sidebar header to copy them to a folder of your choice.
-Click **Edit** to open the currently previewed file in the editor.
+Click **Re-render** to regenerate the current PDF directly from its
+`.jianpu.txt` source without re-running recognition. Click **Edit** to
+open the currently previewed file in the editor.
 
 ### Staff Score Preview
 
@@ -144,7 +147,7 @@ THIRD_PARTY_NOTICES.md   # Third-party component licenses
 ## Known Limitations
 
 - **Recognition accuracy** depends heavily on scan quality. Blurry or complex scores may produce wrong or missing notes.
-- **Polyphony** — scores with many voices or dense chords may retain only the main melody.
+- **Polyphony** — up to 4 independent voices are rendered as separate staves in both Jianpu and staff previews; very dense chords or more than 4 simultaneous voices may lose some notes.
 - **No lyrics** — only note data is exported.
 - **Processing speed** — Recognizing a single score can take several minutes; multi-page PDFs take longer.
 - **Edge cases** — uncommon time signatures or mid-piece key changes may yield inaccurate results.
