@@ -14,7 +14,7 @@ set "BASE_DIR=%CD%\"
 
 
 
-set "APP_VERSION=0.3.3"
+set "APP_VERSION=0.3.4"
 
 set "APP_NAME=SumisoraOMR"
 

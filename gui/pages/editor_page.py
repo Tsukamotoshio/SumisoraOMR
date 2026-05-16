@@ -175,7 +175,6 @@ class _BinaryImageView(ft.Column):
             content=self._preview_img,
             expand=True,
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
-            on_size_change=self._on_preview_resize,
             visible=False,
         )
         self._preview_placeholder_col = ft.Column(
@@ -200,6 +199,7 @@ class _BinaryImageView(ft.Column):
             expand=True,
             bgcolor=ft.Colors.SURFACE_CONTAINER,
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            on_size_change=self._on_preview_resize,
             visible=False,
         )
 

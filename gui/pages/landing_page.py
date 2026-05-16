@@ -1095,7 +1095,7 @@ class LandingPage(ft.Row):
             def _stat_chip(label: str, color: str) -> ft.Container:
                 return ft.Container(
                     content=ft.Text(label, size=13, color=color, weight=ft.FontWeight.W_700),
-                    padding=ft.padding.symmetric(horizontal=10, vertical=4),
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=4),
                     border_radius=12,
                     bgcolor=ft.Colors.with_opacity(0.12, color),
                 )
@@ -1117,7 +1117,7 @@ class LandingPage(ft.Row):
                 list_items.append(
                     ft.Container(
                         ft.Text('成功', size=12, weight=ft.FontWeight.W_700, color=Palette.SUCCESS),
-                        padding=ft.padding.only(top=8, bottom=2),
+                        padding=ft.Padding.only(top=8, bottom=2),
                     )
                 )
                 for item in success_files:
@@ -1154,7 +1154,7 @@ class LandingPage(ft.Row):
                                 spacing=1,
                                 tight=True,
                             ),
-                            padding=ft.padding.symmetric(vertical=3),
+                            padding=ft.Padding.symmetric(vertical=3),
                         )
                     )
 
@@ -1163,7 +1163,7 @@ class LandingPage(ft.Row):
                 list_items.append(
                     ft.Container(
                         ft.Text('失败', size=12, weight=ft.FontWeight.W_700, color=Palette.ERROR),
-                        padding=ft.padding.only(top=10, bottom=2),
+                        padding=ft.Padding.only(top=10, bottom=2),
                     )
                 )
                 for item in failed_files:
@@ -1189,7 +1189,7 @@ class LandingPage(ft.Row):
                                 spacing=1,
                                 tight=True,
                             ),
-                            padding=ft.padding.symmetric(vertical=3),
+                            padding=ft.Padding.symmetric(vertical=3),
                         )
                     )
 

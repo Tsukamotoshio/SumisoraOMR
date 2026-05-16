@@ -81,9 +81,6 @@ def _bootstrap_venv() -> None:
     sys.exit(1)
 
 _bootstrap_venv()
-if sys.platform == 'win32' and '--worker' not in sys.argv:
-    os.environ.setdefault('FLET_APP_USER_MODEL_ID', 'Tsukamotoshio.SumisoraOMR')
-    os.environ.setdefault('FLET_HIDE_WINDOW_ON_START', 'true')
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Worker subprocess early exit: branch before flet/GUI imports, saving memory and startup time
@@ -564,6 +561,13 @@ async def main(page: ft.Page) -> None:
     # ── Initialisation complete ───────────────────────────────────────────────
     _show_page('landing')
 
+    # 等待 Flutter 完成首帧绘制后再显示窗口，防止控件尚未渲染时窗口已可见。
+    # FLET_HIDE_WINDOW_ON_START 在 Dart 层处理，50ms 确保 layout/paint 已完成。
+    import asyncio as _asyncio
+    await _asyncio.sleep(0.05)
+    page.window.visible = True
+    page.window.update()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PE resource helpers: patch icon + VERSIONINFO in the child Flutter exe
@@ -799,6 +803,7 @@ def _setup_flet_view_name() -> None:
             import asyncio as _aio
             import tempfile as _tmp
             import os as _o
+            import subprocess as _sp
             _pid  = str(_Path(_tmp.gettempdir()) / _rstr(20))
             _env = {**_o.environ}
             _env['FLET_APP_USER_MODEL_ID'] = 'Tsukamotoshio.SumisoraOMR'
@@ -807,7 +812,14 @@ def _setup_flet_view_name() -> None:
                 _args = [_exe_str, page_url, _pid]
                 if assets_dir:
                     _args.append(assets_dir)
-                return (await _aio.create_subprocess_exec(_args[0], *_args[1:], env=_env), _pid)
+                # STARTUPINFO.wShowWindow = SW_HIDE: Win32 层面在 Dart 代码运行前
+                # 即隐藏窗口，防止 Flutter runner 执行 ShowWindow(nCmdShow) 时白屏。
+                _si = _sp.STARTUPINFO()
+                _si.dwFlags = _sp.STARTF_USESHOWWINDOW
+                _si.wShowWindow = 0  # SW_HIDE
+                return (await _aio.create_subprocess_exec(
+                    _args[0], *_args[1:], env=_env, startupinfo=_si,
+                ), _pid)
             return await _orig_open(page_url, assets_dir, True)
 
         _fd.open_flet_view_async = _patched_open
