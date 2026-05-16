@@ -14,7 +14,7 @@ This file provides license and attribution notices for third-party components di
 - Upstream: <https://lilypond.org/>
 
 ## music21
-- Version: `9.9.2`
+- Version: `10.1.0`
 - License: BSD-3-Clause
 - Upstream: <https://github.com/cuthbertLab/music21>
 - Documentation: <https://www.music21.org/music21docs/>

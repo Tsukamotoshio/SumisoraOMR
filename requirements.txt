@@ -1,5 +1,5 @@
 flet>=0.85.0
-music21>=9.9.2
+music21>=10.1.0
 pillow>=12.2.0
 opencv-python-headless>=4.8.0
 reportlab>=4.5.1
