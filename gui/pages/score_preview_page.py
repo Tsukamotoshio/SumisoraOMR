@@ -103,12 +103,24 @@ class ScorePreviewPage(ft.Row):
             height=28,
         )
 
+        self._delete_checked_btn = ft.IconButton(
+            icon=ft.Icons.DELETE_OUTLINE_ROUNDED,
+            icon_size=17,
+            icon_color=Palette.ERROR,
+            tooltip='删除已勾选的五线谱',
+            on_click=self._on_delete_checked_click,
+            width=28,
+            height=28,
+            disabled=True,
+        )
+
         sidebar_header = ft.Container(
             content=ft.Row(
                 [
                     ft.Row([self._select_all_btn, section_title('五线谱文件')], spacing=0),
                     ft.Container(expand=True),
                     batch_export_btn,
+                    self._delete_checked_btn,
                     refresh_btn,
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -246,6 +258,7 @@ class ScorePreviewPage(ft.Row):
             self._current_path = None
             self._render_token += 1
         self._update_select_all_icon()
+        self._update_delete_btn()
 
     def _rebuild_list(self) -> None:
         self._item_rows.clear()
@@ -291,6 +304,15 @@ class ScorePreviewPage(ft.Row):
                         size=11,
                         color=ft.Colors.ON_SURFACE_VARIANT,
                     ),
+                    ft.IconButton(
+                        icon=ft.Icons.CLOSE_ROUNDED,
+                        icon_size=12,
+                        icon_color=ft.Colors.OUTLINE,
+                        tooltip='删除此文件',
+                        on_click=lambda _, p=path: self._on_delete_single(p),
+                        width=24,
+                        height=24,
+                    ),
                 ],
                 spacing=4,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -301,6 +323,120 @@ class ScorePreviewPage(ft.Row):
             on_click=lambda _, p=path: self._select_file(p),
             ink=True,
         )
+
+    def _delete_file(self, path: Path) -> None:
+        """删除五线谱 MXL/XML 文件。"""
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    def _update_delete_btn(self) -> None:
+        self._delete_checked_btn.disabled = not bool(self._checked)
+        try:
+            self._delete_checked_btn.update()
+        except Exception:
+            pass
+
+    def _on_delete_single(self, path: Path) -> None:
+        def _do(_e) -> None:
+            self.page.pop_dialog()
+            was_current = (self._current_path == path)
+            self._delete_file(path)
+            self._mxl_paths = [p for p in self._mxl_paths if p != path]
+            self._checked.discard(path)
+            self._item_rows.pop(path, None)
+            _cached_pdf = self._preview_pdf_cache.pop(path, None)
+            if _cached_pdf:
+                try:
+                    _cached_pdf.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            if was_current:
+                self._current_path = None
+                self._viewer.reset()
+                self._render_token += 1
+            self._rebuild_list()
+            if was_current and self._mxl_paths:
+                self._select_file(self._mxl_paths[0])
+            self._update_select_all_icon()
+            self._update_delete_btn()
+
+        def _cancel(_e) -> None:
+            self.page.pop_dialog()
+
+        self.page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Text('删除五线谱文件', size=15, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                f'将永久删除：{path.name}',
+                size=13,
+                color=ft.Colors.ON_SURFACE,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel),
+                ft.FilledButton(
+                    '删除',
+                    on_click=_do,
+                    style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
+
+    def _on_delete_checked_click(self, _e) -> None:
+        if not self._checked:
+            return
+        to_delete = list(self._checked)
+        n = len(to_delete)
+
+        def _do(_e) -> None:
+            self.page.pop_dialog()
+            deleted_set = set(to_delete)
+            was_current = self._current_path in deleted_set
+            for p in to_delete:
+                self._delete_file(p)
+                _cached_pdf = self._preview_pdf_cache.pop(p, None)
+                if _cached_pdf:
+                    try:
+                        _cached_pdf.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            self._mxl_paths = [p for p in self._mxl_paths if p not in deleted_set]
+            self._checked -= deleted_set
+            for p in to_delete:
+                self._item_rows.pop(p, None)
+            if was_current:
+                self._current_path = None
+                self._viewer.reset()
+                self._render_token += 1
+            self._rebuild_list()
+            if was_current and self._mxl_paths:
+                self._select_file(self._mxl_paths[0])
+            self._update_select_all_icon()
+            self._update_delete_btn()
+
+        def _cancel(_e) -> None:
+            self.page.pop_dialog()
+
+        self.page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Text('批量删除五线谱文件', size=15, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                f'将永久删除已勾选的 {n} 个五线谱文件。',
+                size=13,
+                color=ft.Colors.ON_SURFACE,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel),
+                ft.FilledButton(
+                    '删除',
+                    on_click=_do,
+                    style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
 
     def _select_file(self, path: Path) -> None:
         prev = self._current_path
@@ -332,6 +468,7 @@ class ScorePreviewPage(ft.Row):
         else:
             self._checked.discard(path)
         self._update_select_all_icon()
+        self._update_delete_btn()
 
     def _on_select_all(self, _e) -> None:
         if len(self._checked) < len(self._mxl_paths):
@@ -349,6 +486,7 @@ class ScorePreviewPage(ft.Row):
             self._select_all_btn.update()
         except Exception:
             pass
+        self._update_delete_btn()
 
     def _update_select_all_icon(self) -> None:
         if not self._mxl_paths:
