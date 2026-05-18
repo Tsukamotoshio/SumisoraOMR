@@ -98,12 +98,24 @@ class JianpuPreviewPage(ft.Row):
             height=28,
         )
 
+        self._delete_checked_btn = ft.IconButton(
+            icon=ft.Icons.DELETE_OUTLINE_ROUNDED,
+            icon_size=17,
+            icon_color=Palette.ERROR,
+            tooltip='删除已勾选的简谱',
+            on_click=self._on_delete_checked_click,
+            width=28,
+            height=28,
+            disabled=True,
+        )
+
         sidebar_header = ft.Container(
             content=ft.Row(
                 [
                     ft.Row([self._select_all_btn, section_title('简谱文件')], spacing=0),
                     ft.Container(expand=True),
                     self._export_btn,
+                    self._delete_checked_btn,
                     refresh_btn,
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -236,6 +248,7 @@ class JianpuPreviewPage(ft.Row):
             self._viewer.reset()
             self._current_path = None
         self._update_select_all_icon()
+        self._update_delete_btn()
 
     def _rebuild_list(self) -> None:
         self._item_rows.clear()
@@ -249,6 +262,114 @@ class JianpuPreviewPage(ft.Row):
             self._list_stack.update()
         except Exception:
             pass
+
+    def _delete_file(self, path: Path) -> None:
+        """删除简谱 PDF 及其关联的 .mid 和 .jianpu.txt。"""
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        stem = path.stem[:-len('_jianpu')] if path.stem.endswith('_jianpu') else path.stem
+        out = output_dir(None)
+        workspace = editor_workspace_dir()
+        for f in (out / f'{stem}.mid', workspace / f'{stem}.jianpu.txt'):
+            try:
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def _update_delete_btn(self) -> None:
+        self._delete_checked_btn.disabled = not bool(self._checked)
+        try:
+            self._delete_checked_btn.update()
+        except Exception:
+            pass
+
+    def _on_delete_single(self, path: Path) -> None:
+        def _do(_e) -> None:
+            self.page.pop_dialog()
+            was_current = (self._current_path == path)
+            self._delete_file(path)
+            self._pdf_paths = [p for p in self._pdf_paths if p != path]
+            self._checked.discard(path)
+            self._item_rows.pop(path, None)
+            if was_current:
+                self._current_path = None
+                self._viewer.reset()
+            self._rebuild_list()
+            if was_current and self._pdf_paths:
+                self._select_file(self._pdf_paths[0])
+            self._update_select_all_icon()
+            self._update_delete_btn()
+
+        def _cancel(_e) -> None:
+            self.page.pop_dialog()
+
+        self.page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Text('删除简谱文件', size=15, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                f'将永久删除：{path.name} 及其关联的 MIDI 和编辑文本。',
+                size=13,
+                color=ft.Colors.ON_SURFACE,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel),
+                ft.FilledButton(
+                    '删除',
+                    on_click=_do,
+                    style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
+
+    def _on_delete_checked_click(self, _e) -> None:
+        if not self._checked:
+            return
+        to_delete = list(self._checked)
+        n = len(to_delete)
+
+        def _do(_e) -> None:
+            self.page.pop_dialog()
+            was_current = self._current_path in set(to_delete)
+            for p in to_delete:
+                self._delete_file(p)
+            deleted_set = set(to_delete)
+            self._pdf_paths = [p for p in self._pdf_paths if p not in deleted_set]
+            self._checked -= deleted_set
+            for p in to_delete:
+                self._item_rows.pop(p, None)
+            if was_current:
+                self._current_path = None
+                self._viewer.reset()
+            self._rebuild_list()
+            if was_current and self._pdf_paths:
+                self._select_file(self._pdf_paths[0])
+            self._update_select_all_icon()
+            self._update_delete_btn()
+
+        def _cancel(_e) -> None:
+            self.page.pop_dialog()
+
+        self.page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Text('批量删除简谱文件', size=15, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                f'将永久删除已勾选的 {n} 个简谱文件及其关联文件。',
+                size=13,
+                color=ft.Colors.ON_SURFACE,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel),
+                ft.FilledButton(
+                    '删除',
+                    on_click=_do,
+                    style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
 
     def _make_item_row(self, path: Path) -> ft.Container:
         is_checked = path in self._checked
@@ -277,6 +398,15 @@ class JianpuPreviewPage(ft.Row):
                         color=Palette.PRIMARY if is_selected else ft.Colors.ON_SURFACE,
                         weight=ft.FontWeight.W_700 if is_selected else ft.FontWeight.NORMAL,
                         tooltip=path.name,
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.CLOSE_ROUNDED,
+                        icon_size=12,
+                        icon_color=ft.Colors.OUTLINE,
+                        tooltip='删除此文件',
+                        on_click=lambda _, p=path: self._on_delete_single(p),
+                        width=24,
+                        height=24,
                     ),
                 ],
                 spacing=4,
@@ -319,6 +449,7 @@ class JianpuPreviewPage(ft.Row):
         else:
             self._checked.discard(path)
         self._update_select_all_icon()
+        self._update_delete_btn()
 
     def _on_select_all(self, _e) -> None:
         if len(self._checked) < len(self._pdf_paths):
@@ -336,6 +467,7 @@ class JianpuPreviewPage(ft.Row):
             self._select_all_btn.update()
         except Exception:
             pass
+        self._update_delete_btn()
 
     def _update_select_all_icon(self) -> None:
         if not self._pdf_paths:
