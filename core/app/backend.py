@@ -27,6 +27,18 @@ def models_dir() -> Path:
     return path
 
 
+def jianpu_input_dir() -> Path:
+    """Input directory for jianpu images/PDFs. Not auto-created; caller does mkdir."""
+    return app_base_dir() / 'jianpu-Input'
+
+
+def vlm_models_dir() -> Path:
+    """VLM (Qwen2-VL) GGUF weights directory (created on demand)."""
+    path = app_base_dir() / 'models' / 'vlm'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def output_dir(output_text: str | None) -> Path:
     if output_text and output_text != '未指定（默认 Output/）':
         return Path(output_text)

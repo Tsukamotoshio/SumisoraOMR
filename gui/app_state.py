@@ -33,6 +33,8 @@ class Event:
     SCORE_TRANSPOSER_BACK      = 'score_transposer_back'      # transposer requests back to score_preview
     THEME_CHANGED         = 'theme_changed'         # theme toggled (dark: bool)
     MODELS_DOWNLOADED     = 'models_downloaded'     # HOMR weights finished downloading
+    JIANPU_OCR_REQUESTED = 'jianpu_ocr_requested'  # landing button → show OCR page
+    JIANPU_OCR_DONE      = 'jianpu_ocr_done'        # OCR complete → show score_preview
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +75,7 @@ class AppState:
 
     # Engine availability (HOMR weights presence; set on startup + after download)
     homr_available: bool = False
+    vlm_available:  bool = False
 
     # Log
     log_lines: list[str] = field(default_factory=list)
