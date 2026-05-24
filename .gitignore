@@ -49,11 +49,15 @@ scripts/jianpu-ly.py
 # Generated conversion artifacts
 /Input/
 /Output/
+/jianpu-Input/
 /logs/
 /conversion_history.json
 /test_score.png
 /test_score.ly
 /%STAGING%
+
+# Local debug / scratch scripts
+debug_vlm.py
 
 # Python cache
 __pycache__/

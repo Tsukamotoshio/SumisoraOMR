@@ -126,15 +126,16 @@ class JianpuNote:
     is_rest: bool
 
 
-# ── VLM (Qwen2-VL) model constants ───────────────────────────────────────────
+# ── VLM (Qwen2.5-VL) model constants ─────────────────────────────────────────
+# llama-cpp-python 0.3.x uses Qwen25VLChatHandler; requires Qwen2.5-VL GGUF files.
+# Source: unsloth/Qwen2.5-VL-7B-Instruct-GGUF on HuggingFace (need VPN in mainland China)
 VLM_MODEL_DIR_NAME   = 'vlm'
-VLM_MODEL_FILENAME   = 'qwen2_vl-7b-instruct-q4_k_m.gguf'
-VLM_MMPROJ_FILENAME  = 'mmproj-qwen2_vl-7b-instruct-f16.gguf'
+VLM_MODEL_FILENAME   = 'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf'
+VLM_MMPROJ_FILENAME  = 'mmproj-F16.gguf'
 # SHA256 hashes — fill in after first successful download (certutil -hashfile <file> SHA256)
 # Empty string = skip hash verification (acceptable for experimental feature)
 VLM_MODEL_HASH       = ''
 VLM_MMPROJ_HASH      = ''
 VLM_WEIGHT_BASE_URLS = [
-    'https://modelscope.cn/models/Qwen/Qwen2-VL-7B-Instruct-GGUF/resolve/master/',
-    'https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct-GGUF/resolve/main/',
+    'https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF/resolve/main/',
 ]
