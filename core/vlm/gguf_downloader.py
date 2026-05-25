@@ -1,4 +1,4 @@
-# core/vlm/gguf_downloader.py — Qwen2-VL GGUF weight download orchestrator
+# core/vlm/gguf_downloader.py — Qwen2.5-VL GGUF weight download orchestrator
 # Downloads two files: main model GGUF + multimodal projector (mmproj) GGUF.
 # Mirrors the pattern of core/omr/homr_downloader.py.
 from __future__ import annotations
@@ -24,8 +24,9 @@ _PROBE_TIMEOUT_SEC = 5.0
 _VLM_FILES   = [VLM_MMPROJ_FILENAME, VLM_MODEL_FILENAME]   # mmproj first (smaller → probe target)
 _VLM_HASHES  = {VLM_MODEL_FILENAME: VLM_MODEL_HASH, VLM_MMPROJ_FILENAME: VLM_MMPROJ_HASH}
 
-# Progress callback: (file_index, filename, bytes_done, file_total,
-#                     overall_done, overall_total, total_files)
+# Progress callback (mirrors HOMR dialog convention):
+#   (file_index, filename, bytes_done, file_total, overall_done, overall_total, total_files)
+# Note: speed_bps deferred — not tracked in this implementation.
 ProgressCallback = Callable[[int, str, int, int, int, int, int], None]
 
 
@@ -149,7 +150,14 @@ def download_all_weights(
 
     Downloads mmproj first (smaller, faster indicator of working connection),
     then main model. Resume-aware via HTTP Range. Hash check after each file.
-    On hash mismatch: delete, retry on alternate source once (unless forced source).
+    On hash mismatch or network error: delete, retry on alternate source once
+    (unless forced source).
+
+    Raises:
+        NoSourceAvailable: No mirror responded during probe (before download starts).
+        DownloadCancelled: cancel_event was set mid-transfer.
+        HashMismatch: File hash is wrong on all available sources.
+        requests.exceptions.RequestException: Unrecoverable network error on alt source.
     """
     models_dir.mkdir(parents=True, exist_ok=True)
     primary = forced_base_url if forced_base_url else probe_sources()
@@ -161,8 +169,12 @@ def download_all_weights(
     todo = []
     for fname in _VLM_FILES:
         target = models_dir / fname
-        if target.exists() and verify_sha256(str(target), _VLM_HASHES.get(fname, '')):
-            continue
+        if target.exists():
+            try:
+                if verify_sha256(str(target), _VLM_HASHES.get(fname, '')):
+                    continue
+            except FileNotFoundError:
+                pass
         target.unlink(missing_ok=True)
         todo.append(fname)
 
@@ -194,19 +206,28 @@ def download_all_weights(
             bytes_holder['v'] = b
             on_progress(_idx, _fname, b, _ft, overall_done + b, overall_total, len(todo))
 
-        _download_to_path(_build_url(primary, fname), target, _cb, cancel_event)
+        _need_alt = False
+        try:
+            _download_to_path(_build_url(primary, fname), target, _cb, cancel_event)
+        except DownloadCancelled:
+            raise
+        except requests.exceptions.RequestException:
+            target.unlink(missing_ok=True)
+            _need_alt = True
 
-        if verify_sha256(str(target), _VLM_HASHES.get(fname, '')):
-            overall_done += file_sizes.get(fname, 0)
-            continue
+        if not _need_alt:
+            if verify_sha256(str(target), _VLM_HASHES.get(fname, '')):
+                overall_done += file_sizes.get(fname, 0)
+                continue
+            target.unlink(missing_ok=True)
+            _need_alt = True
 
-        # Hash mismatch — try alternate source
-        target.unlink(missing_ok=True)
+        # Network error or hash mismatch — try alternate source
         if forced_base_url:
-            raise HashMismatch(f'{fname}: hash mismatch on forced source')
+            raise HashMismatch(f'{fname}: hash mismatch/download failed on forced source')
         alts = [u for u in VLM_WEIGHT_BASE_URLS if u != primary]
         if not alts:
-            raise HashMismatch(f'{fname}: hash mismatch, no alternate source')
+            raise HashMismatch(f'{fname}: hash mismatch/download failed, no alternate source')
         alt = alts[0]
         if on_source_change:
             on_source_change(alt)
