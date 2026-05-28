@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 _LOG = logging.getLogger('convert')
 
@@ -27,6 +27,76 @@ def _safe_int(val: Any, default: int) -> int:
         return int(val)
     except (TypeError, ValueError):
         return default
+
+
+def _parse_jianpu_shorthand(token: str) -> dict | None:
+    """jianpu-ly 简写字符串 → 音符 dict，无法解析返回 None。
+
+    支持组合形式（基本顺序：dur 前缀 → 升降号 → 音高 → 八度记号 → 附点）：
+      "5"     四分 5
+      "5'"    高八度 5（一个撇 = +1 八度，叠加可达 +2）
+      "5,"    低八度 5（一个逗号 = -1 八度，叠加可达 -2）
+      "q5"    八分 5（jianpu-ly 前缀 q = eighth）
+      "s5"    十六分 5
+      "#4"    升 4
+      "b3"    降 3
+      "5."    附点 5
+      "i"/"í" 高八度 1（字体把"1+上方点"渲染成 i）
+      "0"/"r" 休止符
+    返回 {'_extend': 1} 表示这是延长记号 "-"，调用方应延长前一个音符。
+    """
+    s = token.strip()
+    if not s:
+        return None
+    if s == '-':
+        return {'_extend': 1}
+
+    # 1) 时值前缀
+    dur = 'q'
+    if s[0] == 'q':
+        dur, s = 'e', s[1:]
+    elif s[0] == 's':
+        dur, s = 's', s[1:]
+    elif s[0] == 'd':  # 32分降级处理为16分
+        dur, s = 's', s[1:]
+
+    # 2) 升降号前缀（jianpu 写在数字前）
+    acc = ''
+    if s and s[0] == '#':
+        acc, s = '#', s[1:]
+    elif s and s[0] == 'b' and len(s) > 1 and s[1] in '1234567':
+        acc, s = 'b', s[1:]
+
+    # 3) 音高字符
+    if not s:
+        return None
+    ch = s[0]
+    s = s[1:]
+
+    if ch in ('i', 'í', 'I', 'Í'):
+        pitch, oct_off = '1', 1
+    elif ch in '1234567':
+        pitch, oct_off = ch, 0
+    elif ch in ('0', 'r', 'R'):
+        pitch, oct_off = 'r', 0
+    else:
+        return None
+
+    # 4) 八度记号（' 加, , 减；可叠加）
+    while s and s[0] in ("'", "′"):
+        oct_off += 1
+        s = s[1:]
+    while s and s[0] in (',',):
+        oct_off -= 1
+        s = s[1:]
+
+    # 5) 附点
+    dots = 1 if s.startswith('.') else 0
+
+    if pitch == 'r':
+        return {'p': 'r', 'oct': 0, 'dur': dur, 'dots': dots}
+    return {'p': acc + pitch if acc else pitch,
+            'oct': oct_off, 'dur': dur, 'dots': dots}
 
 
 def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = None) -> Path:
@@ -75,26 +145,27 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
     measures = data.get('measures', [])
     _LOG.info(f'[VLM→MXL] {len(measures)} measures → {output_path.name}')
 
-    # jianpu-ly 字体把 "1 头顶有点"（高八度 1）渲染成 i/í，部分模型直接输出这些字符
-    _HIGH_OCTAVE_ONE = {'i', 'í', "1'", '1+'}
-    _LOW_OCTAVE_ONE  = {'1,'}
-
     for mi, measure_notes in enumerate(measures):
         # 容错：模型可能输出 ["5","3","1"] 而非 [{"p":"5",...},...]
         if not isinstance(measure_notes, list):
             _LOG.warning(f'[VLM→MXL] 跳过非列表小节 #{mi}: type={type(measure_notes).__name__}')
             continue
         m = stream.Measure()
+        prev_elem: Optional['note.GeneralNote'] = None   # type: ignore[name-defined]
         for n in measure_notes:
             if isinstance(n, str):
-                # 字符串形式（如 "5", "í"）当成简化音符处理
-                token = n.strip()
-                if token in _HIGH_OCTAVE_ONE:
-                    n = {'p': '1', 'oct': 1, 'dur': 'q', 'dots': 0}
-                elif token in _LOW_OCTAVE_ONE:
-                    n = {'p': '1', 'oct': -1, 'dur': 'q', 'dots': 0}
-                else:
-                    n = {'p': token, 'oct': 0, 'dur': 'q', 'dots': 0}
+                parsed = _parse_jianpu_shorthand(n)
+                if parsed is None:
+                    continue
+                # 延长记号 "-": 把前一个音符的时值加一拍
+                if '_extend' in parsed:
+                    if prev_elem is not None:
+                        try:
+                            prev_elem.duration.quarterLength += 1.0
+                        except Exception:
+                            pass
+                    continue
+                n = parsed
             elif not isinstance(n, dict):
                 _LOG.warning(f'[VLM→MXL] 小节 #{mi} 含非dict音符: {n!r}，跳过')
                 continue
@@ -102,17 +173,13 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
             dur_key = str(n.get('dur', 'q')).strip()
             dots = _safe_int(n.get('dots', 0), 0)
 
-            # 容错：模型偶尔把音符串塞进 dur 字段，如 "5", "5.", "-"
+            # 容错：模型偶尔把音符串塞进 dur 字段
             if dur_key not in _DUR_NAMES:
                 if dur_key == '-':
-                    # 单独的 "-" = 延长记号；当成 half note 处理
                     dur_key = 'h'
                 elif dur_key.endswith('.') and dur_key[:-1] in '1234567':
-                    # 像 "5." → 附点 quarter（音高已在 p 里）
-                    dur_key = 'q'
-                    dots = max(dots, 1)
+                    dur_key, dots = 'q', max(dots, 1)
                 elif dur_key in '1234567':
-                    # 像 "5" 误入 dur → 默认 quarter
                     dur_key = 'q'
                 else:
                     _LOG.warning(f'[VLM→MXL] 未知时值 "{dur_key}"，回退为四分音符')
@@ -124,12 +191,23 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
             if p == 'r':
                 elem: note.GeneralNote = note.Rest()
             else:
-                pitch_letter = _PITCH_MAP.get(p, 'C')
+                # 处理升降号前缀 "#5" / "b3"
+                acc_char = ''
+                digit = p
+                if p and p[0] in ('#', 'b') and len(p) > 1:
+                    acc_char, digit = p[0], p[1:]
+                pitch_letter = _PITCH_MAP.get(digit, 'C')
                 octave = 4 + _safe_int(n.get('oct', 0), 0)
-                elem = note.Note(f'{pitch_letter}{octave}')
+                pitch_str = pitch_letter
+                if acc_char == '#':
+                    pitch_str += '#'
+                elif acc_char == 'b':
+                    pitch_str += '-'   # music21 用 - 表示 flat
+                elem = note.Note(f'{pitch_str}{octave}')
 
             elem.duration = d
             m.append(elem)
+            prev_elem = elem
         part.append(m)
 
     s.append(part)
