@@ -11,9 +11,29 @@ from typing import Any, Optional
 
 _LOG = logging.getLogger('convert')
 
-_PITCH_MAP = {'1': 'C', '2': 'D', '3': 'E', '4': 'F', '5': 'G', '6': 'A', '7': 'B'}
 _DUR_MAP   = {'w': 4.0, 'h': 2.0, 'q': 1.0, 'e': 0.5, 's': 0.25}
 _DUR_NAMES = {'w': 'whole', 'h': 'half', 'q': 'quarter', 'e': 'eighth', 's': '16th'}
+
+
+def _build_scale_pitches(key_pitch: str, base_octave: int = 4) -> list:
+    """简谱数字 1-7 在给定调中的实际音高（含 key 自带的升降号）。
+
+    jianpu 数字是相对调号的：1=A 意味着 1→A、2→B、3→C#、…、7→G#。
+    简单的 _PITCH_MAP 等于硬编码 1=C，丢失调式信息。
+    返回 [pitch_for_1, pitch_for_2, ..., pitch_for_7]，octave 已设为 base_octave 起步。
+    """
+    from music21 import scale, pitch as m21_pitch
+    try:
+        sc = scale.MajorScale(key_pitch)
+        # 取一个完整八度，从 key_pitch{octave} 开始
+        pitches = sc.getPitches(f'{key_pitch}{base_octave}',
+                                 f'{key_pitch}{base_octave + 1}')
+        return [m21_pitch.Pitch(str(p)) for p in pitches[:7]]
+    except Exception as exc:
+        _LOG.warning(f'[VLM→MXL] 无法构建 {key_pitch} 大调音阶: {exc}，回退到 C')
+        sc = scale.MajorScale('C')
+        pitches = sc.getPitches(f'C{base_octave}', f'C{base_octave + 1}')
+        return [m21_pitch.Pitch(str(p)) for p in pitches[:7]]
 
 # jianpu.txt 时值前缀（jianpu-ly 语法）
 _DUR_PREFIX = {'w': '', 'h': '', 'q': 'q', 'e': 'q', 's': 's'}
@@ -134,16 +154,21 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
 
     part.append(meter.TimeSignature(data.get('time_signature', '4/4')))
 
+    key_str = data.get('key', 'C')
     try:
-        part.append(m21_key.Key(data.get('key', 'C')))
+        part.append(m21_key.Key(key_str))
     except Exception as exc:
-        _LOG.debug(f'[VLM→MXL] 无法识别调号，跳过: {exc}')
+        _LOG.debug(f'[VLM→MXL] 无法识别调号 {key_str!r}，跳过 key signature: {exc}')
+        key_str = 'C'
 
     bpm = _safe_int(data.get('tempo', 120), 120)
     part.append(m21_tempo.MetronomeMark(number=bpm))
 
+    # 构建该调的 1-7 音阶映射（C 大调以外，3=C#/5=#=升号等会被正确处理）
+    scale_pitches = _build_scale_pitches(key_str, base_octave=4)
+
     measures = data.get('measures', [])
-    _LOG.info(f'[VLM→MXL] {len(measures)} measures → {output_path.name}')
+    _LOG.info(f'[VLM→MXL] {len(measures)} measures → {output_path.name}  (key={key_str})')
 
     for mi, measure_notes in enumerate(measures):
         # 容错：模型可能输出 ["5","3","1"] 而非 [{"p":"5",...},...]
@@ -196,14 +221,21 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
                 digit = p
                 if p and p[0] in ('#', 'b') and len(p) > 1:
                     acc_char, digit = p[0], p[1:]
-                pitch_letter = _PITCH_MAP.get(digit, 'C')
-                octave = 4 + _safe_int(n.get('oct', 0), 0)
-                pitch_str = pitch_letter
+                if digit not in '1234567':
+                    digit = '1'
+
+                # 用 key 对应的音阶查表，得到正确的 step + 自带升降
+                import copy as _copy
+                base = _copy.deepcopy(scale_pitches[int(digit) - 1])
+                base.octave += _safe_int(n.get('oct', 0), 0)
+
+                # 显式升降号覆盖（在调内音符上额外加 # 或 b）
                 if acc_char == '#':
-                    pitch_str += '#'
+                    base.transpose('A1', inPlace=True)
                 elif acc_char == 'b':
-                    pitch_str += '-'   # music21 用 - 表示 flat
-                elem = note.Note(f'{pitch_str}{octave}')
+                    base.transpose('-A1', inPlace=True)
+
+                elem = note.Note(base)
 
             elem.duration = d
             m.append(elem)
