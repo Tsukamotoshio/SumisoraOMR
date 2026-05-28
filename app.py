@@ -102,6 +102,7 @@ from gui.pages.editor_page import EditorPage
 from gui.pages.transposer_page import TransposerPage
 from gui.pages.score_preview_page import ScorePreviewPage
 from gui.pages.about_page import AboutPage
+from gui.pages.jianpu_ocr_page import JianpuOcrPage
 from gui.components.progress_overlay import ProgressOverlay
 from core.config import APP_VERSION
 
@@ -164,6 +165,18 @@ def _check_homr_models(state: AppState) -> None:
     )
 
 
+def _check_vlm_model(state: AppState) -> None:
+    """Set state.vlm_available based on whether both VLM weight files exist."""
+    from pathlib import Path as _Path
+    from core.app.backend import vlm_models_dir as _vlm_dir
+    from core.config import VLM_MODEL_FILENAME, VLM_MMPROJ_FILENAME
+    d = _vlm_dir()
+    state.vlm_available = (
+        (d / VLM_MODEL_FILENAME).exists()
+        and (d / VLM_MMPROJ_FILENAME).exists()
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main application
 # ─────────────────────────────────────────────────────────────────────────────
@@ -200,6 +213,7 @@ async def main(page: ft.Page) -> None:
     # ── Global state ──────────────────────────────────────────────────────────
     state = AppState()
     _check_homr_models(state)
+    _check_vlm_model(state)
 
     # 将 core/utils.log_message 重定向到 GUI 日志流
     try:
@@ -223,10 +237,11 @@ async def main(page: ft.Page) -> None:
     score_preview_page   = ScorePreviewPage(state)
     transposer_page      = TransposerPage(state)
     about_page           = AboutPage()
+    jianpu_ocr_page  = JianpuOcrPage(state)
 
     # ── Content area (ft.Stack with overlay support) ──────────────────────────
     # 前 4 个容器对应导航栏 4 项；
-    # 第 5 个（index 4）是 jianpu_edit 子页；第 6 个（index 5）是 transposer 子页
+    # 第 5 个（index 4）是 jianpu_edit 子页；第 6 个（index 5）是 transposer 子页；第 7 个（index 6）是 jianpu_ocr 子页
     content_stack = ft.Stack(
         [
             ft.Container(content=landing_page,        expand=True, visible=True),   # 0: landing
@@ -235,11 +250,12 @@ async def main(page: ft.Page) -> None:
             ft.Container(content=about_page,          expand=True, visible=False),  # 3: about
             ft.Container(content=editor_page,         expand=True, visible=False),  # 4: jianpu_edit (sub)
             ft.Container(content=transposer_page,     expand=True, visible=False),  # 5: transposer (sub)
+            ft.Container(content=jianpu_ocr_page,     expand=True, visible=False),  # 6: jianpu_ocr (sub)
             overlay,
         ],
         expand=True,
     )
-    _content_containers: list[ft.Container] = content_stack.controls[:6]  # type: ignore[index]
+    _content_containers: list[ft.Container] = content_stack.controls[:7]  # type: ignore[index]
 
     _NAV_NAMES = [item[0] for item in _NAV_ITEMS]  # ['landing', 'editor', 'score_preview', 'about']
 
@@ -249,8 +265,10 @@ async def main(page: ft.Page) -> None:
                 container.visible = (_NAV_NAMES[i] == name)
             elif i == 4:
                 container.visible = (name == 'jianpu_edit')
-            else:  # i == 5
+            elif i == 5:
                 container.visible = (name == 'transposer')
+            else:  # i == 6
+                container.visible = (name == 'jianpu_ocr')
         state.current_page = name
         if name == 'editor':
             jianpu_preview_page.reload()
@@ -260,6 +278,11 @@ async def main(page: ft.Page) -> None:
             content_stack.update()
         except Exception:
             pass
+        if name == 'jianpu_ocr':
+            try:
+                jianpu_ocr_page.reload()
+            except Exception:
+                pass
 
     def _on_jianpu_edit_requested(**_) -> None:
         _show_page('jianpu_edit')
@@ -279,6 +302,19 @@ async def main(page: ft.Page) -> None:
     state.on(Event.JIANPU_PREVIEW_BACK,        _on_jianpu_preview_back)
     state.on(Event.SCORE_TRANSPOSER_REQUESTED, _on_score_transposer_requested)
     state.on(Event.SCORE_TRANSPOSER_BACK,      _on_score_transposer_back)
+
+    def _on_jianpu_ocr_requested(**_) -> None:
+        _show_page('jianpu_ocr')
+
+    def _on_jianpu_ocr_done(**_) -> None:
+        _show_page('score_preview')
+
+    def _on_jianpu_ocr_back(**_) -> None:
+        _show_page('landing')
+
+    state.on(Event.JIANPU_OCR_REQUESTED, _on_jianpu_ocr_requested)
+    state.on(Event.JIANPU_OCR_DONE,      _on_jianpu_ocr_done)
+    state.on(Event.JIANPU_OCR_BACK,      _on_jianpu_ocr_back)
 
     # ── NavigationRail (left sidebar) ────────────────────────────────────────
 

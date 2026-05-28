@@ -177,6 +177,25 @@ class LandingPage(ft.Row):
                                 open_output_btn,
                                 self._download_models_btn,
                                 self._delete_models_btn,
+                                ft.Container(
+                                    height=1,
+                                    bgcolor=ft.Colors.OUTLINE_VARIANT,
+                                    margin=ft.Margin.symmetric(vertical=4),
+                                ),
+                                ft.OutlinedButton(
+                                    content=ft.Row(
+                                        [ft.Icon(ft.Icons.DOCUMENT_SCANNER_OUTLINED, size=16),
+                                         ft.Text('简谱识别（实验性）')],
+                                        tight=True, spacing=6,
+                                    ),
+                                    on_click=lambda _: self._state.emit(Event.JIANPU_OCR_REQUESTED),
+                                    style=ft.ButtonStyle(
+                                        color=ft.Colors.ON_SURFACE_VARIANT,
+                                        side={ft.ControlState.DEFAULT: ft.BorderSide(
+                                            1, ft.Colors.OUTLINE_VARIANT)},
+                                        shape=ft.RoundedRectangleBorder(radius=8),
+                                    ),
+                                ),
                             ],
                             spacing=10,
                         ),

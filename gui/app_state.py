@@ -35,6 +35,7 @@ class Event:
     MODELS_DOWNLOADED     = 'models_downloaded'     # HOMR weights finished downloading
     JIANPU_OCR_REQUESTED = 'jianpu_ocr_requested'  # landing button → show OCR page
     JIANPU_OCR_DONE      = 'jianpu_ocr_done'        # OCR complete → show score_preview
+    JIANPU_OCR_BACK      = 'jianpu_ocr_back'        # back button → return to landing
 
 
 # ─────────────────────────────────────────────────────────────────────────────
