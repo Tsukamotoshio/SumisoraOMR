@@ -86,6 +86,7 @@ tmp_*
 # Workspace / generated dirs
 /editor-workspace/
 /xml-scores/
+.worktrees/
 
 # HOMR model weights — downloaded on demand at runtime, never committed.
 /models/
