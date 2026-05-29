@@ -50,11 +50,16 @@ _USER_PROMPT_FULL = (
     "               ... and so on for 3,4,5,6,7\n"
     "NEVER change or transpose the digit value based on the key signature.\n"
     "\n"
-    "OCTAVE MARKERS (critical for high/low notes):\n"
-    "- Dot ABOVE digit → octave +1 (high); two dots → +2 (very high)\n"
-    "- Dot BELOW digit → octave -1 (low); two dots → -2 (very low)\n"
-    "- NO dot/marker → octave 0 (middle, normal)\n"
-    "- '1' with dot above may render as 'i' or 'í' → {\"p\":\"1\",\"oct\":1}\n"
+    "OCTAVE MARKERS (CRITICAL — position matters above vs below):\n"
+    "- Dot ABOVE digit → octave +1 (high); examples: 'i', '1̇', '1\\''\n"
+    "- Dot BELOW digit → octave -1 (low); examples: '1,', '1_', '1.'\n"
+    "- NO dot/marker → octave 0 (middle, standard)\n"
+    "- Two dots ABOVE → octave +2 (very high)\n"
+    "- Two dots BELOW → octave -2 (very low)\n"
+    "KEY RULE: Check dot position ABOVE vs BELOW the digit center.\n"
+    "- WRONG: Confuse high-octave marker 'i' (dot ABOVE) as regular digit '1'\n"
+    "- WRONG: Confuse low-octave marker (dot BELOW) as a literal dot for 'dots' field\n"
+    "- CORRECT: 'i' = '1' with oct:+1. '1,' or '1_' = '1' with oct:-1. Plain '1' = oct:0\n"
     "\n"
     "DURATION NOTATION:\n"
     "- No underline = quarter 'q' (in 4/4 time)\n"
@@ -118,8 +123,9 @@ _USER_PROMPT_ROW = (
     '{"p":"7","oct":-1,"dur":"e","dots":1}]]}\n'
     "Note fields:\n"
     '- p: "1"-"7" digit EXACTLY AS SEEN. "0" → "r". Accidentals: "#"/"b".\n'
-    '- oct: Dot ABOVE = +1, BELOW = -1, none = 0. (±2 for two dots)\n'
-    '- dur: w/h/q/e/s = whole/half/quarter/eighth/16th. "-" extends.\n'
+    '- oct: CHECK POSITION: dot/marker ABOVE digit=+1, BELOW=-1, none=0. (±2 for two dots)\n'
+    '       HIGH: "i"="1"+1, LOW: "1,"="1"-1, STANDARD: "1"=0\n'
+    '- dur: w/h/q/e/s = whole/half/quarter/eighth/sixteenth.\n'
     '- dots: 1 if "." after digit, else 0.\n'
     "Rules:\n"
     "- '|' separates measures. Read every digit left-to-right between bars.\n"
