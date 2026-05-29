@@ -32,16 +32,43 @@ _SYSTEM_PROMPT = (
     "whole score, then immediately stop. NEVER repeat a measure. No markdown."
 )
 
-# Empirically validated at 91.7% accuracy on the simple-scale benchmark. Tweaking
-# wording invalidates that result; re-benchmark image_test2 if you change anything.
+# ===== VARIANT A: Explicit Jianpu Digit Recognition (Targets 91.7% pitch error) =====
+# Key insight: The VLM treats jianpu like staff notation and tries to transpose digits
+# based on key signature. This variant makes explicit that digits 1-7 are fixed,
+# regardless of key. The key only affects which Western note each digit represents.
 _USER_PROMPT_FULL = (
-    "Transcribe the jianpu in the image to ONE compact JSON (no spaces or newlines).\n"
+    "CRITICAL: You are reading JIANPU (numbered notation), NOT staff notation.\n"
+    "In JIANPU, the digits 1-7 ALWAYS represent the same fixed scale, independent of key.\n"
+    "The key signature (e.g., '1=C' or '1=A') tells you which Western note digit 1 represents,\n"
+    "but does NOT change how you transcribe the JIANPU DIGITS THEMSELVES.\n"
+    "\n"
+    "JIANPU DIGIT SCALE (what you see on the page, output exactly as is):\n"
+    "  1 = DO   2 = RE   3 = MI   4 = FA   5 = SOL   6 = LA   7 = TI\n"
+    "\n"
+    "CRITICAL RULE: When you see digit '1' on the page → output {\"p\":\"1\"}\n"
+    "               When you see digit '2' on the page → output {\"p\":\"2\"}\n"
+    "               ... and so on for 3,4,5,6,7\n"
+    "NEVER change or transpose the digit value based on the key signature.\n"
+    "\n"
+    "OCTAVE MARKERS (critical for high/low notes):\n"
+    "- Dot ABOVE digit → octave +1 (high); two dots → +2 (very high)\n"
+    "- Dot BELOW digit → octave -1 (low); two dots → -2 (very low)\n"
+    "- NO dot/marker → octave 0 (middle, normal)\n"
+    "- '1' with dot above may render as 'i' or 'í' → {\"p\":\"1\",\"oct\":1}\n"
+    "\n"
+    "DURATION NOTATION:\n"
+    "- No underline = quarter 'q' (in 4/4 time)\n"
+    "- ONE underline below digit = eighth 'e'\n"
+    "- TWO underlines = sixteenth 's'\n"
+    "- Dash after digit: '5 -' = half, '5 - -' = dotted-half, '5 - - -' = whole\n"
+    "\n"
+    "Transcribe to ONE compact JSON (no spaces or newlines).\n"
     "STRUCTURE: \"measures\" is a list of MEASURES. Each measure is a list of NOTE objects.\n"
     "  CORRECT:  \"measures\":[[{...},{...}],[{...}]]            ← outer=measures, inner=notes\n"
     "  WRONG:    \"measures\":[{...},{...}]                      ← flat (no measure grouping)\n"
     "  WRONG:    \"measures\":[{\"notes\":[...]},{\"notes\":[...]}]   ← do NOT wrap notes in objects\n"
     "  WRONG:    \"measures\":[[{\"notes\":[...]}]]                ← do NOT add 'notes' key at all\n"
-    "Example for 2 measures:\n"
+    "Example for key='C' (1=do=C), 2 measures in 4/4:\n"
     '{"time_signature":"4/4","key":"C","tempo":120,"measures":['
     '[{"p":"5","oct":0,"dur":"q","dots":0},{"p":"3","oct":0,"dur":"q","dots":0},'
     '{"p":"1","oct":0,"dur":"h","dots":0}],'
@@ -49,30 +76,37 @@ _USER_PROMPT_FULL = (
     '{"p":"7","oct":-1,"dur":"e","dots":1}]'
     "]}\n"
     "Note fields:\n"
-    '- p: "1"-"7" digit; "0" → use "r" (rest). Accidentals: prefix "#" (sharp), "b" (flat).\n'
-    '       Examples: "#5", "b3". A "1" with dot ABOVE may render as "i"/"í" — that is\n'
-    '       ONE note = {"p":"1","oct":1}. Never split "i" into "1"+"í"; "i i" = 2 notes only.\n'
-    '- oct: dot(s) ABOVE = +1 (or +2 for two dots), BELOW = -1 (or -2), none = 0.\n'
-    '- dur: w/h/q/e/s = whole/half/quarter/eighth(1 underline below)/16th(2 underlines).\n'
-    '       A "-" after a note extends duration. "5 -" = half, "5 - -" = dotted half, "5 - - -" = whole.\n'
-    '- dots: 1 if "." follows digit (dotted, +50%), else 0.\n'
+    '- p: "1"-"7" digit EXACTLY AS SEEN. "0" → "r" (rest). Accidentals: "#"/"b".\n'
+    '- oct: +1/-1 (±2 for two dots). 0 if no marker.\n'
+    '- dur: w/h/q/e/s = whole/half/quarter/eighth/sixteenth.\n'
+    '- dots: 1 if literal "." follows digit, else 0.\n'
+    "\n"
     "Header:\n"
-    "- Key: '1=X' (e.g. '1=A' → \"A\"). Absent → \"C\".\n"
-    "- Time: stacked fraction; read BOTH numerator digits (e.g. 12/8 has 1 AND 2 on top).\n"
+    "- Key: Extract from '1=X'. Output {\"key\":\"X\"}. Absent → \"C\".\n"
+    "- Time: Stacked fraction; read both numerator digits.\n"
+    "- Tempo: Usually on page. Absent → 120.\n"
+    "\n"
     "Rules:\n"
-    "- '|' separates measures. Final '||' = end.\n"
-    "- Default duration is eighth ('e') in 6/8 or 12/8; quarter ('q') in 3/4 or 4/4.\n"
-    "- Read every digit left-to-right; ignore lyrics, measure-number superscripts, "
-    "  fingering marks, breath marks, and any non-digit text.\n"
-    "- After the LAST measure write ']}' and STOP."
+    "- '|' separates measures. '||' or final bar = end.\n"
+    "- Default: 'e' in 6/8/12/8; 'q' in 4/4/3/4.\n"
+    "- Ignore: lyrics, measure numbers, fingerings, breath marks.\n"
+    "- Read left-to-right, top-to-bottom.\n"
+    "- After LAST measure write ']}' and STOP."
 )
 
 # Row-mode prompt: same as FULL minus the Header section. Used for rows 2..N
 # after row-splitting; caller takes header from row 1 only and concatenates the
 # rest. Shorter prompt → fewer input tokens → more output budget per row.
+# Also applies Variant A improvements (explicit jianpu digit rule).
 _USER_PROMPT_ROW = (
     "This image shows ONE row of a jianpu score. Transcribe ONLY the measures.\n"
     'Output exactly: {"measures":[[...],[...]]}  (no time_signature/key fields).\n'
+    "\n"
+    "CRITICAL: Read jianpu digits 1-7 EXACTLY AS WRITTEN. Never transpose by key.\n"
+    "Digit '1' on page → {\"p\":\"1\"}  (not shifted)\n"
+    "Digit '2' on page → {\"p\":\"2\"}  (not shifted)\n"
+    "...and so on for 3,4,5,6,7\n"
+    "\n"
     "STRUCTURE: \"measures\" is a list of MEASURES. Each measure is a list of NOTE objects.\n"
     "  CORRECT:  \"measures\":[[{...},{...}],[{...}]]            ← outer=measures, inner=notes\n"
     "  WRONG:    \"measures\":[{...},{...}]                      ← flat (no measure grouping)\n"
@@ -83,11 +117,10 @@ _USER_PROMPT_ROW = (
     '[{"p":"r","oct":0,"dur":"q","dots":0},{"p":"6","oct":-1,"dur":"e","dots":0},'
     '{"p":"7","oct":-1,"dur":"e","dots":1}]]}\n'
     "Note fields:\n"
-    '- p: "1"-"7" digit; "0" → use "r" (rest). Accidentals prefix "#"/"b".\n'
-    '       "i"/"í" (one character) = {"p":"1","oct":1}. Never split into "1"+"í".\n'
-    '- oct: dot(s) ABOVE = +1, BELOW = -1, none = 0.\n'
-    '- dur: w/h/q/e/s = whole/half/quarter/eighth/16th. "-" extends previous note.\n'
-    '- dots: 1 if "." follows digit, else 0.\n'
+    '- p: "1"-"7" digit EXACTLY AS SEEN. "0" → "r". Accidentals: "#"/"b".\n'
+    '- oct: Dot ABOVE = +1, BELOW = -1, none = 0. (±2 for two dots)\n'
+    '- dur: w/h/q/e/s = whole/half/quarter/eighth/16th. "-" extends.\n'
+    '- dots: 1 if "." after digit, else 0.\n'
     "Rules:\n"
     "- '|' separates measures. Read every digit left-to-right between bars.\n"
     "- Ignore lyrics, measure-number superscripts, fingerings, breath marks.\n"
