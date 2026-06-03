@@ -105,4 +105,5 @@ tmp_*
 # Personal VS Code workspace settings
 Project_Convert.code-workspace
 .vscode/settings.json
-vlm/
+# VLM model weights (GGUF) — large binaries, not the core/vlm/ source code
+/models/vlm/
