@@ -36,9 +36,69 @@ def _build_scale_pitches(key_pitch: str, base_octave: int = 4) -> list:
         return [m21_pitch.Pitch(str(p)) for p in pitches[:7]]
 
 # jianpu.txt 时值前缀（jianpu-ly 语法）
-_DUR_PREFIX = {'w': '', 'h': '', 'q': 'q', 'e': 'q', 's': 's'}
+# 注意命名撞车：VLM 的 'q'=四分音符，但 jianpu-ly 前缀 'q'=八分(quaver)。
+# 四分音符在 jianpu-ly 是裸数字(无前缀)，八分音符才加 'q' 前缀。
+_DUR_PREFIX = {'w': '', 'h': '', 'q': '', 'e': 'q', 's': 's'}
 # whole/half 在 jianpu-ly 里用 "1 - - -" / "1 -" 表示，不带前缀
 _DUR_TAIL   = {'w': ' - - -', 'h': ' -', 'q': '', 'e': '', 's': ''}
+# VLM dur 码 → quarterLength（用于小节溢出判定）
+_DUR_QL = {'w': 4.0, 'h': 2.0, 'q': 1.0, 'e': 0.5, 's': 0.25}
+
+
+def _expected_quarter_len(time_sig: str) -> float:
+    """拍号 → 一小节的 quarterLength。'3/4'→3.0, '6/8'→3.0, '12/8'→6.0。"""
+    try:
+        num, den = str(time_sig).split('/')
+        return int(num) * (4.0 / int(den))
+    except Exception:
+        return 4.0
+
+
+def _resolve_i_glyph(p: str, oct_off: int) -> tuple[str, int]:
+    """字体把『1+上方点』渲染成 'i'/'í'，等价于高八度 1。归一化为 ('1', oct+1)。"""
+    s = str(p).strip()
+    primes = 0
+    while s and s[-1] in ("'", "’"):
+        primes += 1
+        s = s[:-1]
+    if s in ('i', 'í', 'I'):
+        return '1', oct_off + 1 + primes
+    return p, oct_off
+
+
+def _token_quarter_len(n: Any) -> float:
+    """单个 token（dict 或字符串）的 quarterLength。延音 '-' 记 1 拍。"""
+    if isinstance(n, str):
+        if n.strip() == '-':
+            return 1.0
+        n = {'p': n.strip()}
+    if not isinstance(n, dict):
+        return 0.0
+    if str(n.get('p', '')).strip() == '-':
+        return 1.0
+    base = _DUR_QL.get(str(n.get('dur', 'q')).strip(), 1.0)
+    if _safe_int(n.get('dots', 0), 0):
+        base *= 1.5
+    return base
+
+
+def _is_rest_token(n: Any) -> bool:
+    p = n.strip() if isinstance(n, str) else str(n.get('p', 'r')).strip()
+    return p in ('0', 'r')
+
+
+def _trim_overflow_rests(notes: list, expected_ql: float) -> list:
+    """删除使小节超过拍号的尾部多余休止（VLM 常在单小节末尾幻觉一个休止）。"""
+    if not isinstance(notes, list) or expected_ql <= 0:
+        return notes
+    out = list(notes)
+    while len(out) > 1 and _is_rest_token(out[-1]):
+        total = sum(_token_quarter_len(x) for x in out)
+        if total - _token_quarter_len(out[-1]) >= expected_ql - 1e-6:
+            out.pop()
+        else:
+            break
+    return out
 
 
 def _safe_int(val: Any, default: int) -> int:
@@ -168,6 +228,7 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
     scale_pitches = _build_scale_pitches(key_str, base_octave=4)
 
     measures = data.get('measures', [])
+    expected_ql = _expected_quarter_len(data.get('time_signature', '4/4'))
     _LOG.info(f'[VLM→MXL] {len(measures)} measures → {output_path.name}  (key={key_str})')
 
     for mi, measure_notes in enumerate(measures):
@@ -175,6 +236,7 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
         if not isinstance(measure_notes, list):
             _LOG.warning(f'[VLM→MXL] 跳过非列表小节 #{mi}: type={type(measure_notes).__name__}')
             continue
+        measure_notes = _trim_overflow_rests(measure_notes, expected_ql)   # 删尾部溢出休止
         m = stream.Measure()
         prev_elem: Optional['note.GeneralNote'] = None   # type: ignore[name-defined]
         for n in measure_notes:
@@ -194,7 +256,17 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
             elif not isinstance(n, dict):
                 _LOG.warning(f'[VLM→MXL] 小节 #{mi} 含非dict音符: {n!r}，跳过')
                 continue
-            p = str(n.get('p', 'r'))
+            p = str(n.get('p', 'r')).strip()
+            # 延长记号 "-" 也可能以 dict 形式 {"p":"-"} 出现：把前一个音符加一拍
+            if p == '-':
+                if prev_elem is not None:
+                    try:
+                        prev_elem.duration.quarterLength += 1.0
+                    except Exception:
+                        pass
+                continue
+            oct_off = _safe_int(n.get('oct', 0), 0)
+            p, oct_off = _resolve_i_glyph(p, oct_off)   # 'i'/'í' → '1' 高八度
             dur_key = str(n.get('dur', 'q')).strip()
             dots = _safe_int(n.get('dots', 0), 0)
 
@@ -227,7 +299,7 @@ def convert(data: dict[str, Any], output_path: Path, midi_path: Path | None = No
                 # 用 key 对应的音阶查表，得到正确的 step + 自带升降
                 import copy as _copy
                 base = _copy.deepcopy(scale_pitches[int(digit) - 1])
-                base.octave += _safe_int(n.get('oct', 0), 0)
+                base.octave += oct_off
 
                 # 显式升降号覆盖（在调内音符上额外加 # 或 b）
                 if acc_char == '#':
@@ -271,6 +343,7 @@ def _note_to_jianpu(n: dict) -> str:
 
     p = str(n.get('p', 'r'))
     oct_off = _safe_int(n.get('oct', 0), 0)
+    p, oct_off = _resolve_i_glyph(p, oct_off)   # 'i'/'í' → '1' 高八度
     dur_key = str(n.get('dur', 'q'))
     dots = _safe_int(n.get('dots', 0), 0)
 
@@ -293,6 +366,22 @@ def _note_to_jianpu(n: dict) -> str:
     return out
 
 
+def measures_as_token_lists(data: dict[str, Any]) -> list[list[str]]:
+    """把 VLM 输出的 measures 渲染成逐小节 jianpu token 列表。
+
+    统一入口：已应用尾部溢出休止 trim 与 'i'/'í' 高八度归一化，
+    供 .jianpu.txt 生成与离线评测共用，保证两边记号一致。
+    """
+    expected = _expected_quarter_len(str(data.get('time_signature', '4/4')))
+    out: list[list[str]] = []
+    for m in data.get('measures', []):
+        if not isinstance(m, list):
+            continue
+        trimmed = _trim_overflow_rests(m, expected)
+        out.append([_note_to_jianpu(n) for n in trimmed])
+    return out
+
+
 def to_jianpu_text(data: dict[str, Any], title: str) -> str:
     """把 VLM 输出转为 jianpu-ly 的 .jianpu.txt 文本，可在编辑器中校对。"""
     lines = [
@@ -307,13 +396,7 @@ def to_jianpu_text(data: dict[str, Any], title: str) -> str:
         f'{data.get("time_signature", "4/4")}',
         '',
     ]
-    measures = data.get('measures', [])
-    bars: list[str] = []
-    for m in measures:
-        if not isinstance(m, list):
-            continue
-        tokens = [_note_to_jianpu(n) for n in m]
-        bars.append(' '.join(tokens))
+    bars = [' '.join(tokens) for tokens in measures_as_token_lists(data)]
     if bars:
         # 每 4 小节换一行
         for i in range(0, len(bars), 4):
