@@ -65,7 +65,9 @@ _USER_PROMPT_FULL = (
     "- A bare digit with NO underline and NO dash is ALWAYS a quarter 'q', in EVERY time signature (incl. 6/8, 12/8).\n"
     "- ONE underline below digit = eighth 'e'\n"
     "- TWO underlines = sixteenth 's'\n"
-    "- Dash after digit: '5 -' = half, '5 - -' = dotted-half, '5 - - -' = whole\n"
+    "- SUSTAIN DASH '-': do NOT compute a longer duration yourself. Keep the note at its own duration (quarter unless underlined), and for EACH dash drawn after it output a SEPARATE object {\"p\":\"-\"} immediately after that note. The dashes are counted and merged downstream.\n"
+    "    '5 -'   → {\"p\":\"5\",\"dur\":\"q\"...},{\"p\":\"-\"}\n"
+    "    '5 - -' → {\"p\":\"5\",\"dur\":\"q\"...},{\"p\":\"-\"},{\"p\":\"-\"}\n"
     "\n"
     "Transcribe to ONE compact JSON (no spaces or newlines).\n"
     "STRUCTURE: \"measures\" is a list of MEASURES. Each measure is a list of NOTE objects.\n"
@@ -81,9 +83,9 @@ _USER_PROMPT_FULL = (
     '{"p":"7","oct":-1,"dur":"e","dots":1}]'
     "]}\n"
     "Note fields:\n"
-    '- p: "1"-"7" digit EXACTLY AS SEEN. "0" → "r" (rest). Accidentals: "#"/"b".\n'
+    '- p: "1"-"7" digit EXACTLY AS SEEN. "0" → "r" (rest). "-" = a sustain dash (one per dash drawn). Accidentals: "#"/"b".\n'
     '- oct: +1/-1 (±2 for two dots). 0 if no marker.\n'
-    '- dur: w/h/q/e/s = whole/half/quarter/eighth/sixteenth.\n'
+    '- dur: w/h/q/e/s = whole/half/quarter/eighth/sixteenth. For a "-" object omit dur.\n'
     '- dots: 1 if literal "." follows digit, else 0.\n'
     "\n"
     "Header:\n"
@@ -93,7 +95,7 @@ _USER_PROMPT_FULL = (
     "\n"
     "Rules:\n"
     "- '|' separates measures. '||' or final bar = end.\n"
-    "- A measure showing only '0' (often with dashes, e.g. '0 - -') is a FULL-MEASURE REST. You MUST output it as a measure containing one rest note (p:'r'). NEVER skip or merge a rest measure — it keeps measures aligned.\n"
+    "- A measure showing only '0' (often with dashes, e.g. '0 - -') is a FULL-MEASURE REST. Output it as ONE measure: a rest {\"p\":\"r\"} followed by one {\"p\":\"-\"} per dash (e.g. '0 - -' → [{\"p\":\"r\",\"dur\":\"q\",\"dots\":0},{\"p\":\"-\"},{\"p\":\"-\"}]). NEVER skip or merge a rest measure — it keeps measures aligned.\n"
     "- Output EVERY measure between bar lines, left to right, even short or rest-only ones. Do not drop measures.\n"
     "- A bare digit is a quarter in ALL meters; do NOT default to eighth just because the meter is 6/8 or 12/8.\n"
     "- Ignore: lyrics, measure numbers, fingerings, breath marks.\n"
@@ -124,16 +126,17 @@ _USER_PROMPT_ROW = (
     '[{"p":"r","oct":0,"dur":"q","dots":0},{"p":"6","oct":-1,"dur":"e","dots":0},'
     '{"p":"7","oct":-1,"dur":"e","dots":1}]]}\n'
     "Note fields:\n"
-    '- p: "1"-"7" digit EXACTLY AS SEEN. "0" → "r". Accidentals: "#"/"b".\n'
+    '- p: "1"-"7" digit EXACTLY AS SEEN. "0" → "r". "-" = a sustain dash (one per dash drawn). Accidentals: "#"/"b".\n'
     '- oct: ONLY a dot vertically centered ABOVE the digit=+1, centered BELOW=-1, none=0 (±2 for two dots).\n'
     '       A dot to the RIGHT (e.g. "4.") or an UNDERLINE is a DURATION mark, NOT an octave change → oct stays 0.\n'
     '       HIGH: "i"="1"+1, LOW: digit with dot underneath=-1, STANDARD: "1"=0\n'
     '- dur: w/h/q/e/s. A bare digit (no underline, no dash) is ALWAYS quarter "q", in EVERY meter (incl. 6/8, 12/8).\n'
     '       One underline=eighth "e", two underlines=sixteenth "s".\n'
+    '- SUSTAIN DASH "-": do NOT lengthen dur yourself. Keep the note at quarter (unless underlined) and emit a SEPARATE {"p":"-"} object for EACH dash after it. e.g. "2 - -" → {"p":"2","dur":"q"...},{"p":"-"},{"p":"-"}. For a "-" object omit dur.\n'
     '- dots: 1 if a duration dot "." follows the digit on the same line, else 0.\n'
     "Rules:\n"
     "- '|' separates measures. Read every digit left-to-right between bars.\n"
-    "- A measure showing only '0' (often with dashes, e.g. '0 - -') is a FULL-MEASURE REST → output a measure with one rest note (p:'r'). NEVER skip or merge it.\n"
+    "- A measure showing only '0' (often with dashes, e.g. '0 - -') is a FULL-MEASURE REST → output ONE measure: {\"p\":\"r\"} then one {\"p\":\"-\"} per dash. NEVER skip or merge it.\n"
     "- Output EVERY measure between bar lines, even rest-only ones. Do not drop measures.\n"
     "- Ignore lyrics, measure-number superscripts, fingerings, breath marks.\n"
     "- After the LAST measure write ']}' and STOP."
@@ -198,8 +201,8 @@ _CROP_THRESHOLD = 240     # 灰度像素低于此值视为内容（0=黑, 255=�
 _MIN_CONTENT_RATIO = 0.02 # 裁剪后内容像素占比下限，太小则跳过裁剪（防误裁纯色图）
 _ROW_GAP_MIN_PX = 24      # 行间空白超过此像素视为换行分隔
 _ROW_PIXEL_THRESHOLD = 5  # 一行内深色像素数低于此值视为空行
-_CHUNK_MEASURES = 3       # 每个识别块包含的小节数（宽行按竖线切块，降低单次推理密度）
-_CHUNK_TARGET_H = 150     # 切块后放大到的目标高度（px），让数字/八度点清晰可见
+_CHUNK_MEASURES = 1       # 每个识别块包含的小节数（=1：按竖线切到单小节，块数==小节数，杜绝模型块内合并错位）
+_CHUNK_TARGET_H = 280     # 切块后放大到的目标高度（px），让数字/八度点清晰可见
 _CHUNK_X_MARGIN = 6       # 切块左右保留的像素余量，避免裁掉竖线或边缘字符
 
 
@@ -741,10 +744,20 @@ def recognize_image(
             image_url = _pil_to_data_url(chunk_img)
             chunk_result = _run_vlm_on_image_bytes(image_url, vlm, _chunk_progress,
                                                     user_prompt=prompt)
-            chunks_data.append(chunk_result)
         except Exception as exc:
             _LOG.warning('[VLM] 块 %d 识别失败: %s', ci + 1, exc)
-            chunks_data.append({'measures': []})
+            chunk_result = {'measures': []}
+
+        if _CHUNK_MEASURES == 1:
+            # 每块按竖线切，已知恰好含 1 个小节。把模型可能拆出的多小节压平成单一小节，
+            # 空块兜底为一个休止——保证「块数 == 小节数」，从机制上消除小节错位。
+            flat: list = []
+            for mm in chunk_result.get('measures', []):
+                if isinstance(mm, list):
+                    flat.extend(mm)
+            flat = flat if flat else [{'p': 'r', 'dur': 'q', 'dots': 0}]
+            chunk_result = {**chunk_result, 'measures': [flat]}
+        chunks_data.append(chunk_result)
 
     merged = _merge_row_results(chunks_data)
     _LOG.info('[VLM] 多块合并完成: 共 %d 小节', len(merged['measures']))

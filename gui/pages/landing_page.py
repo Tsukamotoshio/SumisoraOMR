@@ -153,6 +153,12 @@ class LandingPage(ft.Row):
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
+        # 主界面模型权重版本小字提示（随 _WEIGHT_FILES 自动反映打包的子模块版本）
+        self._homr_version = self._homr_pinned_version()
+        self._model_version_label = ft.Text(
+            '', size=11, color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltip='OMR 模型权重版本（随发布更新）',
+        )
         self._refresh_model_buttons()
 
         options_panel = ft.Container(
@@ -177,6 +183,10 @@ class LandingPage(ft.Row):
                                 open_output_btn,
                                 self._download_models_btn,
                                 self._delete_models_btn,
+                                ft.Container(
+                                    content=self._model_version_label,
+                                    padding=ft.Padding.only(left=4),
+                                ),
                                 ft.Container(
                                     height=1,
                                     bgcolor=ft.Colors.OUTLINE_VARIANT,
@@ -274,6 +284,27 @@ class LandingPage(ft.Row):
             pass
         self._refresh_model_buttons()
 
+    def _homr_pinned_version(self) -> str:
+        """Return the pinned HOMR transcription model version (e.g. '367').
+
+        Parsed from the bundled submodule's `_WEIGHT_FILES`, so it tracks the
+        release automatically (the encoder filename is
+        `encoder_pytorch_model_<ver>-<sha>.onnx`). Returns '?' if the homr
+        package can't be imported.
+        """
+        try:
+            _homr_src = str(Path(__file__).parent.parent.parent / 'omr_engine' / 'homr')
+            if _homr_src not in sys.path:
+                sys.path.insert(0, _homr_src)
+            from homr.main import _WEIGHT_FILES  # type: ignore[import-not-found]
+            prefix = 'encoder_pytorch_model_'
+            for fname in _WEIGHT_FILES:
+                if fname.startswith(prefix):
+                    return fname[len(prefix):].split('-')[0]
+        except Exception:
+            pass
+        return '?'
+
     def _refresh_model_buttons(self) -> None:
         """Toggle the 下载/删除 buttons' enabled state based on weights presence."""
         if not hasattr(self, '_download_models_btn'):
@@ -283,9 +314,17 @@ class LandingPage(ft.Row):
         self._download_models_btn.disabled = present
         # Delete button: only enabled when models exist
         self._delete_models_btn.disabled = not present
+        # 同步版本小字提示的就绪状态
+        if getattr(self, '_model_version_label', None) is not None:
+            status = '已就绪' if present else '未下载'
+            self._model_version_label.value = (
+                f'OMR 模型权重 v{self._homr_version} · {status}'
+            )
         try:
             self._download_models_btn.update()
             self._delete_models_btn.update()
+            if getattr(self, '_model_version_label', None) is not None:
+                self._model_version_label.update()
         except Exception:
             pass
 
