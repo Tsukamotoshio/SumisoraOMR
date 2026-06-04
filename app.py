@@ -118,6 +118,38 @@ _NAV_ITEMS = [
 ]
 
 
+# HOMR weight filenames are content-addressed: the model number and a hash are
+# baked into the name (e.g. encoder_pytorch_model_367-<sha>.onnx). The pinned
+# _WEIGHT_FILES set therefore fully identifies the current release's weights;
+# any other file matching this naming scheme is a leftover from a previous
+# model version and is safe to delete.
+_WEIGHT_NAME_PREFIXES = (
+    'segnet_', 'encoder_pytorch_model_', 'decoder_pytorch_model_',
+)
+
+
+def _prune_orphan_weights(target_dir, expected_files) -> None:
+    """Delete stale HOMR weights left over from a previous model version.
+
+    Called only after every pinned weight is verified present, so the active
+    model is never left without usable weights if this runs. Restricted to the
+    HOMR weight naming scheme and to *.onnx directly inside models/ (glob does
+    not recurse into siblings like models/vlm/), so unrelated files are never
+    touched. Best-effort: a locked or unremovable old file lingering is harmless.
+    """
+    expected = set(expected_files)
+    for onnx in target_dir.glob('*.onnx'):
+        if onnx.name in expected:
+            continue
+        if not onnx.name.startswith(_WEIGHT_NAME_PREFIXES):
+            continue
+        try:
+            onnx.unlink()
+            print(f'Removed stale HOMR weight: {onnx.name}', file=sys.stderr)
+        except OSError:
+            pass
+
+
 def _check_homr_models(state: AppState) -> None:
     """Migrate legacy weights and update state.homr_available.
 
@@ -162,6 +194,14 @@ def _check_homr_models(state: AppState) -> None:
         and verify_sha256(str(target_dir / fname), _WEIGHT_HASHES.get(fname, ''))
         for fname in _WEIGHT_FILES
     )
+
+    # Prune-on-success: once the current release's pinned weights are all
+    # verified present, delete leftovers from a previous model version (e.g.
+    # the 331 set after a 367 upgrade). This is static and release-gated — it
+    # only fires when _WEIGHT_FILES changes between releases (i.e. when the
+    # bundled homr submodule is bumped), never on a routine launch.
+    if state.homr_available:
+        _prune_orphan_weights(target_dir, _WEIGHT_FILES)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
