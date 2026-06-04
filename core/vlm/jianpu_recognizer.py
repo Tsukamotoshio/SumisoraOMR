@@ -13,6 +13,8 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+from core.vlm.octave_cv import override_octaves as _override_octaves
+
 _LOG = logging.getLogger('convert')
 
 try:
@@ -756,6 +758,9 @@ def recognize_image(
                 if isinstance(mm, list):
                     flat.extend(mm)
             flat = flat if flat else [{'p': 'r', 'dur': 'q', 'dots': 0}]
+            # 用纯 CV 检测八度点覆盖 VLM 的 oct（VLM 经常误读/幻觉小圆点）。
+            # 以 VLM 音符数为锚选字形，失败则保留 VLM 结果。
+            _override_octaves(flat, chunk_img)
             chunk_result = {**chunk_result, 'measures': [flat]}
         chunks_data.append(chunk_result)
 
