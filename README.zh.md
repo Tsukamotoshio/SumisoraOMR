@@ -2,7 +2,7 @@
 
 > 将五线谱（PDF / PNG / JPG）批量转换为简谱 PDF，内置简谱编辑器与移调功能。
 
-[![版本: v0.3.4](https://img.shields.io/badge/Version-v0.3.4-green.svg)]()
+[![版本: v0.3.5](https://img.shields.io/badge/Version-v0.3.5-green.svg)]()
 [![许可证: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![平台: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)]()
