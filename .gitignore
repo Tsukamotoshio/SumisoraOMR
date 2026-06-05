@@ -41,6 +41,7 @@ audiveris_job_*/
 scripts/install_audiveris_local.bat
 scripts/build_zip.bat
 scripts/build_installer.bat
+scripts/publish_release.bat
 
 # Installer build config (private distribution setup)
 convert_setup.iss
