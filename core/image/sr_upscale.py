@@ -105,70 +105,25 @@ def _ncnn_gpu_args(exe: Path) -> list[str]:
     return ['-g', str(gpu_id)] if gpu_id is not None else []
 
 
-def find_waifu2x_executable() -> Optional[Path]:
-    """Search for waifu2x-ncnn-vulkan in app directory, common install paths, and PATH."""
+def _find_ncnn_executable(exe_stem: str, runtime_dir_name: str) -> Optional[Path]:
+    """Search for an ncnn-vulkan binary in app directories, common install paths, and PATH."""
     import os
     import shutil
 
-    exe_names = ['waifu2x-ncnn-vulkan.exe', 'waifu2x-ncnn-vulkan']
+    exe_names = [f'{exe_stem}.exe', exe_stem]
     candidates: list[Path] = []
 
     for base_dir in get_runtime_search_roots():
         for exe_name in exe_names:
             candidates.extend([
                 base_dir / exe_name,
-                base_dir / WAIFU2X_RUNTIME_DIR_NAME / exe_name,
-                base_dir / RUNTIME_ASSETS_DIR_NAME / WAIFU2X_RUNTIME_DIR_NAME / exe_name,
-                base_dir / 'waifu2x-ncnn-vulkan' / exe_name,
+                base_dir / runtime_dir_name / exe_name,
+                base_dir / RUNTIME_ASSETS_DIR_NAME / runtime_dir_name / exe_name,
+                base_dir / exe_stem / exe_name,
                 base_dir / 'tools' / exe_name,
             ])
 
-    packaged_waifu2x_dir = find_packaged_runtime_dir(WAIFU2X_RUNTIME_DIR_NAME)
-    if packaged_waifu2x_dir is not None:
-        for exe_name in exe_names:
-            candidates.append(packaged_waifu2x_dir / exe_name)
-
-    program_files = os.environ.get('PROGRAMFILES', r'C:\Program Files')
-    local_app_data = os.environ.get('LOCALAPPDATA', '')
-    for root in [Path(program_files), Path(local_app_data) / 'Programs']:
-        for exe_name in exe_names:
-            candidates.append(root / 'waifu2x-ncnn-vulkan' / exe_name)
-
-    for exe_name in exe_names:
-        found = shutil.which(exe_name)
-        if found:
-            candidates.append(Path(found))
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = str(candidate)
-        if key in seen:
-            continue
-        seen.add(key)
-        if candidate.exists() and candidate.is_file():
-            return candidate
-    return None
-
-
-def find_realesrgan_executable() -> Optional[Path]:
-    """Search for realesrgan-ncnn-vulkan binary in app directory and PATH."""
-    import os
-    import shutil
-
-    exe_names = ['realesrgan-ncnn-vulkan.exe', 'realesrgan-ncnn-vulkan']
-    candidates: list[Path] = []
-
-    for base_dir in get_runtime_search_roots():
-        for exe_name in exe_names:
-            candidates.extend([
-                base_dir / exe_name,
-                base_dir / REALESRGAN_RUNTIME_DIR_NAME / exe_name,
-                base_dir / RUNTIME_ASSETS_DIR_NAME / REALESRGAN_RUNTIME_DIR_NAME / exe_name,
-                base_dir / 'realesrgan-ncnn-vulkan' / exe_name,
-                base_dir / 'tools' / exe_name,
-            ])
-
-    packaged = find_packaged_runtime_dir(REALESRGAN_RUNTIME_DIR_NAME)
+    packaged = find_packaged_runtime_dir(runtime_dir_name)
     if packaged is not None:
         for exe_name in exe_names:
             candidates.append(packaged / exe_name)
@@ -177,7 +132,7 @@ def find_realesrgan_executable() -> Optional[Path]:
     local_app_data = os.environ.get('LOCALAPPDATA', '')
     for root in [Path(program_files), Path(local_app_data) / 'Programs']:
         for exe_name in exe_names:
-            candidates.append(root / 'realesrgan-ncnn-vulkan' / exe_name)
+            candidates.append(root / exe_stem / exe_name)
 
     for exe_name in exe_names:
         found = shutil.which(exe_name)
@@ -193,6 +148,16 @@ def find_realesrgan_executable() -> Optional[Path]:
         if candidate.exists() and candidate.is_file():
             return candidate
     return None
+
+
+def find_waifu2x_executable() -> Optional[Path]:
+    """Search for waifu2x-ncnn-vulkan in app directory, common install paths, and PATH."""
+    return _find_ncnn_executable('waifu2x-ncnn-vulkan', WAIFU2X_RUNTIME_DIR_NAME)
+
+
+def find_realesrgan_executable() -> Optional[Path]:
+    """Search for realesrgan-ncnn-vulkan binary in app directory and PATH."""
+    return _find_ncnn_executable('realesrgan-ncnn-vulkan', REALESRGAN_RUNTIME_DIR_NAME)
 
 
 def _find_realesrgan_python_script() -> Optional[Path]:

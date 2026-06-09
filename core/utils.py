@@ -254,22 +254,24 @@ def update_conversion_history(history: dict[str, dict], pdf_file: Path, output_p
     }
 
 
-def resolve_font_path() -> Optional[Path]:
-    """Return the first available CJK font file path for direct PDF rendering."""
-    for _, candidate in CJK_FONT_CANDIDATES:
+def _resolve_cjk_font() -> Optional[tuple[str, Path]]:
+    for font_name, candidate in CJK_FONT_CANDIDATES:
         path = Path(os.path.expandvars(candidate))
         if path.exists():
-            return path
+            return font_name, path
     return None
+
+
+def resolve_font_path() -> Optional[Path]:
+    """Return the first available CJK font file path for direct PDF rendering."""
+    r = _resolve_cjk_font()
+    return r[1] if r else None
 
 
 def resolve_lilypond_font_name() -> Optional[str]:
     """Return the first available CJK font name for LilyPond font configuration."""
-    for font_name, candidate in CJK_FONT_CANDIDATES:
-        path = Path(os.path.expandvars(candidate))
-        if path.exists():
-            return font_name
-    return None
+    r = _resolve_cjk_font()
+    return r[0] if r else None
 
 
 def register_pdf_font() -> str:

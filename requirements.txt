@@ -7,6 +7,7 @@ rich>=15.0.0
 pyinstaller>=6.20.0
 pypdfium2>=4.0.0
 pypdf>=6.11.0
+typing_extensions>=4.0.0
 
 # ── ONNX Runtime 后端 ────────────────────────────────────────────────────────
 # 三种包互斥，仅能安装其一：
@@ -18,3 +19,8 @@ pypdf>=6.11.0
 #   onnxruntime-gpu 分发：NVIDIA 用户走 CUDA，其余走 CPU
 #   onnxruntime-directml 分发：AMD/Intel 用户走 DirectML，其余走 CPU
 onnxruntime-gpu>=1.26.0
+
+# ── homr 引擎运行时依赖（omr_engine/homr 子模块，app.py 直接 import homr.main）──
+musicxml==1.4
+rapidocr>=3.7.0          # 标题 OCR；会拉入 opencv-python（完整版）
+requests>=2.32.5

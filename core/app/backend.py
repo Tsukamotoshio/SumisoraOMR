@@ -9,36 +9,26 @@ def app_base_dir() -> Path:
 
 
 def editor_workspace_dir() -> Path:
-    path = app_base_dir() / 'editor-workspace'
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return ensure_dir(app_base_dir() / 'editor-workspace')
 
 
 def xml_scores_dir() -> Path:
-    path = app_base_dir() / 'xml-scores'
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return ensure_dir(app_base_dir() / 'xml-scores')
 
 
 def models_dir() -> Path:
     """HOMR ONNX model files directory (created on demand)."""
-    path = app_base_dir() / 'models'
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return ensure_dir(app_base_dir() / 'models')
 
 
 def output_dir(output_text: str | None) -> Path:
     if output_text and output_text != '未指定（默认 Output/）':
         return Path(output_text)
-    path = app_base_dir() / 'Output'
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return ensure_dir(app_base_dir() / 'Output')
 
 
 def build_dir() -> Path:
-    path = app_base_dir() / 'build'
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return ensure_dir(app_base_dir() / 'build')
 
 
 def ensure_dir(path: Path) -> Path:
