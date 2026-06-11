@@ -19,13 +19,16 @@ def parse_truth(path: Path) -> list[list[str]]:
     body = []
     for ln in path.read_text(encoding='utf-8').splitlines():
         s = ln.strip()
-        if not s or s.startswith('#') or s.startswith('%'):
+        # "#6. q1' #6" 以升号开头的乐谱行不是注释，只跳过非音符的 # 行
+        if not s or s.startswith('%'):
+            continue
+        if s.startswith('#') and not re.match(r'^#[1-7]', s):
             continue
         if s.startswith('title='):
             continue
         if re.match(r'^[0-9]+=', s):          # 1=E
             continue
-        if re.match(r'^[0-9]+/[0-9]+$', s):   # 3/4
+        if re.match(r'^[0-9]+/[0-9]+', s):    # 3/4 或 12/8,2.
             continue
         body.append(s)
     text = ' '.join(body).replace('NextPart', ' ')

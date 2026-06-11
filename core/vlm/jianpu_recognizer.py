@@ -13,16 +13,46 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from core.vlm.octave_cv import override_octaves as _override_octaves
+from core.vlm.measure_cv import build_notes_from_cv as _build_notes_from_cv
+from core.vlm.measure_cv import count_digits as _count_digits
+from core.vlm.measure_cv import harvest_glyph_templates as _harvest_templates
+from core.vlm.measure_cv import reclassify_by_templates as _reclassify_by_templates
+from core.vlm.measure_cv import reconcile as _reconcile_cv
+from core.vlm.measure_cv import verify_identities as _verify_identities
 
 _LOG = logging.getLogger('convert')
 
+def _add_cuda_dll_dirs() -> None:
+    """把 pip 安装的 NVIDIA CUDA 运行时 DLL 目录加入搜索路径。
+
+    机器上未必装了 CUDA Toolkit；llama-cpp-python 的 cu124 轮子只带 ggml-cuda.dll，
+    依赖的 cudart64_12 / cublas64_12 由 nvidia-cuda-runtime-cu12 / nvidia-cublas-cu12
+    pip 包提供。llama_cpp 用 winmode=0 加载 → 走旧式 PATH 搜索，所以两边都加。
+    """
+    import os
+    import sys
+    import sysconfig
+    if sys.platform != 'win32':
+        return
+    sp = Path(sysconfig.get_paths()['purelib'])
+    for sub in ('nvidia/cuda_runtime/bin', 'nvidia/cublas/bin'):
+        d = sp / sub
+        if d.is_dir():
+            try:
+                os.add_dll_directory(str(d))
+            except OSError:
+                pass
+            os.environ['PATH'] = str(d) + os.pathsep + os.environ.get('PATH', '')
+
+
 try:
+    _add_cuda_dll_dirs()
     import llama_cpp
     from llama_cpp import Llama
     from llama_cpp.llama_chat_format import Qwen25VLChatHandler
     _LLAMA_AVAILABLE = True
-except ImportError:
+except (ImportError, RuntimeError):
+    # RuntimeError: llama.dll 缺依赖（如 CUDA 运行时）时 llama_cpp 在 import 期抛出
     _LLAMA_AVAILABLE = False
 
 _vlm: Optional['Llama'] = None          # type: ignore[name-defined]
@@ -147,16 +177,119 @@ _USER_PROMPT_ROW = (
 # Default prompt for backward-compat single-pass entries
 _USER_PROMPT = _USER_PROMPT_FULL
 
+# 逐字形识别 prompt：整小节计数对不上时的兜底。一图一符，任务最简。
+_GLYPH_PROMPT = (
+    'This image shows ONE jianpu (numbered notation) symbol: a digit 0-7, '
+    'possibly preceded by an accidental "#" or "b". '
+    'Output ONLY compact JSON: {"p":"5"} or {"p":"#2"} or {"p":"0"}. Nothing else.'
+)
+
+
+def _query_glyph(crop, vlm, prompt: str = _GLYPH_PROMPT) -> Optional[str]:  # type: ignore[name-defined]
+    """问 VLM 单个字形小图"这是什么数字"，返回原始 p token；失败返回 None。"""
+    import re
+    crop = _upscale_to_height(crop, 160)
+    try:
+        resp = vlm.create_chat_completion(
+            messages=[{
+                'role': 'user',
+                'content': [
+                    {'type': 'image_url',
+                     'image_url': {'url': _pil_to_data_url(crop)}},
+                    {'type': 'text', 'text': prompt},
+                ],
+            }],
+            temperature=0.0,
+            max_tokens=24,
+            stream=False,
+        )
+        content = resp['choices'][0]['message']['content']  # type: ignore[index]
+    except Exception as exc:
+        _LOG.warning('[VLM] 字形识别失败: %s', exc)
+        return None
+    m = re.search(r'"p"\s*:\s*"([^"]+)"', content)
+    token = m.group(1) if m else content.strip().strip('`json \n')
+    _LOG.debug('[VLM] 字形 → %r (raw %r)', token, content[:60])
+    return token
+
+
+def _repair_idents_by_topology(chunk_img, vlm, crops, idents: list[str]) -> list[str]:
+    """洞数拓扑校验逐字形识别结果，冲突时带候选集约束重问。
+
+    洞数把候选缩到 {0,4,6}（有洞）或 {1,2,3,5,7}（无洞）——把候选集
+    写进 prompt 后，'1'→'0' 这类跨拓扑误读几乎不可能再现。
+    """
+    from core.vlm.measure_cv import (_count_holes, _sanitize_digit,
+                                     _HOLE_DIGITS, _OPEN_DIGITS)
+    for k, (d, crop) in enumerate(crops):
+        ch = _sanitize_digit(idents[k])
+        ch = '0' if ch == 'r' else ch
+        if ch not in _HOLE_DIGITS | _OPEN_DIGITS:
+            continue
+        holes = _count_holes(chunk_img, d)
+        expected = _HOLE_DIGITS if holes >= 1 else _OPEN_DIGITS
+        if ch in expected:
+            continue
+        cands = ', '.join(sorted(expected))
+        prompt = (_GLYPH_PROMPT +
+                  f'\nNote: the digit is one of {cands} (it is NOT {ch}).')
+        token = _query_glyph(crop, vlm, prompt)
+        if token:
+            _LOG.warning('[VLM] 拓扑约束修正字形 #%d: %r → %r', k, idents[k], token)
+            idents[k] = token
+    return idents
+
+
+def _recognize_chunk_by_glyphs(chunk_img, vlm) -> list | None:  # type: ignore[name-defined]
+    """逐字形识别一个小节：CV 切出每个数字字形，VLM 只认"这是什么数字"。
+
+    身份来自 VLM，八度/时值/附点/延音线全部来自 CV 几何。
+    任一环节失败返回 None（调用方退回整小节结果）。
+    """
+    from core.vlm.measure_cv import glyph_crops
+    crops = glyph_crops(chunk_img)
+    if not crops:
+        return None
+    idents: list[str] = []
+    for _d, crop in crops:
+        token = _query_glyph(crop, vlm)
+        if token is None:
+            return None
+        idents.append(token)   # 数字身份提取/升降号重建在 build_notes_from_cv 内做
+    idents = _repair_idents_by_topology(chunk_img, vlm, crops, idents)
+    return _build_notes_from_cv(chunk_img, idents)
+
+
+def _repair_suspect_glyphs(chunk_img, vlm, notes: list, suspects: list[int]) -> None:
+    """对洞数拓扑校验出的可疑音符做带拓扑约束的逐字形重识别，就地修正 p。
+
+    suspects 是「非延音音符序列」的下标（与 CV digits 一一对应）。
+    """
+    from core.vlm.measure_cv import glyph_crops
+    crops = glyph_crops(chunk_img)
+    note_idx = [i for i, nt in enumerate(notes)
+                if isinstance(nt, dict) and str(nt.get('p', '')).strip() != '-']
+    if len(crops) != len(note_idx):
+        return
+    idents = [str(notes[i].get('p', 'r')) for i in note_idx]
+    idents = _repair_idents_by_topology(chunk_img, vlm, crops, idents)
+    for k in suspects:
+        if k < len(idents):
+            notes[note_idx[k]]['p'] = idents[k]
+
 
 def get_vlm(model_path: Path, mmproj_path: Path) -> 'Llama':  # type: ignore[name-defined]
     """Return (and cache) the Llama singleton. Reloads if model_path changed."""
     global _vlm, _vlm_model_path
     if not _LLAMA_AVAILABLE:
         raise RuntimeError(
-            'llama-cpp-python 未安装。\n'
-            '安装命令（已安装 v0.3.23 cu124，若重装请用）：\n'
-            'pip install llama-cpp-python==0.3.23 '
-            '--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124'
+            'llama-cpp-python 未安装或无法加载 CUDA 运行库。\n'
+            '完整安装命令（cu124 轮子 + CUDA 运行时 DLL，本机无需装 CUDA Toolkit）：\n'
+            '  pip install llama-cpp-python==0.3.23 '
+            '--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124\n'
+            '  pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12\n'
+            '（cu124 轮子只带 ggml-cuda.dll，依赖的 cudart64_12/cublas64_12 由上面两个 '
+            'pip 包提供，已由 _add_cuda_dll_dirs() 自动加入 DLL 搜索路径。）'
         )
     with _vlm_lock:
         if _vlm is None or _vlm_model_path != model_path:
@@ -334,10 +467,16 @@ def _detect_barlines(row_img: 'Image.Image') -> list[int]:  # type: ignore[name-
             groups.append([x])
 
     def _is_white_col(x: int) -> bool:
-        return 0 <= x < w and all(px[x, y] >= 128 for y in range(h))
+        # 越界视为白（行末小节线贴着图像边缘）；
+        # 允许少量暗像素：贴着竖线的时值下划线/延音线只占一条细水平带，
+        # 不应让该列丧失"空白"资格（否则下划线延伸到竖线旁会漏检小节线）。
+        if x < 0 or x >= w:
+            return True
+        dark = sum(1 for y in range(h) if px[x, y] < 128)
+        return dark <= max(2, int(0.15 * h))
 
     def _white_count(a: int, b: int) -> int:
-        return sum(1 for x in range(max(0, a), min(w, b)) if _is_white_col(x))
+        return sum(1 for x in range(a, b) if _is_white_col(x))
 
     bars: list[int] = []
     for gp in groups:
@@ -457,6 +596,36 @@ def _normalize_measures(data: dict) -> dict:
         return data
 
     return data
+
+
+def _split_multi_digit_tokens(notes: list) -> list:
+    """拆开 VLM 粘连的多位数字 token：{"p":"20"} → {"p":"2"},{"p":"r"}。
+
+    VLM 在数字间距小时偶尔把两个音符读成一个两位数。多位数字在简谱中
+    不存在（音高只有 1-7/0），按位拆开并继承原 token 的 dur/oct/dots。
+    '0' 拆出后归一化为休止符 'r'。
+    """
+    import re
+    out: list = []
+    for nt in notes:
+        if not isinstance(nt, dict):
+            out.append(nt)
+            continue
+        p = str(nt.get('p', '')).strip()
+        m = re.fullmatch(r'([#b]?)([0-9]{2,})', p)
+        if not m:
+            out.append(nt)
+            continue
+        acc, digits = m.groups()
+        _LOG.warning('[VLM] 拆分粘连音符 token %r → %s', p, ' '.join(digits))
+        for j, d in enumerate(digits):
+            nn = dict(nt)
+            if d == '0':
+                nn['p'] = 'r'
+            else:
+                nn['p'] = (acc + d) if j == 0 and acc else d
+            out.append(nn)
+    return out
 
 
 def _parse_response(content: str) -> dict:
@@ -685,8 +854,8 @@ def recognize_image(
     _LOG.info('[VLM] 检测到 %d 个内容行（裁剪后 %dx%d）',
               len(rows), cropped.size[0], cropped.size[1])
 
-    if len(rows) <= 1:
-        # 单行（或无明显分行）：整图直接送，用完整 prompt 提取 header
+    if not rows:
+        # 完全检测不到内容行：整图直接送，用完整 prompt 提取 header
         final = _resize_to_max_dim(cropped)
         image_url = _pil_to_data_url(final)
         try:
@@ -697,9 +866,9 @@ def recognize_image(
             _LOG.error('[VLM] 推理 AttributeError:\n%s', traceback.format_exc())
             raise RuntimeError(f'VLM 推理失败 (AttributeError)：{exc}') from exc
 
-    # 多行：先把每行按小节竖线切成「每块 _CHUNK_MEASURES 个小节」的窄块，
-    # 放大后逐块识别。这样每次推理只面对少数小节（避免密集行触发幻觉/循环），
-    # 且放大让八度小圆点清晰（修复行从不放大导致的八度漏检）。
+    # 把每行按小节竖线切成「每块 _CHUNK_MEASURES 个小节」的窄块，放大后逐块识别。
+    # 单行简谱同样走切块路径——只有切块后 measure_cv 的几何检测（八度点/
+    # 下划线时值/附点/延音线）才能接管 VLM 最不可靠的那些字段。
     # 整张图的第一个块用 FULL prompt 抓 header，其余块用 ROW prompt。
     chunk_boxes: list[tuple[int, int, int, int]] = []   # 每块 (x0, y0, x1, y1)
     W = cropped.size[0]
@@ -726,6 +895,10 @@ def recognize_image(
               len(rows), len(chunk_boxes), _CHUNK_MEASURES)
 
     chunks_data: list[dict] = []
+    # 同页字形模板库：从「可信块」（计数匹配且拓扑无冲突）收集，
+    # 收尾时对「存疑块」做最近邻重分类（同页同字形相似度 >= 0.99）。
+    glyph_library: list = []
+    review_chunks: list[tuple[int, object]] = []   # (chunks_data 下标, chunk_img)
     total = len(chunk_boxes)
     for ci, (x0, y0c, x1, y1c) in enumerate(chunk_boxes):
         chunk_img = cropped.crop((x0, y0c, x1, y1c))
@@ -742,6 +915,21 @@ def recognize_image(
                 except Exception:
                     pass
 
+        def _flatten(result: dict) -> list:
+            # 每块按竖线切，已知恰好含 1 个小节。把模型可能拆出的多小节压平，
+            # 空块兜底为一个休止——保证「块数 == 小节数」，从机制上消除小节错位。
+            flat: list = []
+            for mm in result.get('measures', []):
+                if isinstance(mm, list):
+                    flat.extend(mm)
+            flat = flat if flat else [{'p': 'r', 'dur': 'q', 'dots': 0}]
+            # VLM 偶尔把相邻数字粘成一个 token（"2 0"→"20"），拆开
+            return _split_multi_digit_tokens(flat)
+
+        def _n_notes(notes: list) -> int:
+            return sum(1 for nt in notes if isinstance(nt, dict)
+                       and str(nt.get('p', '')).strip() != '-')
+
         try:
             image_url = _pil_to_data_url(chunk_img)
             chunk_result = _run_vlm_on_image_bytes(image_url, vlm, _chunk_progress,
@@ -751,18 +939,50 @@ def recognize_image(
             chunk_result = {'measures': []}
 
         if _CHUNK_MEASURES == 1:
-            # 每块按竖线切，已知恰好含 1 个小节。把模型可能拆出的多小节压平成单一小节，
-            # 空块兜底为一个休止——保证「块数 == 小节数」，从机制上消除小节错位。
-            flat: list = []
-            for mm in chunk_result.get('measures', []):
-                if isinstance(mm, list):
-                    flat.extend(mm)
-            flat = flat if flat else [{'p': 'r', 'dur': 'q', 'dots': 0}]
-            # 用纯 CV 检测八度点覆盖 VLM 的 oct（VLM 经常误读/幻觉小圆点）。
-            # 以 VLM 音符数为锚选字形，失败则保留 VLM 结果。
-            _override_octaves(flat, chunk_img)
+            flat = _flatten(chunk_result)
+            # CV 独立数出小节里的数字个数，与 VLM 交叉校验。
+            cv_n = _count_digits(chunk_img)
+            trusted = False
+            if cv_n > 0 and _n_notes(flat) != cv_n:
+                # 计数不符 → 直接逐字形识别：CV 切字形，VLM 一图认一个数字。
+                # （实测「带数量提示重试」会让 VLM 凑足数量但身份仍错，已弃用）
+                _LOG.warning('[VLM] 块 %d 音符数不符（VLM=%d CV=%d），改用逐字形识别',
+                             ci + 1, _n_notes(flat), cv_n)
+                glyph_notes = _recognize_chunk_by_glyphs(chunk_img, vlm)
+                if glyph_notes is not None:
+                    flat = glyph_notes
+                else:
+                    flat = _reconcile_cv(flat, chunk_img)
+            else:
+                # 计数一致 → 洞数拓扑交叉校验数字身份（'1'↔'0' 这类误读
+                # 跨越有洞/无洞边界，CV 能确定性发现），可疑字形单独重问
+                suspects = _verify_identities(chunk_img, flat)
+                if suspects:
+                    _LOG.warning('[VLM] 块 %d 拓扑校验发现 %d 个可疑音符，逐字形复核',
+                                 ci + 1, len(suspects))
+                    _repair_suspect_glyphs(chunk_img, vlm, flat, suspects)
+                else:
+                    trusted = True
+                # CV 几何检测接管：八度点 / 下划线时值 / 附点 / 延音线位置。
+                # 以 VLM 音符数为锚选字形，CV 失败则保留 VLM 结果。
+                flat = _reconcile_cv(flat, chunk_img)
             chunk_result = {**chunk_result, 'measures': [flat]}
+            if trusted:
+                glyph_library.extend(_harvest_templates(chunk_img, flat))
+            else:
+                review_chunks.append((len(chunks_data), chunk_img))
         chunks_data.append(chunk_result)
+
+    # 模板复核：对存疑块的数字身份做同页最近邻匹配（确定性，无 VLM 调用）
+    if glyph_library and review_chunks:
+        _LOG.info('[VLM] 模板复核：%d 个存疑块，模板库 %d 个字形',
+                  len(review_chunks), len(glyph_library))
+        for di, chunk_img in review_chunks:
+            notes = chunks_data[di].get('measures', [[]])[0]
+            fixed = _reclassify_by_templates(chunk_img, notes, glyph_library)
+            if fixed is not None:
+                _LOG.warning('[VLM] 模板复核修正块 #%d 的音符身份', di + 1)
+                chunks_data[di]['measures'] = [fixed]
 
     merged = _merge_row_results(chunks_data)
     _LOG.info('[VLM] 多块合并完成: 共 %d 小节', len(merged['measures']))
