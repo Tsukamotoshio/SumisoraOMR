@@ -71,7 +71,16 @@ def _bootstrap_venv() -> None:
     for _py in candidates:
         if os.path.isfile(_py):
             import subprocess
-            sys.exit(subprocess.run([_py] + sys.argv).returncode)
+            # 用 .venv 的解释器重新启动自己。父进程（系统 Python）只是转发等待，
+            # 这期间终端不会返回提示符——这是正常的，GUI 正在子进程里运行。
+            print('[启动] 切换到 .venv 解释器运行（GUI 启动中，请稍候）…',
+                  file=sys.stderr, flush=True)
+            try:
+                sys.exit(subprocess.run([_py] + sys.argv).returncode)
+            except KeyboardInterrupt:
+                # 用户在终端 Ctrl+C：子进程已随进程组一并收到信号，
+                # 这里安静退出，避免向用户抛出无意义的 subprocess 等待堆栈。
+                sys.exit(130)
     print(
         '\n[错误] 未找到虚拟环境或 flet 未安装。\n'
         '  pip install -r requirements.txt\n'
