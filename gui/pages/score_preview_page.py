@@ -556,24 +556,73 @@ class ScorePreviewPage(ft.Row):
             return
         midi_path = output_dir(None) / (self._current_path.stem + '.mid')
         if midi_path.exists():
-            try:
-                os.startfile(str(midi_path))
-            except Exception as exc:
-                try:
-                    self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                        content=ft.Text(f'无法打开 MIDI 文件: {exc}', size=14),
-                        duration=3000,
-                    ))
-                except Exception:
-                    pass
+            self._open_midi(midi_path)
         else:
+            # 没有现成 MIDI → 弹确认框，确认后从乐谱即时生成再播放
+            self._confirm_generate_midi(self._current_path, midi_path)
+
+    def _open_midi(self, midi_path: Path) -> None:
+        """用系统默认程序打开 MIDI 文件。"""
+        try:
+            os.startfile(str(midi_path))
+        except Exception as exc:
+            self._snack(f'无法打开 MIDI 文件: {exc}')
+
+    def _confirm_generate_midi(self, mxl_path: Path, midi_path: Path) -> None:
+        """弹出确认对话框：是否从当前乐谱生成 MIDI。"""
+        def _cancel(_e) -> None:
+            self.page.pop_dialog()
+
+        def _do(_e) -> None:
+            self.page.pop_dialog()
+            self._generate_and_play_midi(mxl_path, midi_path)
+
+        self.page.show_dialog(ft.AlertDialog(  # type: ignore[attr-defined]
+            modal=True,
+            title=ft.Text('生成 MIDI', size=15, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                f'尚未找到 {midi_path.name}。\n是否从当前乐谱生成 MIDI 并播放？',
+                size=13,
+                color=ft.Colors.ON_SURFACE,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel),
+                ft.FilledButton('生成并播放', on_click=_do),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
+
+    def _generate_and_play_midi(self, mxl_path: Path, midi_path: Path) -> None:
+        """后台线程：从 musicxml 生成 MIDI（music21），成功后用系统程序播放。"""
+        def _work() -> None:
             try:
-                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                    content=ft.Text(f'未找到 MIDI 文件：{midi_path.name}', size=14),
-                    duration=3000,
-                ))
-            except Exception:
-                pass
+                from core.render.renderer import render_midi_from_musicxml
+                ok = render_midi_from_musicxml(mxl_path, midi_path)
+            except Exception as exc:
+                ok = False
+                self._set_status(f'生成 MIDI 失败: {exc}')
+            finally:
+                self._set_busy(False)
+            if ok and midi_path.exists():
+                self._set_status(f'已生成 MIDI: {midi_path.name}')
+                # os.startfile 须在主线程调用，调度回事件循环
+                p = self.page
+                if p is not None:
+                    p.loop.call_soon_threadsafe(self._open_midi, midi_path)  # type: ignore[attr-defined]
+            else:
+                self._set_status('生成 MIDI 失败：乐谱无法转换')
+
+        self._set_busy(True)
+        self._set_status('正在生成 MIDI…')
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _snack(self, msg: str) -> None:
+        try:
+            self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                content=ft.Text(msg, size=14), duration=3000,
+            ))
+        except Exception:
+            pass
 
     # ── 导出乐谱（单个）──────────────────────────────────────────────────────
 

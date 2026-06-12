@@ -68,6 +68,20 @@ def render_midi_from_score(score, midi_path: Path) -> bool:
         return False
 
 
+def render_midi_from_musicxml(mxl_path: Path, midi_path: Path) -> bool:
+    """Parse a MusicXML (.musicxml/.mxl) file and export it to MIDI.
+
+    Convenience for callers that only have the score file on disk (e.g. the
+    preview's play button regenerating a missing .mid). Returns True on success.
+    """
+    try:
+        score = converter.parse(str(mxl_path))
+    except Exception as exc:
+        log_message(f'解析乐谱失败: {mxl_path.name}，原因: {exc}', logging.WARNING)
+        return False
+    return render_midi_from_score(score, midi_path)
+
+
 def build_score_from_jianpu_measures(
     measures: list[list[JianpuNote]],
     time_signature: str = '4/4',
