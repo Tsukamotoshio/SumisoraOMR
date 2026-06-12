@@ -17,7 +17,9 @@ from core.app.backend import (
     editor_workspace_dir, jianpu_input_dir, output_dir,
     vlm_models_dir, xml_scores_dir,
 )
-from core.config import VLM_MODEL_FILENAME, VLM_MMPROJ_FILENAME
+from core.config import (
+    VLM_MODEL_FILENAME, VLM_MMPROJ_FILENAME, VLM_MODEL_DISPLAY_NAME,
+)
 from ..components.vlm_download_dialog import VlmDownloadDialog
 from ..theme import Palette
 
@@ -329,27 +331,43 @@ class JianpuOcrPage(ft.Row):
         self._state.vlm_available = ready
 
         rows: list = []
-        if ready:
-            rows.append(ft.Row([
-                ft.Icon(ft.Icons.CHECK_CIRCLE_ROUNDED, color=Palette.SUCCESS, size=16),
-                ft.Text('模型已就绪', size=13, color=ft.Colors.ON_SURFACE),
-            ], spacing=6))
-        else:
-            if not both_present:
+        # 删除按钮：只要模型文件存在就提供（即便 llama 不可用，也允许清理权重）
+        _delete_btn = ft.TextButton(
+            '删除模型文件',
+            icon=ft.Icons.DELETE_OUTLINE_ROUNDED,
+            on_click=self._on_delete_model,
+            style=ft.ButtonStyle(color=Palette.ERROR),
+        )
+        if both_present:
+            if ready:
+                rows.append(ft.Row([
+                    ft.Icon(ft.Icons.CHECK_CIRCLE_ROUNDED, color=Palette.SUCCESS, size=16),
+                    ft.Text(f'{VLM_MODEL_DISPLAY_NAME} 已就绪', size=13,
+                            color=ft.Colors.ON_SURFACE),
+                    _delete_btn,
+                ], spacing=6))
+            else:
+                # 文件在但 llama 不可用：仍允许删除
                 rows.append(ft.Row([
                     ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.ORANGE, size=16),
-                    ft.Text('模型未下载', size=13, color=ft.Colors.ON_SURFACE),
-                    ft.TextButton(
-                        '下载模型权重',
-                        icon=ft.Icons.DOWNLOAD_ROUNDED,
-                        on_click=self._on_download_model,
-                    ),
+                    ft.Text('模型文件已存在', size=13, color=ft.Colors.ON_SURFACE),
+                    _delete_btn,
                 ], spacing=6))
-            if not _LLAMA_AVAILABLE:
-                rows.append(ft.Row([
-                    ft.Icon(ft.Icons.ERROR_ROUNDED, color=ft.Colors.ERROR, size=16),
-                    ft.Text('未安装 llama-cpp-python', size=13, color=ft.Colors.ON_SURFACE),
-                ], spacing=6))
+        else:
+            rows.append(ft.Row([
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.ORANGE, size=16),
+                ft.Text('模型未下载', size=13, color=ft.Colors.ON_SURFACE),
+                ft.TextButton(
+                    '下载模型权重',
+                    icon=ft.Icons.DOWNLOAD_ROUNDED,
+                    on_click=self._on_download_model,
+                ),
+            ], spacing=6))
+        if not _LLAMA_AVAILABLE:
+            rows.append(ft.Row([
+                ft.Icon(ft.Icons.ERROR_ROUNDED, color=ft.Colors.ERROR, size=16),
+                ft.Text('未安装 llama-cpp-python', size=13, color=ft.Colors.ON_SURFACE),
+            ], spacing=6))
 
         disabled = not ready
         p = self.page
@@ -379,11 +397,113 @@ class JianpuOcrPage(ft.Row):
         self._refresh_model_status()
         self._log('模型下载完成，可以开始识别。')
 
+    def _on_delete_model(self, _) -> None:
+        """弹确认框，确认后删除本地模型权重并切回可下载状态。"""
+        if self._recognize_thread is not None and self._recognize_thread.is_alive():
+            self._log('识别进行中，无法删除模型。请先取消或等待完成。')
+            return
+        model_path = vlm_models_dir() / VLM_MODEL_FILENAME
+        mmproj_path = vlm_models_dir() / VLM_MMPROJ_FILENAME
+
+        def _cancel(_e) -> None:
+            self.page.pop_dialog()
+
+        def _do(_e) -> None:
+            self.page.pop_dialog()
+            self._delete_model_files()
+
+        self.page.show_dialog(ft.AlertDialog(  # type: ignore[attr-defined]
+            modal=True,
+            title=ft.Text('删除模型文件', size=15, weight=ft.FontWeight.W_600),
+            content=ft.Text(
+                f'将删除本地 VLM 模型权重（约 6 GB）：\n'
+                f'· {model_path.name}\n'
+                f'· {mmproj_path.name}\n\n'
+                '删除后需重新下载才能识别。是否继续？',
+                size=13, color=ft.Colors.ON_SURFACE,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel),
+                ft.FilledButton(
+                    '删除',
+                    on_click=_do,
+                    style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
+
+    def _delete_model_files(self) -> None:
+        """后台线程：释放已加载模型 → 删除权重文件 → 刷新状态（切回可下载）。"""
+        def _work() -> None:
+            # 先释放已加载的 Llama 实例：否则 Windows 无法删除被占用的 .gguf
+            try:
+                from core.vlm.jianpu_recognizer import release_vlm
+                release_vlm()
+            except Exception:
+                pass
+            d = vlm_models_dir()
+            errors: list[str] = []
+            for name in (VLM_MODEL_FILENAME, VLM_MMPROJ_FILENAME):
+                try:
+                    (d / name).unlink(missing_ok=True)
+                except Exception as exc:
+                    errors.append(f'{name}: {exc}')
+            # 清理可能的下载残留分片
+            for pat in ('*.part', '*.tmp', '*.download'):
+                for f in d.glob(pat):
+                    try:
+                        f.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            if errors:
+                self._marshal(self._log, '删除失败：' + '；'.join(errors))
+            else:
+                self._marshal(self._log, '模型文件已删除，可重新下载。')
+            # 刷新状态：both_present 变 False → 自动显示"下载模型权重"
+            self._refresh_model_status()
+
+        self._log('正在删除模型文件…')
+        threading.Thread(target=_work, daemon=True).start()
+
     # ── Recognition ──────────────────────────────────────────────────────────
 
     def _on_start_recognize(self, _) -> None:
         if not self._input_paths:
             self._log('请先添加简谱图片或 PDF 文件。')
+            return
+        # 开始前弹性能警告：7B 模型加载/推理重，可能明显占用显存并拖慢系统
+        def _cancel(_e) -> None:
+            self.page.pop_dialog()
+
+        def _proceed(_e) -> None:
+            self.page.pop_dialog()
+            self._start_recognition()
+
+        self.page.show_dialog(ft.AlertDialog(  # type: ignore[attr-defined]
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.ORANGE, size=20),
+                ft.Text('性能提示', size=15, weight=ft.FontWeight.W_600),
+            ], spacing=8),
+            content=ft.Text(
+                f'识别将本地运行 {VLM_MODEL_DISPLAY_NAME} 模型：\n'
+                '· 需加载约 6 GB 权重到显存/内存，显存不足会回退或变慢\n'
+                '· 识别期间 GPU 占用很高，电脑可能明显卡顿\n'
+                '· 每个文件约需 1–3 分钟，请耐心等待\n'
+                '建议先关闭其他占用显卡的程序。是否开始？',
+                size=13, color=ft.Colors.ON_SURFACE,
+            ),
+            actions=[
+                ft.TextButton('取消', on_click=_cancel),
+                ft.FilledButton('开始识别', on_click=_proceed),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
+
+    def _start_recognition(self) -> None:
+        """真正启动识别（性能警告确认后调用）。"""
+        if not self._input_paths:
             return
         self._cancel_event = threading.Event()
         self._start_btn.visible = False

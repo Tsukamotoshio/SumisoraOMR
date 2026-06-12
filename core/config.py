@@ -132,6 +132,8 @@ class JianpuNote:
 VLM_MODEL_DIR_NAME   = 'vlm'
 VLM_MODEL_FILENAME   = 'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf'
 VLM_MMPROJ_FILENAME  = 'mmproj-F16.gguf'
+# 面向用户的模型名（不含 7B / 量化等技术细节），用于界面展示
+VLM_MODEL_DISPLAY_NAME = 'Qwen2.5-VL'
 # SHA256 hashes — fill in after first successful download (certutil -hashfile <file> SHA256)
 # Empty string = skip hash verification (acceptable for experimental feature)
 VLM_MODEL_HASH       = ''
