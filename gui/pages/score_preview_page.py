@@ -14,7 +14,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import xml_scores_dir, build_dir, output_dir
 from ..components.pdf_viewer import PdfViewer
-from ..theme import Palette, with_alpha, section_title
+from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
 
 
 class ScorePreviewPage(ft.Row):
@@ -296,7 +296,7 @@ class ScorePreviewPage(ft.Row):
                         overflow=ft.TextOverflow.ELLIPSIS,
                         expand=True,
                         color=Palette.PRIMARY if is_selected else ft.Colors.ON_SURFACE,
-                        weight=ft.FontWeight.W_700 if is_selected else ft.FontWeight.NORMAL,
+                        font_family=FONT_EMPHASIS if is_selected else None,
                         tooltip=path.name,
                     ),
                     ft.Text(
@@ -367,7 +367,7 @@ class ScorePreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('删除五线谱文件', size=15, weight=ft.FontWeight.W_600),
+            title=ft.Text('删除五线谱文件', size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
                 f'将永久删除：{path.name}',
                 size=13,
@@ -421,7 +421,7 @@ class ScorePreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('批量删除五线谱文件', size=15, weight=ft.FontWeight.W_600),
+            title=ft.Text('批量删除五线谱文件', size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
                 f'将永久删除已勾选的 {n} 个五线谱文件。',
                 size=13,

@@ -20,7 +20,7 @@ from core.app.backend import app_base_dir, output_dir, open_directory
 from ..components.file_sidebar import FileSidebar
 from ..components.pdf_viewer import PdfViewer
 from ..components.progress_overlay import ProgressOverlay
-from ..theme import Palette, with_alpha
+from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
 
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
@@ -41,6 +41,8 @@ class LandingPage(ft.Row):
         state.on(Event.FILES_CHANGED,   self._on_files_changed)
         state.on(Event.FILES_IMPORTED,  self._on_files_imported)
         state.on(Event.MODELS_DOWNLOADED, self._refresh_engine_labels)
+        state.on(Event.FILES_CHANGED,       self._refresh_convert_label)
+        state.on(Event.FILES_CHECK_CHANGED, self._refresh_convert_label)
 
     def _build_engine_options(self) -> list:
         suffix = '' if self._state.homr_available else '（需下载）'
@@ -59,12 +61,12 @@ class LandingPage(ft.Row):
             label='OMR 引擎',
             value='auto',
             options=self._build_engine_options(),
-            width=200,
             text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
+            tooltip='自动选择会根据输入格式与图像质量决定使用 Audiveris 还是 Homr',
         )
 
         # 超分辨率算法选择
@@ -75,12 +77,12 @@ class LandingPage(ft.Row):
                 ft.dropdown.Option('waifu2x',     'waifu2x（线条画）'),
                 ft.dropdown.Option('realesrgan',  'Real-ESRGAN（anime，默认）'),
             ],
-            width=200,
             text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
+            tooltip='低分辨率图片在识别前会先放大增强；两种算法适合不同风格的图源',
         )
 
         # 并发处理数（高端机加速；默认 1 = 顺序，低配安全）
@@ -93,19 +95,22 @@ class LandingPage(ft.Row):
                 ft.dropdown.Option('4',    '4 个并行'),
                 ft.dropdown.Option('auto', '自动（按 CPU 核数）'),
             ],
-            width=200,
             text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
+            tooltip='同时转换多个文件可加速批量处理；内存或显存不足时请保持 1',
         )
 
+        self._convert_label = ft.Text('开始转换', size=15, font_family=FONT_EMPHASIS)
         self._convert_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, size=18), ft.Text('开始转换')],
+                [ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, size=20), self._convert_label],
                 tight=True, spacing=6,
+                alignment=ft.MainAxisAlignment.CENTER,
             ),
+            height=44,
             bgcolor=Palette.PRIMARY,
             color='#FFFFFF',
             on_click=self._on_convert,
@@ -119,6 +124,7 @@ class LandingPage(ft.Row):
             content=ft.Row(
                 [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开输出目录')],
                 tight=True, spacing=6,
+                alignment=ft.MainAxisAlignment.CENTER,
             ),
             on_click=self._on_open_output_dir,
             style=ft.ButtonStyle(
@@ -133,6 +139,7 @@ class LandingPage(ft.Row):
             content=ft.Row(
                 [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), ft.Text('下载模型文件')],
                 tight=True, spacing=6,
+                alignment=ft.MainAxisAlignment.CENTER,
             ),
             on_click=self._on_download_models,
             style=ft.ButtonStyle(
@@ -145,6 +152,7 @@ class LandingPage(ft.Row):
             content=ft.Row(
                 [ft.Icon(ft.Icons.DELETE_OUTLINE_ROUNDED, size=16), ft.Text('删除模型文件')],
                 tight=True, spacing=6,
+                alignment=ft.MainAxisAlignment.CENTER,
             ),
             on_click=self._on_delete_models,
             style=ft.ButtonStyle(
@@ -159,7 +167,7 @@ class LandingPage(ft.Row):
             content=ft.Column(
                 [
                     ft.Container(
-                        content=ft.Text('转换选项', size=15, weight=ft.FontWeight.W_700,
+                        content=ft.Text('转换选项', size=15, font_family=FONT_EMPHASIS,
                                         color=ft.Colors.ON_SURFACE),
                         height=48,
                         padding=ft.Padding.only(left=16, right=16),
@@ -175,10 +183,14 @@ class LandingPage(ft.Row):
                                 ft.Container(height=4),
                                 self._convert_btn,
                                 open_output_btn,
+                                ft.Container(height=4),
+                                ft.Divider(height=1, thickness=1, color=ft.Colors.OUTLINE_VARIANT),
+                                section_title('HOMR 模型管理'),
                                 self._download_models_btn,
                                 self._delete_models_btn,
                             ],
                             spacing=10,
+                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                         ),
                         padding=ft.Padding.symmetric(horizontal=16, vertical=12),
                         expand=True,
@@ -189,7 +201,7 @@ class LandingPage(ft.Row):
             ),
             bgcolor=ft.Colors.SURFACE,
             width=250,
-            border=ft.Border.only(left=ft.BorderSide(2, with_alpha(Palette.BORDER_BLUE, '99'))),
+            border=ft.Border.only(left=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
         self.controls = [
@@ -230,7 +242,7 @@ class LandingPage(ft.Row):
         confirm = ft.AlertDialog(
             modal=True,
             title=ft.Text('需要下载 HOMR 模型权重',
-                          size=16, weight=ft.FontWeight.W_600),
+                          size=16, font_family=FONT_EMPHASIS),
             content=ft.Text(
                 '使用 HOMR 引擎可以支持图片格式的乐谱识别。\n'
                 '需要下载约 292 MB 模型权重。',
@@ -269,6 +281,27 @@ class LandingPage(ft.Row):
             self._delete_models_btn.update()
         except Exception:
             pass
+
+    def _refresh_convert_label(self, **_) -> None:
+        """在主按钮上显示已勾选文件数，让「将转换什么」一目了然。"""
+        n = sum(1 for f in self._state.pinned_files if f in self._state.checked_files)
+        label = f'开始转换（{n}）' if n else '开始转换'
+        try:
+            p = self.page
+        except RuntimeError:
+            p = None  # 控件尚未挂载
+        if p is None:
+            self._convert_label.value = label
+            return
+
+        # 事件可能由后台扫描线程触发；控件写操作调度到事件循环执行
+        async def _do():
+            self._convert_label.value = label
+            try:
+                self._convert_btn.update()
+            except Exception:
+                pass
+        p.run_task(_do)  # type: ignore[attr-defined]
 
     def _on_download_models(self, _e) -> None:
         """Manually trigger the model download dialog from the Settings button."""
@@ -317,7 +350,7 @@ class LandingPage(ft.Row):
 
         confirm = ft.AlertDialog(
             modal=True,
-            title=ft.Text('确认删除模型文件', size=16, weight=ft.FontWeight.W_600),
+            title=ft.Text('确认删除模型文件', size=16, font_family=FONT_EMPHASIS),
             content=ft.Text(
                 '将删除全部 HOMR 模型权重文件（约 292 MB）。\n'
                 '下次使用 HOMR 引擎时需要重新下载。',
@@ -523,7 +556,7 @@ class LandingPage(ft.Row):
             modal=True,
             title=ft.Text(
                 f'转换 {len(checked)} 个文件',
-                size=16, weight=ft.FontWeight.W_700,
+                size=16, font_family=FONT_EMPHASIS,
             ),
             content=ft.Container(
                 content=ft.Column(
@@ -1094,7 +1127,7 @@ class LandingPage(ft.Row):
             # ── 标题行：总共 X 文件，成功 Y，失败 Z ──
             def _stat_chip(label: str, color: str) -> ft.Container:
                 return ft.Container(
-                    content=ft.Text(label, size=13, color=color, weight=ft.FontWeight.W_700),
+                    content=ft.Text(label, size=13, color=color, font_family=FONT_EMPHASIS),
                     padding=ft.Padding.symmetric(horizontal=10, vertical=4),
                     border_radius=12,
                     bgcolor=ft.Colors.with_opacity(0.12, color),
@@ -1116,7 +1149,7 @@ class LandingPage(ft.Row):
             if success_files:
                 list_items.append(
                     ft.Container(
-                        ft.Text('成功', size=12, weight=ft.FontWeight.W_700, color=Palette.SUCCESS),
+                        ft.Text('成功', size=12, font_family=FONT_EMPHASIS, color=Palette.SUCCESS),
                         padding=ft.Padding.only(top=8, bottom=2),
                     )
                 )
@@ -1162,7 +1195,7 @@ class LandingPage(ft.Row):
             if failed_files:
                 list_items.append(
                     ft.Container(
-                        ft.Text('失败', size=12, weight=ft.FontWeight.W_700, color=Palette.ERROR),
+                        ft.Text('失败', size=12, font_family=FONT_EMPHASIS, color=Palette.ERROR),
                         padding=ft.Padding.only(top=10, bottom=2),
                     )
                 )
@@ -1197,9 +1230,21 @@ class LandingPage(ft.Row):
                 if self.page:
                     self.page.pop_dialog()
 
+            def _goto_jianpu_preview(_ev=None):
+                # 引导用户进入下一步：转换成功后直接跳到简谱预览页
+                _close_dialog()
+                self._state.emit(Event.NAVIGATE, name='editor')
+
+            actions: list[ft.Control] = [
+                ft.TextButton('打开输出目录', on_click=self._on_open_output_dir),
+                ft.TextButton('关闭', on_click=_close_dialog),
+            ]
+            if success_count > 0:
+                actions.append(ft.FilledButton('查看简谱', on_click=_goto_jianpu_preview))
+
             dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text('识别结果', size=16, weight=ft.FontWeight.W_700),
+                title=ft.Text('识别结果', size=16, font_family=FONT_EMPHASIS),
                 content=ft.Column(
                     [
                         header_row,
@@ -1218,9 +1263,7 @@ class LandingPage(ft.Row):
                     tight=True,
                     spacing=8,
                 ),
-                actions=[
-                    ft.TextButton('关闭', on_click=_close_dialog),
-                ],
+                actions=actions,
                 actions_alignment=ft.MainAxisAlignment.END,
             )
             self.page.show_dialog(dialog)

@@ -77,6 +77,28 @@ class ProgressOverlay(ft.Stack):
             on_click=self._on_close_click,
         )
 
+        # ── 可折叠的详细日志区（识别耗时较长，给用户「正在发生什么」的反馈）──
+        self._log_visible = False
+        self._log_toggle_icon = ft.Icon(
+            ft.Icons.EXPAND_MORE_ROUNDED, size=16, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._log_toggle_text = ft.Text('显示详细日志', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._log_toggle_btn = ft.TextButton(
+            content=ft.Row(
+                [self._log_toggle_icon, self._log_toggle_text],
+                tight=True, spacing=4,
+            ),
+            on_click=self._on_toggle_log,
+        )
+        self._log_container = ft.Container(
+            content=self._log_list,
+            height=180,
+            visible=False,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
+            border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=ft.BorderRadius.all(8),
+            padding=ft.Padding.all(8),
+        )
+
         panel_inner = ft.Container(
             content=ft.Column(
                 [
@@ -106,6 +128,8 @@ class ProgressOverlay(ft.Stack):
                         ),
                         visible=True,
                     ),
+                    ft.Row([self._log_toggle_btn], alignment=ft.MainAxisAlignment.START),
+                    self._log_container,
 
                 ],
                 spacing=4,
@@ -241,6 +265,7 @@ class ProgressOverlay(ft.Stack):
         self._sub_status_text.value = ''
         self._sub_status_text.visible = False
         self._should_hide_after = None  # 取消上次可能未完成的自动隐藏
+        self._set_log_visible(False)  # 每次开始时折叠日志区
         self._backdrop.visible = True
         self._panel_wrapper.visible = True
         self._update_overlay()
@@ -281,6 +306,20 @@ class ProgressOverlay(ft.Stack):
         self._state.is_processing = False
         self.hide()
 
+    def _set_log_visible(self, visible: bool) -> None:
+        self._log_visible = visible
+        self._log_container.visible = visible
+        if visible:
+            self._log_toggle_icon.icon = ft.Icons.EXPAND_LESS_ROUNDED
+            self._log_toggle_text.value = '隐藏详细日志'
+        else:
+            self._log_toggle_icon.icon = ft.Icons.EXPAND_MORE_ROUNDED
+            self._log_toggle_text.value = '显示详细日志'
+
+    def _on_toggle_log(self, _e) -> None:
+        self._set_log_visible(not self._log_visible)
+        self._update_overlay()
+
     # ── 事件回调 ─────────────────────────────────────────────────────────────
 
     def set_sub_progress(self, value: float, message: str = '') -> None:
@@ -307,6 +346,16 @@ class ProgressOverlay(ft.Stack):
             self._progress_bar.color = Palette.ERROR
             self._status_text.value = f'错误：{message}'
             self._spinner.color = Palette.ERROR
+            self._set_log_visible(True)  # 出错时自动展开日志，方便定位原因
+            # 计时器已停止，不会再消费队列；把剩余日志一次性排空到列表
+            while self._pending_logs:
+                line, color = self._pending_logs.popleft()
+                self._log_list.controls.append(
+                    ft.Text(line, size=12, font_family='Consolas',
+                            color=color, selectable=True)
+                )
+            while len(self._log_list.controls) > 80:
+                self._log_list.controls.pop(0)
             self._try_update()
         p = self.page
         if p is not None:
@@ -316,6 +365,7 @@ class ProgressOverlay(ft.Stack):
             self._progress_bar.color = Palette.ERROR
             self._status_text.value = f'错误：{message}'
             self._spinner.color = Palette.ERROR
+            self._set_log_visible(True)
 
     def _on_log(self, line: str, **_kw) -> None:
         # 根据内容选颜色：✓ 绿色，✗ 红色，其余默认

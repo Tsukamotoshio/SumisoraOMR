@@ -17,6 +17,7 @@ from typing import Optional, Callable
 import flet as ft
 
 from ..app_state import AppState, Event
+from ..theme import FONT_EMPHASIS
 
 
 class ModelDownloadDialog:
@@ -76,7 +77,7 @@ class ModelDownloadDialog:
         """Build a bare AlertDialog whose title/content/actions are set per state."""
         return ft.AlertDialog(
             modal=True,
-            title=ft.Text("HOMR 模型权重", size=16, weight=ft.FontWeight.W_600),
+            title=ft.Text("HOMR 模型权重", size=16, font_family=FONT_EMPHASIS),
         )
 
     def _render_picker(self) -> None:
@@ -102,7 +103,7 @@ class ModelDownloadDialog:
         if self._dialog is None:
             return
         self._dialog.title = ft.Text("下载 HOMR 模型权重",
-                                     size=16, weight=ft.FontWeight.W_600)
+                                     size=16, font_family=FONT_EMPHASIS)
         self._dialog.content = ft.Column(
             [
                 intro,
@@ -134,7 +135,7 @@ class ModelDownloadDialog:
         if self._dialog is None:
             return
         self._dialog.title = ft.Text("正在下载 HOMR 模型权重",
-                                     size=16, weight=ft.FontWeight.W_600)
+                                     size=16, font_family=FONT_EMPHASIS)
         self._dialog.content = ft.Column(
             [
                 self._source_text,
@@ -159,7 +160,7 @@ class ModelDownloadDialog:
         if self._dialog is None:
             return
         self._dialog.title = ft.Text("下载出错",
-                                     size=16, weight=ft.FontWeight.W_600)
+                                     size=16, font_family=FONT_EMPHASIS)
         self._dialog.content = ft.Column(
             [ft.Text(msg, size=13)],
             tight=True, spacing=4, width=420,

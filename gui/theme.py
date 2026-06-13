@@ -5,6 +5,18 @@ from __future__ import annotations
 import flet as ft
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Fonts — bundled Noto Sans SC static instances, registered in app.py via page.fonts.
+#
+# 微软雅黑没有 Medium 字重，500-700 的请求只能落到糊成一团的真 Bold 或伪粗体。
+# 因此强调文本一律改用打包的 Medium 字体族（FONT_EMPHASIS），不要再设 weight=
+# （在单字重 family 上设 weight 会触发 Flutter 伪粗体，重新变糊）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+FONT_BODY     = 'Noto Sans SC'         # assets/fonts/NotoSansSC-UI-Regular.ttf (wght 400)
+FONT_EMPHASIS = 'Noto Sans SC Medium'  # assets/fonts/NotoSansSC-UI-Medium.ttf  (wght 500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Colour palette — named hex values, referenced only in ColorScheme and semantic colours.
 # UI components should prefer ft.Colors.* M3 semantic tokens over direct references here.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +52,7 @@ class Palette:
 # Flet Theme factories
 # ─────────────────────────────────────────────────────────────────────────────
 
-def make_dark_theme(font_family: str = 'YaHei') -> ft.Theme:
+def make_dark_theme(font_family: str = FONT_BODY) -> ft.Theme:
     return ft.Theme(
         color_scheme_seed=Palette.PRIMARY,
         font_family=font_family,
@@ -69,7 +81,7 @@ def make_dark_theme(font_family: str = 'YaHei') -> ft.Theme:
     )
 
 
-def make_light_theme(font_family: str = 'YaHei') -> ft.Theme:
+def make_light_theme(font_family: str = FONT_BODY) -> ft.Theme:
     return ft.Theme(
         color_scheme_seed=Palette.PRIMARY,
         font_family=font_family,
@@ -115,7 +127,7 @@ def section_title(text: str, dark: bool = True) -> ft.Text:
     return ft.Text(
         text,
         size=12,
-        weight=ft.FontWeight.W_700,
+        font_family=FONT_EMPHASIS,
         color=ft.Colors.ON_SURFACE_VARIANT,
         style=ft.TextStyle(letter_spacing=1.2),
     )

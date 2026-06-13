@@ -33,6 +33,7 @@ class Event:
     SCORE_TRANSPOSER_BACK      = 'score_transposer_back'      # transposer requests back to score_preview
     THEME_CHANGED         = 'theme_changed'         # theme toggled (dark: bool)
     MODELS_DOWNLOADED     = 'models_downloaded'     # HOMR weights finished downloading
+    NAVIGATE              = 'navigate'              # request page switch (name: str, one of _NAV_NAMES)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

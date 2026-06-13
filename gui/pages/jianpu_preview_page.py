@@ -15,7 +15,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import output_dir, editor_workspace_dir, build_dir
 from ..components.pdf_viewer import PdfViewer
-from ..theme import Palette, with_alpha, section_title
+from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
 
 
 class JianpuPreviewPage(ft.Row):
@@ -307,7 +307,7 @@ class JianpuPreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('删除简谱文件', size=15, weight=ft.FontWeight.W_600),
+            title=ft.Text('删除简谱文件', size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
                 f'将永久删除：{path.name} 及其关联的 MIDI 和编辑文本。',
                 size=13,
@@ -354,7 +354,7 @@ class JianpuPreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('批量删除简谱文件', size=15, weight=ft.FontWeight.W_600),
+            title=ft.Text('批量删除简谱文件', size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
                 f'将永久删除已勾选的 {n} 个简谱文件及其关联文件。',
                 size=13,
@@ -396,7 +396,7 @@ class JianpuPreviewPage(ft.Row):
                         overflow=ft.TextOverflow.ELLIPSIS,
                         expand=True,
                         color=Palette.PRIMARY if is_selected else ft.Colors.ON_SURFACE,
-                        weight=ft.FontWeight.W_700 if is_selected else ft.FontWeight.NORMAL,
+                        font_family=FONT_EMPHASIS if is_selected else None,
                         tooltip=path.name,
                     ),
                     ft.IconButton(

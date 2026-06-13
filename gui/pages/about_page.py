@@ -8,7 +8,7 @@ import webbrowser
 
 import flet as ft
 
-from ..theme import Palette, with_alpha
+from ..theme import Palette, with_alpha, FONT_EMPHASIS
 from core.config import APP_VERSION
 
 
@@ -63,9 +63,12 @@ class AboutPage(ft.Column):
     def _build_ui(self) -> None:
 
         def _card(content: ft.Control) -> ft.Container:
+            # 暗色主题下 SURFACE 与页面背景同色，仅靠阴影无法区分卡片边界，
+            # 因此叠加 1px 描边 + 略高一级的容器色。
             return ft.Container(
                 content=content,
-                bgcolor=ft.Colors.SURFACE,
+                bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+                border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=ft.BorderRadius.all(12),
                 padding=ft.Padding.all(24),
                 width=640,
@@ -83,11 +86,11 @@ class AboutPage(ft.Column):
                     ft.Image(src='Sumisora.png', width=64, height=64,
                              border_radius=ft.BorderRadius.all(12)),
                     ft.Text('SumisoraOMR', size=24,
-                            weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE),
+                            font_family=FONT_EMPHASIS, color=ft.Colors.ON_SURFACE),
                     ft.Text('五线谱识别与简谱生成工具', size=15, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(f'v{APP_VERSION}', size=13, color=Palette.PRIMARY,
-                                        weight=ft.FontWeight.W_500),
+                                        font_family=FONT_EMPHASIS),
                         bgcolor=with_alpha(Palette.PRIMARY, '22'),
                         border_radius=ft.BorderRadius.all(6),
                         padding=ft.Padding.symmetric(horizontal=10, vertical=3),
@@ -102,7 +105,7 @@ class AboutPage(ft.Column):
         author_card = _card(
             ft.Column(
                 [
-                    ft.Text('作者', size=14, weight=ft.FontWeight.W_700,
+                    ft.Text('作者', size=14, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
@@ -112,7 +115,7 @@ class AboutPage(ft.Column):
                         spacing=8,
                     ),
                     ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
-                    ft.Text('项目主页', size=14, weight=ft.FontWeight.W_700,
+                    ft.Text('项目主页', size=14, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
@@ -122,7 +125,7 @@ class AboutPage(ft.Column):
                                     self._GITHUB_URL,
                                     size=14,
                                     color=Palette.PRIMARY,
-                                    weight=ft.FontWeight.W_500,
+                                    font_family=FONT_EMPHASIS,
                                 ),
                                 on_tap=self._open_url,
                                 mouse_cursor=ft.MouseCursor.CLICK,
@@ -139,7 +142,7 @@ class AboutPage(ft.Column):
         license_card = _card(
             ft.Column(
                 [
-                    ft.Text('开源许可证 (AGPL-3.0)', size=14, weight=ft.FontWeight.W_700,
+                    ft.Text('开源许可证 (AGPL-3.0)', size=14, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(

@@ -12,7 +12,7 @@ from typing import Optional
 
 from ..app_state import AppState, Event
 from core.app.backend import app_base_dir
-from ..theme import Palette, with_alpha, section_title
+from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
 
 
 class FileSidebar(ft.Column):
@@ -97,6 +97,48 @@ class FileSidebar(ft.Column):
         self._file_picker   = ft.FilePicker()
         self._folder_picker = ft.FilePicker()
 
+        # 空状态引导：首次打开时列表为空，给出明确的下一步操作入口
+        self._empty_hint = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Icon(ft.Icons.QUEUE_MUSIC_ROUNDED, size=40, color=ft.Colors.OUTLINE),
+                    ft.Text(
+                        '还没有乐谱文件',
+                        size=13,
+                        color=ft.Colors.OUTLINE,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                    ft.TextButton(
+                        content=ft.Row(
+                            [ft.Icon(ft.Icons.ADD_ROUNDED, size=16), ft.Text('添加文件', size=13)],
+                            tight=True, spacing=4,
+                        ),
+                        on_click=self._on_add_click,
+                        style=ft.ButtonStyle(color=Palette.PRIMARY),
+                    ),
+                    ft.Text(
+                        '支持 PDF / PNG / JPG\n也可直接放入 Input 文件夹',
+                        size=11,
+                        color=ft.Colors.OUTLINE,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=8,
+            ),
+            expand=True,
+            alignment=ft.Alignment(0, 0),
+        )
+
+        self._list_stack = ft.Stack(
+            [
+                ft.Container(content=self._file_list_col, expand=True),
+                self._empty_hint,
+            ],
+            expand=True,
+        )
+
         container = ft.Container(
             content=ft.Column(
                 [
@@ -108,7 +150,7 @@ class FileSidebar(ft.Column):
                         border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
                     ),
                     ft.Container(
-                        content=self._file_list_col,
+                        content=self._list_stack,
                         expand=True,
                         padding=ft.Padding.symmetric(horizontal=6, vertical=4),
                     ),
@@ -162,7 +204,7 @@ class FileSidebar(ft.Column):
 
             _confirm_dlg = ft.AlertDialog(
                 modal=True,
-                title=ft.Text('删除文件', size=15, weight=ft.FontWeight.W_600),
+                title=ft.Text('删除文件', size=15, font_family=FONT_EMPHASIS),
                 content=ft.Text(
                     f'将从 Input 文件夹中永久删除：\n{p.name}',
                     size=13,
@@ -277,7 +319,7 @@ class FileSidebar(ft.Column):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('批量删除文件', size=15, weight=ft.FontWeight.W_600),
+            title=ft.Text('批量删除文件', size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(msg, size=13, color=ft.Colors.ON_SURFACE),
             actions=[
                 ft.TextButton('取消', on_click=_cancel),
@@ -353,7 +395,7 @@ class FileSidebar(ft.Column):
         )
         _dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text(f'导入 {n} 个文件', size=15, weight=ft.FontWeight.W_600),
+            title=ft.Text(f'导入 {n} 个文件', size=15, font_family=FONT_EMPHASIS),
             content=ft.Column(
                 [_prog_text, _prog_bar],
                 spacing=14,
@@ -445,8 +487,9 @@ class FileSidebar(ft.Column):
                     self._file_list_col.controls = [
                         self._make_file_row(fp) for fp in pinned
                     ]
+                    self._empty_hint.visible = not pinned
                     self._update_select_all_icon()
-                    self._file_list_col.update()
+                    self._list_stack.update()
                     self._select_all_btn.update()
                     self._update_delete_btn()
                 except Exception:
@@ -457,6 +500,7 @@ class FileSidebar(ft.Column):
             self._file_list_col.controls = [
                 self._make_file_row(fp) for fp in pinned
             ]
+            self._empty_hint.visible = not pinned
             self._update_select_all_icon()
             self._update_delete_btn()
 

@@ -12,7 +12,7 @@ from typing import Callable, Optional
 import flet as ft
 
 from ..app_state import AppState, Event
-from ..theme import Palette, section_title
+from ..theme import Palette, section_title, FONT_EMPHASIS
 
 
 class JianpuEditor(ft.Column):
@@ -177,7 +177,7 @@ class JianpuEditor(ft.Column):
 
         def _section(label: str) -> ft.Container:
             return ft.Container(
-                ft.Text(label, size=11, weight=ft.FontWeight.W_600,
+                ft.Text(label, size=11, font_family=FONT_EMPHASIS,
                         color=ft.Colors.ON_SURFACE_VARIANT),
                 padding=ft.Padding.only(top=6, bottom=2),
             )

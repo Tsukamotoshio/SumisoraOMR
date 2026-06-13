@@ -15,7 +15,7 @@ from ..app_state import AppState, Event
 from core.app.backend import editor_workspace_dir
 from ..components.jianpu_editor import JianpuEditor
 from ..components.pdf_viewer import _render_pdf_page
-from ..theme import Palette
+from ..theme import Palette, FONT_EMPHASIS
 
 def _do_render_preview(txt_path: Path) -> tuple[Optional[str], Optional[str]]:
     """Render jianpu txt → LilyPond → PDF → PNG base64.
@@ -482,7 +482,7 @@ class EditorPage(ft.Row):
             content=ft.Row(
                 [
                     back_btn,
-                    ft.Text('简谱编辑', size=13, weight=ft.FontWeight.W_700,
+                    ft.Text('简谱编辑', size=13, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(expand=True),
                     open_btn,

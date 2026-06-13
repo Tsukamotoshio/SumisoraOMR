@@ -13,7 +13,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import xml_scores_dir, build_dir, open_directory
 from ..components.pdf_viewer import PdfViewer
-from ..theme import Palette, section_title
+from ..theme import Palette, section_title, FONT_EMPHASIS
 from core.notation.transposer import INTERVALS, DIATONIC_DEGREES, key_display_cn
 
 
@@ -141,7 +141,7 @@ class TransposerPage(ft.Column):
 
         self._adv_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text('高级选项', size=16, weight=ft.FontWeight.W_700),
+            title=ft.Text('高级选项', size=16, font_family=FONT_EMPHASIS),
             content=ft.Container(
                 content=ft.Column(
                     [
@@ -338,7 +338,7 @@ class TransposerPage(ft.Column):
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Text('原调', size=13, weight=ft.FontWeight.W_700,
+                            ft.Text('原调', size=13, font_family=FONT_EMPHASIS,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Container(expand=True),
                             export_original_btn,
@@ -359,7 +359,7 @@ class TransposerPage(ft.Column):
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Text('移调后', size=13, weight=ft.FontWeight.W_700,
+                            ft.Text('移调后', size=13, font_family=FONT_EMPHASIS,
                                     color=Palette.PRIMARY),
                             ft.Container(expand=True),
                             export_transposed_btn,

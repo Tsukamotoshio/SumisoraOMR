@@ -95,7 +95,7 @@ if __name__ == '__main__' and '--worker' in sys.argv:
 import flet as ft
 
 from gui.app_state import AppState, Event
-from gui.theme import Palette, with_alpha, make_dark_theme, make_light_theme
+from gui.theme import Palette, with_alpha, make_dark_theme, make_light_theme, FONT_BODY, FONT_EMPHASIS
 from gui.pages.landing_page import LandingPage
 from gui.pages.jianpu_preview_page import JianpuPreviewPage
 from gui.pages.editor_page import EditorPage
@@ -111,7 +111,7 @@ from core.config import APP_VERSION
 # ─────────────────────────────────────────────────────────────────────────────
 
 _NAV_ITEMS = [
-    ('landing',       ft.Icons.ARROW_CIRCLE_RIGHT_ROUNDED,  ft.Icons.ARROW_CIRCLE_RIGHT_OUTLINED,  '乐谱识别'),
+    ('landing',       ft.Icons.DOCUMENT_SCANNER_ROUNDED,    ft.Icons.DOCUMENT_SCANNER_OUTLINED,    '乐谱识别'),
     ('editor',        ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,           '简谱预览'),
     ('score_preview', ft.Icons.LIBRARY_MUSIC_ROUNDED,       ft.Icons.LIBRARY_MUSIC_OUTLINED,       '五线谱预览'),
     ('about',         ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,         '关于'),
@@ -224,18 +224,17 @@ async def main(page: ft.Page) -> None:
     page.spacing = 0
 
     # ── Font configuration ────────────────────────────────────────────────────
-    # 使用系统字体名，直接由 Flutter DirectWrite 解析，无需注册文件
+    # 打包的 Noto Sans SC 静态子集（Regular 正文 + Medium 强调），所有机器渲染一致，
+    # 不再依赖系统是否安装中文字体。子集外的生僻字由 Flutter 逐字回落到系统字体。
     import os as _os
-    if _os.path.isfile(r'C:\Windows\Fonts\msyh.ttc'):
-        _font_key = 'Microsoft YaHei UI'
-    elif _os.path.isfile('/System/Library/Fonts/PingFang.ttc'):
-        _font_key = 'PingFang SC'
-    else:
-        _font_key = 'Noto Sans CJK SC'
+    page.fonts = {
+        FONT_BODY:     '/fonts/NotoSansSC-UI-Regular.ttf',
+        FONT_EMPHASIS: '/fonts/NotoSansSC-UI-Medium.ttf',
+    }
 
     page.theme_mode  = ft.ThemeMode.LIGHT
-    page.theme       = make_light_theme(font_family=_font_key)
-    page.dark_theme  = make_dark_theme(font_family=_font_key)
+    page.theme       = make_light_theme(font_family=FONT_BODY)
+    page.dark_theme  = make_dark_theme(font_family=FONT_BODY)
 
     # ── Global state ──────────────────────────────────────────────────────────
     state = AppState()
@@ -320,6 +319,22 @@ async def main(page: ft.Page) -> None:
     state.on(Event.SCORE_TRANSPOSER_REQUESTED, _on_score_transposer_requested)
     state.on(Event.SCORE_TRANSPOSER_BACK,      _on_score_transposer_back)
 
+    # 程序化页面跳转（如转换结果对话框的「查看简谱」按钮）。
+    # nav_rail 在下方才创建，回调通过 run_task 延后到事件循环执行，届时已可用。
+    def _on_navigate(name: str, **_) -> None:
+        async def _do():
+            _show_page(name)
+            if name in _NAV_NAMES:
+                nav_rail.selected_index = _NAV_NAMES.index(name)
+                try:
+                    nav_rail.update()
+                except Exception:
+                    pass
+            state.emit(Event.PAGE_CHANGED, page=name)
+        page.run_task(_do)
+
+    state.on(Event.NAVIGATE, _on_navigate)
+
     # ── NavigationRail (left sidebar) ────────────────────────────────────────
 
     def _on_nav_change(e) -> None:
@@ -389,12 +404,12 @@ async def main(page: ft.Page) -> None:
         state.toggle_theme()
         if state.dark_mode:
             page.theme_mode = ft.ThemeMode.DARK
-            page.theme      = make_dark_theme(font_family=_font_key)
-            page.dark_theme = make_dark_theme(font_family=_font_key)
+            page.theme      = make_dark_theme(font_family=FONT_BODY)
+            page.dark_theme = make_dark_theme(font_family=FONT_BODY)
             _theme_icon.icon = ft.Icons.DARK_MODE_ROUNDED
         else:
             page.theme_mode  = ft.ThemeMode.LIGHT
-            page.theme       = make_light_theme(font_family=_font_key)
+            page.theme       = make_light_theme(font_family=FONT_BODY)
             _theme_icon.icon = ft.Icons.LIGHT_MODE_ROUNDED
         try:
             page.update()
@@ -465,7 +480,7 @@ async def main(page: ft.Page) -> None:
                             ft.Text(
                                 f'SumisoraOMR  v{APP_VERSION}',
                                 size=13,
-                                weight=ft.FontWeight.W_600,
+                                font_family=FONT_EMPHASIS,
                                 color=ft.Colors.ON_SURFACE,
                             ),
                         ],
