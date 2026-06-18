@@ -1,4 +1,4 @@
-﻿# 批量乐谱(PDF/JPG/PNG) -> 简谱 PDF 转换工具
+﻿# 批量乐谱(PDF/JPG/PNG) -> 简谱 PDF 转换工具（TUI 入口）
 # Batch sheet music (PDF/JPG/PNG) to numbered notation (jianpu) PDF converter.
 # Pipeline: input image/PDF -> Audiveris (OMR) -> MusicXML -> music21 -> MIDI -> jianpu-ly -> LilyPond -> jianpu PDF
 #
@@ -8,6 +8,14 @@
 #
 # 本文件是薄包装器（thin wrapper）。所有实现均位于 core/ 目录。
 # This file is a thin wrapper; all logic lives in the core/ package.
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ DEPRECATED — 此 TUI 入口已正式弃用，不再主动维护。                          │
+# │ 请使用 GUI：`python app.py`。该文件保留仅供调试 / CI 的无头管线调用，       │
+# │ 可能落后于 GUI 的功能与修复。                                              │
+# │ This terminal entry point is deprecated and no longer actively maintained. │
+# │ Use the GUI (`python app.py`) instead.                                     │
+# └──────────────────────────────────────────────────────────────────────────┘
 
 # ---------------------------------------------------------------------------
 # Bootstrap: if core dependencies are missing (e.g. running with system Python
@@ -55,5 +63,11 @@ _bootstrap_venv()
 
 from core.app.pipeline import main
 
+_DEPRECATION_NOTICE = (
+    "\n[弃用提示] 命令行(TUI)入口已正式弃用，不再主动维护，功能可能落后于 GUI。\n"
+    "           请改用图形界面：python app.py\n"
+)
+
 if __name__ == '__main__':
+    print(_DEPRECATION_NOTICE, file=_sys.stderr)
     main()
