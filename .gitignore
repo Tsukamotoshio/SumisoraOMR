@@ -107,3 +107,6 @@ Project_Convert.code-workspace
 .vscode/settings.json
 # VLM model weights (GGUF) — large binaries, not the core/vlm/ source code
 /models/vlm/
+
+# Claude Code Harness local config (machine-specific, not for distribution)
+/claude-code-harness.config.json
