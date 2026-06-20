@@ -285,7 +285,7 @@ def get_vlm(model_path: Path, mmproj_path: Path) -> 'Llama':  # type: ignore[nam
         raise RuntimeError(
             'llama-cpp-python 未安装或无法加载 CUDA 运行库。\n'
             '完整安装命令（cu124 轮子 + CUDA 运行时 DLL，本机无需装 CUDA Toolkit）：\n'
-            '  pip install llama-cpp-python==0.3.23 '
+            '  pip install llama-cpp-python==0.3.30 '
             '--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124\n'
             '  pip install nvidia-cuda-runtime-cu12 nvidia-cublas-cu12\n'
             '（cu124 轮子只带 ggml-cuda.dll，依赖的 cudart64_12/cublas64_12 由上面两个 '
