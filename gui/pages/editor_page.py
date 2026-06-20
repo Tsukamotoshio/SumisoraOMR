@@ -99,12 +99,15 @@ class _BinaryImageView(ft.Column):
             height=32,
             visible=False,
         )
+        self._zoom_out_btn = ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,   icon_size=18, on_click=self._zoom_out, tooltip=t('common.tooltip_zoom_out'))
+        self._zoom_in_btn = ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,    icon_size=18, on_click=self._zoom_in,  tooltip=t('common.tooltip_zoom_in'))
+        self._zoom_fit_btn = ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED, icon_size=18, on_click=self._zoom_fit, tooltip=t('editor.tooltip_fit'))
         toolbar = ft.Container(
             content=ft.Row(
                 [
-                    ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,   icon_size=18, on_click=self._zoom_out, tooltip=t('common.tooltip_zoom_out')),
-                    ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,    icon_size=18, on_click=self._zoom_in,  tooltip=t('common.tooltip_zoom_in')),
-                    ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED, icon_size=18, on_click=self._zoom_fit, tooltip=t('editor.tooltip_fit')),
+                    self._zoom_out_btn,
+                    self._zoom_in_btn,
+                    self._zoom_fit_btn,
                     self._refresh_btn,
                 ],
                 spacing=2,
@@ -133,11 +136,12 @@ class _BinaryImageView(ft.Column):
             expand=True,
         )
 
+        self._placeholder_text = ft.Text(t('editor.placeholder_select_file'),
+                        size=12, color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER)
         self._placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.IMAGE_OUTLINED, size=40, color=ft.Colors.OUTLINE),
-                ft.Text(t('editor.placeholder_select_file'),
-                        size=12, color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER),
+                self._placeholder_text,
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -157,10 +161,11 @@ class _BinaryImageView(ft.Column):
         )
 
         # ── Preview area ─────────────────────────────────────────────────────
+        self._rendering_text = ft.Text(t('editor.rendering'), size=12, color=ft.Colors.OUTLINE)
         self._preview_loading_col = ft.Column(
             [
                 ft.ProgressRing(width=28, height=28, stroke_width=3),
-                ft.Text(t('editor.rendering'), size=12, color=ft.Colors.OUTLINE),
+                self._rendering_text,
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -178,11 +183,12 @@ class _BinaryImageView(ft.Column):
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
             visible=False,
         )
+        self._preview_placeholder_text = ft.Text(t('editor.placeholder_click_jianpu'), size=12,
+                        color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER)
         self._preview_placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.PREVIEW_OUTLINED, size=40, color=ft.Colors.OUTLINE),
-                ft.Text(t('editor.placeholder_click_jianpu'), size=12,
-                        color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER),
+                self._preview_placeholder_text,
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -209,6 +215,20 @@ class _BinaryImageView(ft.Column):
             ft.Stack([self._view_container, self._preview_area], expand=True),
         ]
         self.expand = True
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._zoom_out_btn.tooltip = t('common.tooltip_zoom_out')
+        self._zoom_in_btn.tooltip = t('common.tooltip_zoom_in')
+        self._zoom_fit_btn.tooltip = t('editor.tooltip_fit')
+        self._refresh_btn.tooltip = t('editor.tooltip_re_render')
+        self._placeholder_text.value = t('editor.placeholder_select_file')
+        self._rendering_text.value = t('editor.rendering')
+        self._preview_placeholder_text.value = t('editor.placeholder_click_jianpu')
+        try:
+            self.update()
+        except Exception:
+            pass
 
     def _on_viewer_resize(self, e) -> None:
         """视口尺寸变化时将图像宽度同步为视口宽度，消除左右黑边并允许垂直拖动。"""
@@ -458,7 +478,7 @@ class EditorPage(ft.Row):
         self.page._services.register_service(self._open_picker)  # type: ignore[attr-defined]
 
     def _build_ui(self) -> None:
-        back_btn = ft.IconButton(
+        self._back_btn = back_btn = ft.IconButton(
             icon=ft.Icons.ARROW_BACK_ROUNDED,
             icon_size=18,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
@@ -467,9 +487,10 @@ class EditorPage(ft.Row):
             width=32,
             height=32,
         )
+        self._open_label = ft.Text(t('common.open_score'))
         open_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t('common.open_score'))],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), self._open_label],
                 tight=True, spacing=6,
             ),
             on_click=self._on_open_click,
@@ -483,8 +504,8 @@ class EditorPage(ft.Row):
             content=ft.Row(
                 [
                     back_btn,
-                    ft.Text(t('common.jianpu_edit'), size=13, font_family=FONT_EMPHASIS,
-                            color=ft.Colors.ON_SURFACE_VARIANT),
+                    (_title := ft.Text(t('common.jianpu_edit'), size=13, font_family=FONT_EMPHASIS,
+                            color=ft.Colors.ON_SURFACE_VARIANT)),
                     ft.Container(expand=True),
                     open_btn,
                 ],
@@ -506,6 +527,8 @@ class EditorPage(ft.Row):
             expand=True,
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
+        self._title_text = _title
+
         self.controls = [
             ft.Column(
                 [top_bar, ft.Container(content=body, expand=True)],
@@ -515,6 +538,18 @@ class EditorPage(ft.Row):
         ]
         self.expand = True
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._back_btn.tooltip = t('editor.tooltip_back_to_preview')
+        self._open_label.value = t('common.open_score')
+        self._title_text.value = t('common.jianpu_edit')
+        try:
+            self.update()
+        except Exception:
+            pass
+        self._img_view.retranslate()
+        self._editor.retranslate()
 
     def _on_open_click(self, _e) -> None:
         self.page.run_task(self._pick_open_async)  # type: ignore[attr-defined]

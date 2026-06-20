@@ -45,6 +45,18 @@ class AboutPage(ft.Column):
                          scroll=ft.ScrollMode.AUTO)
         self._build_ui()
 
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED).
+
+        AboutPage is purely static (no state, no event subscriptions), so a full
+        widget-tree rebuild is safe and simplest here.
+        """
+        self._build_ui()
+        try:
+            self.update()
+        except Exception:
+            pass
+
     def _open_url(self, _e=None) -> None:
         if self._opening:
             return

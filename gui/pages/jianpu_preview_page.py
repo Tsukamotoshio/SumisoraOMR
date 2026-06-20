@@ -50,16 +50,17 @@ class JianpuPreviewPage(ft.Row):
             expand=True,
         )
 
+        self._empty_hint_text = ft.Text(
+            t('common.empty_score_hint'),
+            size=13,
+            color=ft.Colors.OUTLINE,
+            text_align=ft.TextAlign.CENTER,
+        )
         self._empty_hint = ft.Container(
             content=ft.Column(
                 [
                     ft.Icon(ft.Icons.MUSIC_NOTE_OUTLINED, size=40, color=ft.Colors.OUTLINE),
-                    ft.Text(
-                        t('common.empty_score_hint'),
-                        size=13,
-                        color=ft.Colors.OUTLINE,
-                        text_align=ft.TextAlign.CENTER,
-                    ),
+                    self._empty_hint_text,
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -79,7 +80,7 @@ class JianpuPreviewPage(ft.Row):
             height=28,
         )
 
-        refresh_btn = ft.IconButton(
+        self._refresh_btn = refresh_btn = ft.IconButton(
             icon=ft.Icons.REFRESH_ROUNDED,
             icon_size=17,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
@@ -113,7 +114,7 @@ class JianpuPreviewPage(ft.Row):
         sidebar_header = ft.Container(
             content=ft.Row(
                 [
-                    ft.Row([self._select_all_btn, section_title(t('jianpu_preview.section_title'))], spacing=0),
+                    ft.Row([self._select_all_btn, (_sec := section_title(t('jianpu_preview.section_title')))], spacing=0),
                     ft.Container(expand=True),
                     self._export_btn,
                     self._delete_checked_btn,
@@ -125,6 +126,7 @@ class JianpuPreviewPage(ft.Row):
             padding=ft.Padding.only(left=12, right=4),
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
+        self._section_title = _sec
 
         self._list_stack = ft.Stack(
             [
@@ -138,9 +140,10 @@ class JianpuPreviewPage(ft.Row):
         self._export_picker.on_result = self._on_export_result
         self._save_picker = ft.FilePicker()
 
+        self._export_jianpu_label = ft.Text(t('jianpu_preview.button_export'), size=14)
         export_jianpu_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), ft.Text(t('jianpu_preview.button_export'), size=14)],
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), self._export_jianpu_label],
                 tight=True,
                 spacing=6,
             ),
@@ -153,9 +156,10 @@ class JianpuPreviewPage(ft.Row):
             ),
         )
 
+        self._regen_label = ft.Text(t('jianpu_preview.button_re_render'), size=14)
         self._regen_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.REFRESH_ROUNDED, size=15), ft.Text(t('jianpu_preview.button_re_render'), size=14)],
+                [ft.Icon(ft.Icons.REFRESH_ROUNDED, size=15), self._regen_label],
                 tight=True,
                 spacing=6,
             ),
@@ -169,9 +173,10 @@ class JianpuPreviewPage(ft.Row):
             ),
         )
 
+        self._edit_jianpu_label = ft.Text(t('common.jianpu_edit'), size=14)
         edit_jianpu_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.EDIT_NOTE_ROUNDED, size=16), ft.Text(t('common.jianpu_edit'), size=14)],
+                [ft.Icon(ft.Icons.EDIT_NOTE_ROUNDED, size=16), self._edit_jianpu_label],
                 tight=True,
                 spacing=6,
             ),
@@ -223,6 +228,27 @@ class JianpuPreviewPage(ft.Row):
         self.controls = [sidebar, right_area]
         self.expand = True
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._play_midi_icon_btn.tooltip = t('common.tooltip_play_midi')
+        self._empty_hint_text.value = t('common.empty_score_hint')
+        self._select_all_btn.tooltip = t('common.tooltip_toggle_select_all')
+        self._refresh_btn.tooltip = t('common.tooltip_refresh_list')
+        self._export_btn.tooltip = t('jianpu_preview.tooltip_export_checked')
+        self._delete_checked_btn.tooltip = t('jianpu_preview.tooltip_delete_checked')
+        self._section_title.value = t('jianpu_preview.section_title')
+        self._export_jianpu_label.value = t('jianpu_preview.button_export')
+        self._regen_label.value = t('jianpu_preview.button_re_render')
+        self._regen_btn.tooltip = t('jianpu_preview.tooltip_re_render_from_text')
+        self._edit_jianpu_label.value = t('common.jianpu_edit')
+        try:
+            self.update()
+        except Exception:
+            pass
+        # 文件行的「删除此文件」tooltip 随语言切换：重建列表（保留勾选/选中状态）
+        self._rebuild_list()
+        self._viewer.retranslate()
 
     def did_mount(self) -> None:
         self.page._services.register_service(self._export_picker)  # type: ignore[attr-defined]

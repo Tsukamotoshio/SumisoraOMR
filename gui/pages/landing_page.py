@@ -121,9 +121,10 @@ class LandingPage(ft.Row):
             ),
         )
 
+        self._open_output_label = ft.Text(t("landing.button_open_output_dir"))
         open_output_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t("landing.button_open_output_dir"))],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), self._open_output_label],
                 tight=True, spacing=6,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
@@ -136,9 +137,10 @@ class LandingPage(ft.Row):
         )
 
         # HOMR 模型权重的显式管理按钮
+        self._download_models_label = ft.Text(t("landing.button_download_models"))
         self._download_models_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), ft.Text(t("landing.button_download_models"))],
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), self._download_models_label],
                 tight=True, spacing=6,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
@@ -149,9 +151,10 @@ class LandingPage(ft.Row):
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
+        self._delete_models_label = ft.Text(t("landing.button_delete_models"))
         self._delete_models_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DELETE_OUTLINE_ROUNDED, size=16), ft.Text(t("landing.button_delete_models"))],
+                [ft.Icon(ft.Icons.DELETE_OUTLINE_ROUNDED, size=16), self._delete_models_label],
                 tight=True, spacing=6,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
@@ -168,8 +171,8 @@ class LandingPage(ft.Row):
             content=ft.Column(
                 [
                     ft.Container(
-                        content=ft.Text(t("landing.section_convert_options"), size=15, font_family=FONT_EMPHASIS,
-                                        color=ft.Colors.ON_SURFACE),
+                        content=(_sec_opts := ft.Text(t("landing.section_convert_options"), size=15, font_family=FONT_EMPHASIS,
+                                        color=ft.Colors.ON_SURFACE)),
                         height=48,
                         padding=ft.Padding.only(left=16, right=16),
                         alignment=ft.Alignment(-1, 0),
@@ -186,7 +189,7 @@ class LandingPage(ft.Row):
                                 open_output_btn,
                                 ft.Container(height=4),
                                 ft.Divider(height=1, thickness=1, color=ft.Colors.OUTLINE_VARIANT),
-                                section_title(t("landing.section_homr_models")),
+                                (_sec_homr := section_title(t("landing.section_homr_models"))),
                                 self._download_models_btn,
                                 self._delete_models_btn,
                             ],
@@ -205,6 +208,9 @@ class LandingPage(ft.Row):
             border=ft.Border.only(left=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
+        self._section_convert_options = _sec_opts
+        self._section_homr_models = _sec_homr
+
         self.controls = [
             self._sidebar,
             ft.Container(content=self._viewer, expand=True),
@@ -212,6 +218,40 @@ class LandingPage(ft.Row):
         ]
         self.expand = True
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._engine_dd.label = t("landing.label_omr_engine")
+        self._engine_dd.tooltip = t("landing.tooltip_omr_engine")
+        self._sr_engine_dd.label = t("landing.label_sr_engine")
+        self._sr_engine_dd.tooltip = t("landing.tooltip_sr_engine")
+        self._sr_engine_dd.options = [
+            ft.dropdown.Option('waifu2x',    t("landing.option_waifu2x")),
+            ft.dropdown.Option('realesrgan', t("landing.option_realesrgan")),
+        ]
+        self._parallel_dd.label = t("landing.label_concurrency")
+        self._parallel_dd.tooltip = t("landing.tooltip_concurrency")
+        self._parallel_dd.options = [
+            ft.dropdown.Option('1',    t("landing.option_concurrency_1")),
+            ft.dropdown.Option('2',    t("landing.option_concurrency_2")),
+            ft.dropdown.Option('4',    t("landing.option_concurrency_4")),
+            ft.dropdown.Option('auto', t("landing.option_concurrency_auto")),
+        ]
+        self._open_output_label.value = t("landing.button_open_output_dir")
+        self._download_models_label.value = t("landing.button_download_models")
+        self._delete_models_label.value = t("landing.button_delete_models")
+        self._section_convert_options.value = t("landing.section_convert_options")
+        self._section_homr_models.value = t("landing.section_homr_models")
+        # engine dropdown options（含「需下载」后缀）与转换按钮计数文案沿用已有刷新逻辑
+        self._engine_dd.options = self._build_engine_options()
+        self._refresh_convert_label()
+        try:
+            self.update()
+        except Exception:
+            pass
+        # 子组件各自重译
+        self._sidebar.retranslate()
+        self._viewer.retranslate()
 
     # ── 引擎切换 / 模型下载触发 ───────────────────────────────────────────────
 

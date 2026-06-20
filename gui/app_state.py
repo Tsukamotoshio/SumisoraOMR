@@ -32,6 +32,7 @@ class Event:
     SCORE_TRANSPOSER_REQUESTED = 'score_transposer_requested' # score_preview requests transposer (path: Path)
     SCORE_TRANSPOSER_BACK      = 'score_transposer_back'      # transposer requests back to score_preview
     THEME_CHANGED         = 'theme_changed'         # theme toggled (dark: bool)
+    LANGUAGE_CHANGED      = 'language_changed'      # UI language toggled (language: str, 'zh' | 'en')
     MODELS_DOWNLOADED     = 'models_downloaded'     # HOMR weights finished downloading
     NAVIGATE              = 'navigate'              # request page switch (name: str, one of _NAV_NAMES)
 
@@ -69,6 +70,7 @@ class AppState:
     # UI state
     current_page:  str  = 'landing'  # 'landing' | 'editor' | 'transposer'
     dark_mode:     bool = False
+    language:      str  = 'zh'       # 'zh' | 'en' — kept in sync with gui.strings._LANG
     is_processing: bool = False
     progress:      float = 0.0
 
@@ -193,6 +195,12 @@ class AppState:
     def toggle_theme(self) -> None:
         self.dark_mode = not self.dark_mode
         self.emit(Event.THEME_CHANGED, dark=self.dark_mode)
+
+    def toggle_language(self) -> None:
+        from .strings import set_language
+        self.language = 'en' if self.language == 'zh' else 'zh'
+        set_language(self.language)
+        self.emit(Event.LANGUAGE_CHANGED, language=self.language)
 
 
 # Module-level singleton; app.py replaces this with the live instance at startup.

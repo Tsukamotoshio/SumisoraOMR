@@ -97,15 +97,22 @@ class PdfViewer(ft.Column):
     def _build_ui(self) -> None:
         self._page_label = ft.Text(t('pdf_viewer.page_placeholder'), size=13, color=ft.Colors.ON_SURFACE_VARIANT)
 
+        # 工具栏按钮存为实例属性，语言切换时由 retranslate() 重设 tooltip。
+        self._prev_btn = ft.IconButton(ft.Icons.CHEVRON_LEFT_ROUNDED,  icon_size=18, on_click=self._prev_page, tooltip=t('pdf_viewer.tooltip_prev_page'))
+        self._next_btn = ft.IconButton(ft.Icons.CHEVRON_RIGHT_ROUNDED, icon_size=18, on_click=self._next_page, tooltip=t('pdf_viewer.tooltip_next_page'))
+        self._zoom_out_btn = ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,  icon_size=18, on_click=self._zoom_out,  tooltip=t('common.tooltip_zoom_out'))
+        self._zoom_in_btn = ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,    icon_size=18, on_click=self._zoom_in,   tooltip=t('common.tooltip_zoom_in'))
+        self._zoom_fit_btn = ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED, icon_size=18, on_click=self._zoom_fit, tooltip=t('pdf_viewer.tooltip_reset_zoom'))
+
         toolbar = ft.Row(
             [
-                ft.IconButton(ft.Icons.CHEVRON_LEFT_ROUNDED,  icon_size=18, on_click=self._prev_page, tooltip=t('pdf_viewer.tooltip_prev_page')),
+                self._prev_btn,
                 self._page_label,
-                ft.IconButton(ft.Icons.CHEVRON_RIGHT_ROUNDED, icon_size=18, on_click=self._next_page, tooltip=t('pdf_viewer.tooltip_next_page')),
+                self._next_btn,
                 ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT),
-                ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,      icon_size=18, on_click=self._zoom_out,  tooltip=t('common.tooltip_zoom_out')),
-                ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,       icon_size=18, on_click=self._zoom_in,   tooltip=t('common.tooltip_zoom_in')),
-                ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,    icon_size=18, on_click=self._zoom_fit,  tooltip=t('pdf_viewer.tooltip_reset_zoom')),
+                self._zoom_out_btn,
+                self._zoom_in_btn,
+                self._zoom_fit_btn,
                 *(([ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT)] + self._extra_controls)
                   if self._extra_controls else []),
             ],
@@ -132,10 +139,11 @@ class PdfViewer(ft.Column):
         )
 
         # 占位符列（单独保存，方便 _show_error / reset 修改内容）
+        self._no_file_text = ft.Text(t('pdf_viewer.no_file'), size=14, color=ft.Colors.OUTLINE)
         self._placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
-                ft.Text(t('pdf_viewer.no_file'), size=14, color=ft.Colors.OUTLINE),
+                self._no_file_text,
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -176,6 +184,19 @@ class PdfViewer(ft.Column):
 
         self.controls = [toolbar_bar, scroll_view]
         self.expand = True
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._prev_btn.tooltip = t('pdf_viewer.tooltip_prev_page')
+        self._next_btn.tooltip = t('pdf_viewer.tooltip_next_page')
+        self._zoom_out_btn.tooltip = t('common.tooltip_zoom_out')
+        self._zoom_in_btn.tooltip = t('common.tooltip_zoom_in')
+        self._zoom_fit_btn.tooltip = t('pdf_viewer.tooltip_reset_zoom')
+        self._no_file_text.value = t('pdf_viewer.no_file')
+        try:
+            self.update()
+        except Exception:
+            pass
 
     def _on_viewer_resize(self, e) -> None:
         """视口尺寸变化时同步 PDF 图像宽度；图片模式由 Flutter 布局自动处理，无需 Python 干预。"""

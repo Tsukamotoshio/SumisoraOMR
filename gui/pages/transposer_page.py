@@ -130,19 +130,25 @@ class TransposerPage(ft.Column):
             visible=False,
         )
 
+        self._adv_radio_iv   = ft.Radio(value='interval', label=t("transposer.mode_interval"))
+        self._adv_radio_key  = ft.Radio(value='key',      label=t("transposer.mode_key"))
+        self._adv_radio_diat = ft.Radio(value='diatonic', label=t("transposer.mode_chromatic"))
         self._adv_mode_radio = ft.RadioGroup(
             value='interval',
             on_change=self._on_adv_mode_change,
             content=ft.Row([
-                ft.Radio(value='interval', label=t("transposer.mode_interval")),
-                ft.Radio(value='key',      label=t("transposer.mode_key")),
-                ft.Radio(value='diatonic', label=t("transposer.mode_chromatic")),
+                self._adv_radio_iv,
+                self._adv_radio_key,
+                self._adv_radio_diat,
             ], spacing=16),
         )
 
+        self._adv_title = ft.Text(t("transposer.advanced_options_title"), size=16, font_family=FONT_EMPHASIS)
+        self._adv_cancel_btn = ft.TextButton(t("common.cancel"), on_click=lambda _: self.page.pop_dialog())
+        self._adv_confirm_btn = ft.FilledButton(t("common.confirm"), on_click=self._confirm_adv_dialog)
         self._adv_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text(t("transposer.advanced_options_title"), size=16, font_family=FONT_EMPHASIS),
+            title=self._adv_title,
             content=ft.Container(
                 content=ft.Column(
                     [
@@ -158,8 +164,8 @@ class TransposerPage(ft.Column):
                 padding=ft.Padding.only(top=4),
             ),
             actions=[
-                ft.TextButton(t("common.cancel"), on_click=lambda _: self.page.pop_dialog()),
-                ft.FilledButton(t("common.confirm"), on_click=self._confirm_adv_dialog),
+                self._adv_cancel_btn,
+                self._adv_confirm_btn,
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
@@ -233,9 +239,10 @@ class TransposerPage(ft.Column):
             on_change=self._on_quick_change,
         )
 
+        self._adv_btn_label = ft.Text(t("transposer.advanced_options_title"))
         adv_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.TUNE_ROUNDED, size=15), ft.Text(t("transposer.advanced_options_title"))],
+                [ft.Icon(ft.Icons.TUNE_ROUNDED, size=15), self._adv_btn_label],
                 tight=True, spacing=5,
             ),
             on_click=self._open_adv_dialog,
@@ -246,21 +253,21 @@ class TransposerPage(ft.Column):
             ),
         )
 
-        export_transposed_btn = ft.TextButton(
+        self._export_transposed_btn = export_transposed_btn = ft.TextButton(
             t("transposer.button_export_transposed"),
             icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
             on_click=self._on_export,
             style=ft.ButtonStyle(color=Palette.PRIMARY),
         )
 
-        export_original_btn = ft.TextButton(
+        self._export_original_btn = export_original_btn = ft.TextButton(
             t("transposer.button_export_original"),
             icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
             on_click=self._on_export_original,
             style=ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT),
         )
 
-        back_btn = ft.IconButton(
+        self._back_btn = back_btn = ft.IconButton(
             icon=ft.Icons.ARROW_BACK_ROUNDED,
             icon_size=20,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
@@ -268,9 +275,10 @@ class TransposerPage(ft.Column):
             on_click=lambda _: self._state.emit(Event.SCORE_TRANSPOSER_BACK),
         )
 
+        self._open_label = ft.Text(t("common.open_score"))
         open_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t("common.open_score"))],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), self._open_label],
                 tight=True, spacing=6,
             ),
             on_click=self._on_open_click,
@@ -281,9 +289,10 @@ class TransposerPage(ft.Column):
             ),
         )
 
+        self._xml_dir_label = ft.Text(t("transposer.button_open_score_dir"))
         xml_dir_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t("transposer.button_open_score_dir"))],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), self._xml_dir_label],
                 tight=True, spacing=6,
             ),
             on_click=self._on_open_xml_dir,
@@ -306,7 +315,7 @@ class TransposerPage(ft.Column):
                     back_btn,
                     ft.Column(
                         [
-                            section_title(t("transposer.section_title"), self._state.dark_mode),
+                            (_sec := section_title(t("transposer.section_title"), self._state.dark_mode)),
                             ft.Row(
                                 [
                                     self._quick_iv_dd,
@@ -330,6 +339,8 @@ class TransposerPage(ft.Column):
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
+        self._section_title = _sec
+
         # 双栏预览
         self._orig_viewer  = PdfViewer()
         self._trans_viewer = PdfViewer()
@@ -339,8 +350,8 @@ class TransposerPage(ft.Column):
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Text(t("transposer.label_from_key"), size=13, font_family=FONT_EMPHASIS,
-                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                            (_orig_hdr := ft.Text(t("transposer.label_from_key"), size=13, font_family=FONT_EMPHASIS,
+                                    color=ft.Colors.ON_SURFACE_VARIANT)),
                             ft.Container(expand=True),
                             export_original_btn,
                         ],
@@ -360,8 +371,8 @@ class TransposerPage(ft.Column):
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Text(t("transposer.label_transposed_col"), size=13, font_family=FONT_EMPHASIS,
-                                    color=Palette.PRIMARY),
+                            (_trans_hdr := ft.Text(t("transposer.label_transposed_col"), size=13, font_family=FONT_EMPHASIS,
+                                    color=Palette.PRIMARY)),
                             ft.Container(expand=True),
                             export_transposed_btn,
                         ],
@@ -406,8 +417,71 @@ class TransposerPage(ft.Column):
             border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
+        self._orig_header = _orig_hdr
+        self._trans_header = _trans_hdr
+
         self.controls = [top_bar, ft.Container(content=preview_row, expand=True), bottom_bar]
         self.expand = True
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED).
+
+        NOTE: interval / key / degree dropdown OPTION texts come from the core
+        music vocabulary (INTERVALS / DIATONIC_DEGREES / key symbols) and stay
+        Chinese in both languages — only the chrome (labels, buttons, mode radios,
+        direction options) switches. The transient status line is left untouched;
+        it refreshes to the active language on the next action.
+        """
+        # Direction option lists are rebuilt with stable keys so the current
+        # selection survives (only the visible text changes).
+        dir3 = [
+            ft.dropdown.Option(key='closest', text=t("transposer.dir_recent")),
+            ft.dropdown.Option(key='up',      text=t("transposer.dir_up")),
+            ft.dropdown.Option(key='down',    text=t("transposer.dir_down")),
+        ]
+        dir2 = [
+            ft.dropdown.Option(key='up',   text=t("transposer.dir_up")),
+            ft.dropdown.Option(key='down', text=t("transposer.dir_down")),
+        ]
+        # Quick bar
+        self._quick_iv_dd.label = t("transposer.mode_interval")
+        self._quick_dir_dd.label = t("transposer.quick_label_direction")
+        self._quick_dir_dd.options = dir2
+        self._quick_keysig_cb.label = t("transposer.checkbox_transpose_key_signature")
+        self._adv_btn_label.value = t("transposer.advanced_options_title")
+        self._export_transposed_btn.content = t("transposer.button_export_transposed")
+        self._export_original_btn.content = t("transposer.button_export_original")
+        self._back_btn.tooltip = t("transposer.tooltip_back_to_score_preview")
+        self._open_label.value = t("common.open_score")
+        self._xml_dir_label.value = t("transposer.button_open_score_dir")
+        self._section_title.value = t("transposer.section_title")
+        self._orig_header.value = t("transposer.label_from_key")
+        self._trans_header.value = t("transposer.label_transposed_col")
+        # Advanced dialog (persistent, built once)
+        self._adv_iv_dd.label = t("transposer.label_interval")
+        self._adv_iv_dir.label = t("transposer.quick_label_direction")
+        self._adv_iv_dir.options = dir3
+        self._adv_iv_ks.label = t("transposer.checkbox_transpose_key_signature_adv")
+        self._adv_key_from.label = t("transposer.label_from_key")
+        self._adv_key_to.label = t("transposer.label_to_key")
+        self._adv_key_dir.label = t("transposer.quick_label_direction")
+        self._adv_key_dir.options = dir3
+        self._adv_key_ks.label = t("transposer.checkbox_transpose_key_signature_adv")
+        self._adv_diat_deg.label = t("transposer.label_degree")
+        self._adv_diat_dir.label = t("transposer.quick_label_direction")
+        self._adv_diat_dir.options = dir2
+        self._adv_radio_iv.label = t("transposer.mode_interval")
+        self._adv_radio_key.label = t("transposer.mode_key")
+        self._adv_radio_diat.label = t("transposer.mode_chromatic")
+        self._adv_title.value = t("transposer.advanced_options_title")
+        self._adv_cancel_btn.content = t("common.cancel")
+        self._adv_confirm_btn.content = t("common.confirm")
+        try:
+            self.update()
+        except Exception:
+            pass
+        self._orig_viewer.retranslate()
+        self._trans_viewer.retranslate()
 
     # ── 快速选择器回调 ────────────────────────────────────────────────────────
 

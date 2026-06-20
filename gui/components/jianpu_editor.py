@@ -81,13 +81,13 @@ class JianpuEditor(ft.Column):
             width=32,
             height=32,
         )
-        save_btn = ft.TextButton(
+        self._save_btn = save_btn = ft.TextButton(
             t("jianpu_editor.button_save"),
             icon=ft.Icons.SAVE_OUTLINED,
             on_click=self._on_save,
             style=ft.ButtonStyle(color=Palette.PRIMARY),
         )
-        export_btn = ft.TextButton(
+        self._export_btn = export_btn = ft.TextButton(
             t("jianpu_editor.button_export_pdf"),
             icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
             on_click=self._on_export_pdf,
@@ -159,6 +159,37 @@ class JianpuEditor(ft.Column):
             # _symbol_panel is NOT in controls by default; inserted by _toggle_symbol_panel
         ]
         self.expand = True
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED).
+
+        Only chrome is retranslated — the editor text buffer (self._editor.value)
+        is never touched, so unsaved edits always survive a language switch.
+        """
+        self._undo_btn.tooltip = t("jianpu_editor.tooltip_undo")
+        self._redo_btn.tooltip = t("jianpu_editor.tooltip_redo")
+        self._save_btn.content = t("jianpu_editor.button_save")
+        self._export_btn.content = t("jianpu_editor.button_export_pdf")
+        self._export_btn.tooltip = t("jianpu_editor.tooltip_export_pdf")
+        self._symbol_btn.tooltip = t("jianpu_editor.tooltip_symbol_panel")
+        self._editor.hint_text = t("jianpu_editor.hint_no_file")
+        # 视图切换按钮文案随当前预览/编辑状态决定
+        self._view_toggle_btn.content = (
+            t("jianpu_editor.toggle_original") if self._preview_active
+            else t("jianpu_editor.toggle_jianpu")
+        )
+        # 重建符号速查面板（24+ 行）以应用新语言；若当前正展开则原位替换。
+        new_panel = self._build_symbol_panel()
+        if self._symbol_panel in self.controls:
+            idx = self.controls.index(self._symbol_panel)
+            self.controls[idx] = new_panel
+        self._symbol_panel = new_panel
+        try:
+            self.update()
+        except Exception:
+            pass
+        # 标题（含 dirty 标记）单独刷新
+        self._update_title()
 
     def _build_symbol_panel(self) -> ft.Container:
         def _row(symbol: str, meaning: str) -> ft.Row:

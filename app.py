@@ -292,6 +292,12 @@ async def main(page: ft.Page) -> None:
             else:  # i == 5
                 container.visible = (name == 'transposer')
         state.current_page = name
+        # 简谱编辑子页禁止语言切换（避免编辑期间整页重译干扰）；离开后恢复。
+        _lang_icon.disabled = (name == 'jianpu_edit')
+        try:
+            _lang_icon.update()
+        except Exception:
+            pass
         if name == 'editor':
             jianpu_preview_page.reload()
         if name == 'score_preview':
@@ -417,6 +423,49 @@ async def main(page: ft.Page) -> None:
         except Exception:
             pass
 
+    # ── Language toggle (top-right) ───────────────────────────────────────────
+    _lang_icon = ft.IconButton(
+        icon=ft.Icons.TRANSLATE_ROUNDED,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
+        tooltip=t('app.tooltip_language_toggle'),
+        on_click=lambda _e: _toggle_language(),
+    )
+
+    def _toggle_language() -> None:
+        # 在简谱编辑子页时禁止切换（按钮已 disabled，这里再兜底一次）。
+        if state.current_page == 'jianpu_edit':
+            return
+        state.toggle_language()  # 更新 state.language 并切换 gui.strings 的活动语言
+        # 重新本地化所有持久化控件：导航栏标签、标题栏 tooltip、各页面 retranslate()。
+        for i, item in enumerate(_NAV_ITEMS):
+            nav_rail.destinations[i].label = t(f'app.nav_{item[0]}')
+        _theme_icon.tooltip = t('app.tooltip_theme_toggle')
+        _lang_icon.tooltip = t('app.tooltip_language_toggle')
+        _min_btn.tooltip = t('app.tooltip_minimize')
+        _max_btn.tooltip = t('app.tooltip_maximize')
+        _close_btn.tooltip = t('app.tooltip_close')
+        _nav_label_toggle_btn.tooltip = (
+            t('app.tooltip_hide_label') if _nav_labels_shown[0] else t('app.tooltip_show_label')
+        )
+        try:
+            nav_rail.update()
+        except Exception:
+            pass
+        for pg in (landing_page, jianpu_preview_page, editor_page,
+                   score_preview_page, transposer_page, about_page):
+            try:
+                pg.retranslate()
+            except Exception:
+                pass
+        try:
+            overlay.retranslate()
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
     # ── Custom title bar (borderless) ────────────────────────────────────────
     def _do_minimize():
         page.window.minimized = True
@@ -469,6 +518,34 @@ async def main(page: ft.Page) -> None:
         },
     )
 
+    _min_btn = ft.IconButton(
+        icon=ft.Icons.REMOVE,
+        icon_size=14,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
+        tooltip=t('app.tooltip_minimize'),
+        width=32,
+        height=32,
+        style=_wc_btn_style,
+        on_click=lambda _: _do_minimize(),
+    )
+    _close_btn = ft.IconButton(
+        icon=ft.Icons.CLOSE,
+        icon_size=14,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
+        tooltip=t('app.tooltip_close'),
+        width=32,
+        height=32,
+        style=ft.ButtonStyle(
+            padding=ft.Padding.all(0),
+            shape=ft.RoundedRectangleBorder(radius=4),
+            overlay_color={
+                ft.ControlState.HOVERED: '#55F44336',
+                ft.ControlState.PRESSED: '#AAF44336',
+            },
+        ),
+        on_click=lambda _: page.run_task(page.window.close),
+    )
+
     _titlebar = ft.Container(
         content=ft.Row(
             controls=[
@@ -490,36 +567,12 @@ async def main(page: ft.Page) -> None:
                     expand=True,
                     maximizable=True,
                 ),
+                _lang_icon,
                 _theme_icon,
                 ft.Container(width=2),
-                ft.IconButton(
-                    icon=ft.Icons.REMOVE,
-                    icon_size=14,
-                    icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                    tooltip=t('app.tooltip_minimize'),
-                    width=32,
-                    height=32,
-                    style=_wc_btn_style,
-                    on_click=lambda _: _do_minimize(),
-                ),
+                _min_btn,
                 _max_btn,
-                ft.IconButton(
-                    icon=ft.Icons.CLOSE,
-                    icon_size=14,
-                    icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                    tooltip=t('app.tooltip_close'),
-                    width=32,
-                    height=32,
-                    style=ft.ButtonStyle(
-                        padding=ft.Padding.all(0),
-                        shape=ft.RoundedRectangleBorder(radius=4),
-                        overlay_color={
-                            ft.ControlState.HOVERED: '#55F44336',
-                            ft.ControlState.PRESSED: '#AAF44336',
-                        },
-                    ),
-                    on_click=lambda _: page.run_task(page.window.close),
-                ),
+                _close_btn,
                 ft.Container(width=4),
             ],
             spacing=0,

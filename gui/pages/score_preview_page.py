@@ -52,16 +52,17 @@ class ScorePreviewPage(ft.Row):
             expand=True,
         )
 
+        self._empty_hint_text = ft.Text(
+            t("common.empty_score_hint"),
+            size=13,
+            color=ft.Colors.OUTLINE,
+            text_align=ft.TextAlign.CENTER,
+        )
         self._empty_hint = ft.Container(
             content=ft.Column(
                 [
                     ft.Icon(ft.Icons.LIBRARY_MUSIC_OUTLINED, size=40, color=ft.Colors.OUTLINE),
-                    ft.Text(
-                        t("common.empty_score_hint"),
-                        size=13,
-                        color=ft.Colors.OUTLINE,
-                        text_align=ft.TextAlign.CENTER,
-                    ),
+                    self._empty_hint_text,
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -71,7 +72,7 @@ class ScorePreviewPage(ft.Row):
             alignment=ft.Alignment(0, 0),
         )
 
-        refresh_btn = ft.IconButton(
+        self._refresh_btn = refresh_btn = ft.IconButton(
             icon=ft.Icons.REFRESH_ROUNDED,
             icon_size=17,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
@@ -94,7 +95,7 @@ class ScorePreviewPage(ft.Row):
             height=28,
         )
 
-        batch_export_btn = ft.IconButton(
+        self._batch_export_btn = batch_export_btn = ft.IconButton(
             icon=ft.Icons.DOWNLOAD_ROUNDED,
             icon_size=17,
             icon_color=Palette.PRIMARY,
@@ -118,7 +119,7 @@ class ScorePreviewPage(ft.Row):
         sidebar_header = ft.Container(
             content=ft.Row(
                 [
-                    ft.Row([self._select_all_btn, section_title(t("score_preview.section_title"))], spacing=0),
+                    ft.Row([self._select_all_btn, (_sec := section_title(t("score_preview.section_title")))], spacing=0),
                     ft.Container(expand=True),
                     batch_export_btn,
                     self._delete_checked_btn,
@@ -130,6 +131,7 @@ class ScorePreviewPage(ft.Row):
             padding=ft.Padding.only(left=4, right=4),
             border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
+        self._section_title = _sec
 
         self._list_stack = ft.Stack(
             [
@@ -157,9 +159,10 @@ class ScorePreviewPage(ft.Row):
             border=ft.Border.only(right=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
         )
 
+        self._export_label = ft.Text(t("score_preview.button_export"))
         export_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), ft.Text(t("score_preview.button_export"))],
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), self._export_label],
                 tight=True, spacing=5,
             ),
             on_click=self._on_export_click,
@@ -170,9 +173,10 @@ class ScorePreviewPage(ft.Row):
             ),
         )
 
+        self._transpose_label = ft.Text(t("score_preview.button_transpose"))
         transpose_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.COMPARE_ARROWS_ROUNDED, size=15), ft.Text(t("score_preview.button_transpose"))],
+                [ft.Icon(ft.Icons.COMPARE_ARROWS_ROUNDED, size=15), self._transpose_label],
                 tight=True, spacing=5,
             ),
             on_click=self._on_transpose_click,
@@ -231,6 +235,25 @@ class ScorePreviewPage(ft.Row):
         self.controls = [sidebar, right_area]
         self.expand = True
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._play_midi_icon_btn.tooltip = t("common.tooltip_play_midi")
+        self._empty_hint_text.value = t("common.empty_score_hint")
+        self._refresh_btn.tooltip = t("common.tooltip_refresh_list")
+        self._select_all_btn.tooltip = t("common.tooltip_toggle_select_all")
+        self._batch_export_btn.tooltip = t("score_preview.tooltip_export_checked")
+        self._delete_checked_btn.tooltip = t("score_preview.tooltip_delete_checked")
+        self._section_title.value = t("score_preview.section_title")
+        self._export_label.value = t("score_preview.button_export")
+        self._transpose_label.value = t("score_preview.button_transpose")
+        try:
+            self.update()
+        except Exception:
+            pass
+        # 文件行的「删除此文件」tooltip 随语言切换：重建列表（保留勾选/选中状态）
+        self._rebuild_list()
+        self._viewer.retranslate()
 
     def did_mount(self) -> None:
         self.page._services.register_service(self._export_picker)  # type: ignore[attr-defined]

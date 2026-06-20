@@ -61,32 +61,35 @@ class FileSidebar(ft.Column):
             disabled=True,
         )
 
+        self._section_title = section_title(t('file_sidebar.section_title'), self._state.dark_mode)
+        self._add_folder_btn = ft.IconButton(
+            icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED,
+            icon_size=18,
+            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltip=t('file_sidebar.tooltip_add_folder'),
+            on_click=self._on_add_folder_click,
+        )
+        self._add_file_btn = ft.IconButton(
+            icon=ft.Icons.ADD_ROUNDED,
+            icon_size=18,
+            icon_color=Palette.PRIMARY,
+            tooltip=t('file_sidebar.tooltip_add_file'),
+            on_click=self._on_add_click,
+        )
         title_row = ft.Row(
             [
                 ft.Row(
                     [
                         self._select_all_btn,
-                        section_title(t('file_sidebar.section_title'), self._state.dark_mode),
+                        self._section_title,
                     ],
                     spacing=0,
                 ),
                 ft.Row(
                     [
                         self._delete_checked_btn,
-                        ft.IconButton(
-                            icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED,
-                            icon_size=18,
-                            icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                            tooltip=t('file_sidebar.tooltip_add_folder'),
-                            on_click=self._on_add_folder_click,
-                        ),
-                        ft.IconButton(
-                            icon=ft.Icons.ADD_ROUNDED,
-                            icon_size=18,
-                            icon_color=Palette.PRIMARY,
-                            tooltip=t('file_sidebar.tooltip_add_file'),
-                            on_click=self._on_add_click,
-                        ),
+                        self._add_folder_btn,
+                        self._add_file_btn,
                     ],
                     spacing=0,
                 ),
@@ -99,30 +102,33 @@ class FileSidebar(ft.Column):
         self._folder_picker = ft.FilePicker()
 
         # 空状态引导：首次打开时列表为空，给出明确的下一步操作入口
+        self._empty_hint_text = ft.Text(
+            t('file_sidebar.empty_hint'),
+            size=13,
+            color=ft.Colors.OUTLINE,
+            text_align=ft.TextAlign.CENTER,
+        )
+        self._empty_add_label = ft.Text(t('file_sidebar.button_add_file'), size=13)
+        self._empty_formats_text = ft.Text(
+            t('file_sidebar.empty_supported_formats'),
+            size=11,
+            color=ft.Colors.OUTLINE,
+            text_align=ft.TextAlign.CENTER,
+        )
         self._empty_hint = ft.Container(
             content=ft.Column(
                 [
                     ft.Icon(ft.Icons.QUEUE_MUSIC_ROUNDED, size=40, color=ft.Colors.OUTLINE),
-                    ft.Text(
-                        t('file_sidebar.empty_hint'),
-                        size=13,
-                        color=ft.Colors.OUTLINE,
-                        text_align=ft.TextAlign.CENTER,
-                    ),
+                    self._empty_hint_text,
                     ft.TextButton(
                         content=ft.Row(
-                            [ft.Icon(ft.Icons.ADD_ROUNDED, size=16), ft.Text(t('file_sidebar.button_add_file'), size=13)],
+                            [ft.Icon(ft.Icons.ADD_ROUNDED, size=16), self._empty_add_label],
                             tight=True, spacing=4,
                         ),
                         on_click=self._on_add_click,
                         style=ft.ButtonStyle(color=Palette.PRIMARY),
                     ),
-                    ft.Text(
-                        t('file_sidebar.empty_supported_formats'),
-                        size=11,
-                        color=ft.Colors.OUTLINE,
-                        text_align=ft.TextAlign.CENTER,
-                    ),
+                    self._empty_formats_text,
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -475,6 +481,24 @@ class FileSidebar(ft.Column):
             self._state.check_all()
         else:
             self._state.uncheck_all()
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._select_all_btn.tooltip = t('common.tooltip_toggle_select_all')
+        self._delete_checked_btn.tooltip = t('file_sidebar.tooltip_delete_checked')
+        self._section_title.value = t('file_sidebar.section_title')
+        self._add_folder_btn.tooltip = t('file_sidebar.tooltip_add_folder')
+        self._add_file_btn.tooltip = t('file_sidebar.tooltip_add_file')
+        self._empty_hint_text.value = t('file_sidebar.empty_hint')
+        self._empty_add_label.value = t('file_sidebar.button_add_file')
+        self._empty_formats_text.value = t('file_sidebar.empty_supported_formats')
+        try:
+            self.update()
+        except Exception:
+            pass
+        # 重建文件行：每行的「从 Input 删除」tooltip 随语言切换（_refresh_list 从
+        # state 重建并保留勾选状态）。
+        self._refresh_list()
 
     def _refresh_list(self) -> None:
         # 在调用线程中先快照，避免竞态

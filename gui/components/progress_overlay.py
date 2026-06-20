@@ -70,7 +70,7 @@ class ProgressOverlay(ft.Stack):
             on_scroll=self._on_log_scroll,
         )
 
-        close_btn = ft.IconButton(
+        self._close_btn = ft.IconButton(
             icon=ft.Icons.CLOSE_ROUNDED,
             icon_size=18,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
@@ -109,7 +109,7 @@ class ProgressOverlay(ft.Stack):
                             self._spinner,
                             self._status_text,
                             self._elapsed_text,
-                            close_btn,
+                            self._close_btn,
                         ],
                         spacing=8,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -158,6 +158,19 @@ class ProgressOverlay(ft.Stack):
             expand=True,
             visible=False,
         )
+
+    def retranslate(self) -> None:
+        """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
+        self._close_btn.tooltip = t('common.close')
+        # 日志切换按钮文案随当前展开/折叠状态决定，不能直接套固定 key。
+        self._log_toggle_text.value = (
+            t('progress_overlay.button_hide_log') if self._log_visible
+            else t('progress_overlay.button_show_log')
+        )
+        try:
+            self.update()
+        except Exception:
+            pass
 
     # ── 计时器异步任务 ────────────────────────────────────────────────────────
 
