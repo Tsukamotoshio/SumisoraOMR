@@ -542,8 +542,8 @@ def render_score_to_jianpu_pdf(
         try:
             from ..notation.jianpu import parse_score_to_jianpu, build_jianpu_ly_text_from_measures
             measures, header_lines, time_sig = parse_score_to_jianpu(score)
-            key_name = header_lines[0].split()[0] if header_lines else '1=C'
-            txt_content = build_jianpu_ly_text_from_measures(measures, time_sig, key_name, title,
+            key_header = header_lines[0].split()[0] if header_lines else '1=C'
+            txt_content = build_jianpu_ly_text_from_measures(measures, time_sig, key_header, title,
                                                               composer=composer, tempo=tempo)
         except Exception as exc2:
             log_message(f'[jianpu] 简化处理也失败: {exc2}，继续尝试其他方式', logging.WARNING)

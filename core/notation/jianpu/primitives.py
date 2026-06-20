@@ -23,11 +23,42 @@ _CHROMATIC_FLAT: dict[int, tuple[str, str]] = {
 _FLAT_KEY_SEMITONES: frozenset = frozenset({1, 3, 5, 6, 8, 10, 11})
 
 
+def _relative_major_tonic(tonic):
+    """Convert a minor-key tonic Pitch to its relative-major tonic (up a minor third).
+
+    note_to_jianpu() always renders against a major-scale degree table, so
+    minor keys must hand it the relative-major tonic (e.g. A-minor -> C) —
+    see its docstring contract.  Using the 'm3' interval (not a raw chromatic
+    transpose(3)) keeps the correct diatonic spelling, e.g. F#-minor -> A
+    rather than Bb.
+    """
+    return tonic.transpose('m3')
+
+
+def _format_key_header(tonic, mode: str) -> str:
+    """Format a jianpu-ly key-signature header line for the given tonic/mode.
+
+    jianpu-ly's native syntax marks the tonic directly: major uses '1=X'
+    (do = tonic), minor uses '6=X' (la = tonic) — see scripts/jianpu-ly.py's
+    own docs ("Key signature (minor): 6=F#").  Both forms transpose the body
+    by the same interval when X is the *actual* tonic, so this header always
+    reports the real tonic, never the relative-major substitute used for the
+    body's degree numbers.
+    """
+    name = tonic.name.replace('-', 'b')
+    return f"{'6' if mode == 'minor' else '1'}={name}"
+
+
 def _get_score_key_tonic(score) -> tuple[int, str]:
     """Extract the tonic (main note) from the score's key signature.
 
     首调唱名法的关键：从调号中提取主音，而非从第一个实际音符。
-    Extracts (pitch_class 0-11, display_name) of the tonic from the Key element.
+    Returns (relative-major pitch_class 0-11, jianpu-ly key header e.g.
+    '1=F' or '6=D').  The pitch_class always refers to the relative-major
+    tonic — note_to_jianpu()'s degree table is major-scale only, so minor
+    keys must be converted via ``_relative_major_tonic`` before computing
+    body digits.  The header string is independent of that and always names
+    the piece's *actual* tonic (see ``_format_key_header``).
 
     Detection priority:
     1. ``Key`` element — explicit tonic + mode (most authoritative).
@@ -38,7 +69,7 @@ def _get_score_key_tonic(score) -> tuple[int, str]:
        ``<fifths>`` without ``<mode>``.
     3. ``score.analyze('key')`` tonic alone — for scores with no key-signature
        element at all.
-    4. First actual note — last resort.
+    4. First actual note — last resort (no mode info; treated as major).
     """
     from music21 import key as m21key  # local import to avoid circular at module level
     try:
@@ -48,8 +79,9 @@ def _get_score_key_tonic(score) -> tuple[int, str]:
         if key_sigs:
             key = key_sigs[0]
             tonic = key.tonic
-            name = tonic.name.replace('-', 'b')
-            return tonic.pitchClass, name
+            header = _format_key_header(tonic, key.mode)
+            ref_tonic = _relative_major_tonic(tonic) if key.mode == 'minor' else tonic
+            return ref_tonic.pitchClass, header
     except Exception:
         pass
 
@@ -67,8 +99,9 @@ def _get_score_key_tonic(score) -> tuple[int, str]:
             mode = analyzed.mode if analyzed else 'major'
             resolved = ks.asKey(mode)
             tonic = resolved.tonic
-            name = tonic.name.replace('-', 'b')
-            return tonic.pitchClass, name
+            header = _format_key_header(tonic, mode)
+            ref_tonic = _relative_major_tonic(tonic) if mode == 'minor' else tonic
+            return ref_tonic.pitchClass, header
     except Exception:
         pass
 
@@ -76,26 +109,27 @@ def _get_score_key_tonic(score) -> tuple[int, str]:
     try:
         analyzed = score.analyze('key')
         tonic = analyzed.tonic
-        name = tonic.name.replace('-', 'b')
-        return tonic.pitchClass, name
+        header = _format_key_header(tonic, analyzed.mode)
+        ref_tonic = _relative_major_tonic(tonic) if analyzed.mode == 'minor' else tonic
+        return ref_tonic.pitchClass, header
     except Exception:
         pass
 
-    # Priority 4: first actual note — last resort
+    # Priority 4: first actual note — last resort (no mode info; treated as major)
     try:
         part = score.parts[0] if score.parts else score.flatten()
         for element in part.flatten().notesAndRests:
             if isinstance(element, m21note.Note) and element.pitch is not None:
                 name = element.pitch.name.replace('-', 'b')
-                return element.pitch.pitchClass, name
+                return element.pitch.pitchClass, f'1={name}'
             if isinstance(element, m21chord.Chord) and element.pitches:
                 top = max(element.pitches, key=lambda p: p.midi)
                 name = top.name.replace('-', 'b')
-                return top.pitchClass, name
+                return top.pitchClass, f'1={name}'
     except Exception:
         pass
 
-    return 0, 'C'
+    return 0, '1=C'
 
 
 def duration_suffix(q_len: float, dots: int) -> str:

@@ -58,8 +58,7 @@ def choose_measures_per_line(measures: list[list[JianpuNote]]) -> int:
 
 def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str]:
     """Parse a score into jianpu format; return (measures, header_lines, time_sig)."""
-    key_tonic_semitone, tonic_name = _get_score_key_tonic(score)
-    key_header = f'1={tonic_name}'
+    key_tonic_semitone, key_header = _get_score_key_tonic(score)
 
     measures, time_signature = extract_jianpu_measures(score, key_tonic_semitone)
     header_lines: list[str] = [f'{key_header} {time_signature}', '']
@@ -82,7 +81,7 @@ def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str
 def build_jianpu_ly_text_from_measures(
     measures: 'list[list[JianpuNote]]',
     time_sig: str,
-    tonic_name: str,
+    key_header: str,
     title: str,
     composer: str = '',
     tempo: int = 0,
@@ -91,11 +90,14 @@ def build_jianpu_ly_text_from_measures(
 
     Equivalent to ``build_jianpu_ly_text`` but accepts already-parsed note data
     instead of a music21 Score object.  Used by the dual-engine fusion path.
+
+    *key_header* is the already-formatted jianpu-ly key line (e.g. ``'1=F'``
+    or ``'6=D'`` for minor — see ``_get_score_key_tonic``), not a bare tonic name.
     """
     header = ['% jianpu-ly.py', f'title={title}']
     if composer:
         header.append(f'composer={composer}')
-    header.append(f'1={tonic_name}')
+    header.append(key_header)
     header.append(time_sig)
     if tempo > 0:
         header.append(f'4={tempo}')
@@ -137,7 +139,7 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
         simultaneous polyphonic voices.  Sections with a group of length 1 are
         monophonic and need no merging.
     """
-    key_tonic_semitone, tonic_name = _get_score_key_tonic(score)
+    key_tonic_semitone, key_header_line = _get_score_key_tonic(score)
 
     if tempo <= 0:
         try:
@@ -241,7 +243,7 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
     header = ['% jianpu-ly.py', f'title={title}']
     if composer:
         header.append(f'composer={composer}')
-    header.append(f'1={tonic_name}')
+    header.append(key_header_line)
     header.append(_time_sig)
     if tempo > 0:
         header.append(f'4={tempo}')
