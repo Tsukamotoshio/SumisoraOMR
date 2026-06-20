@@ -380,7 +380,7 @@ def _sanitize_digit(p: str) -> str:
         for ch in s:
             if ch in '1234567':
                 return ch
-            if ch == '0':
+            if ch in '0oO':   # 'o'/'O' 是 VLM 对休止符 '0' 的常见误读
                 return 'r'
         return p
     ch = m.group(2)

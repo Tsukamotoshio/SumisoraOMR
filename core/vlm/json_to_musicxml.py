@@ -84,7 +84,7 @@ def _token_quarter_len(n: Any) -> float:
 
 def _is_rest_token(n: Any) -> bool:
     p = n.strip() if isinstance(n, str) else str(n.get('p', 'r')).strip()
-    return p in ('0', 'r')
+    return p in ('0', 'r', 'o', 'O')   # 'o'/'O' 是 VLM 把休止符 '0' 误读成字母
 
 
 def _trim_overflow_rests(notes: list, expected_ql: float) -> list:
@@ -347,7 +347,7 @@ def _note_to_jianpu(n: dict) -> str:
     dur_key = str(n.get('dur', 'q'))
     dots = _safe_int(n.get('dots', 0), 0)
 
-    if p == 'r':
+    if p in ('r', '0', 'o', 'O'):   # 'o'/'O': VLM 把休止符 '0' 误读成字母
         body = '0'
     else:
         # accidentals 已包含在 p 里（"#5", "b3"），原样用
