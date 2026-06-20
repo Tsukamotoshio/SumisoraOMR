@@ -15,6 +15,7 @@ from ..app_state import AppState, Event
 from core.app.backend import editor_workspace_dir
 from ..components.jianpu_editor import JianpuEditor
 from ..components.pdf_viewer import _render_pdf_page
+from ..strings import t
 from ..theme import Palette, FONT_EMPHASIS
 
 def _do_render_preview(txt_path: Path) -> tuple[Optional[str], Optional[str]]:
@@ -31,7 +32,7 @@ def _do_render_preview(txt_path: Path) -> tuple[Optional[str], Optional[str]]:
     try:
         ly_path = tmp_dir / txt_path.with_suffix('.ly').name
         if not render_jianpu_ly(txt_path, ly_path):
-            return None, 'jianpu-ly 转换失败，请确认安装'
+            return None, t('editor.error_jianpu_ly_failed')
 
         try:
             title = ''
@@ -46,14 +47,14 @@ def _do_render_preview(txt_path: Path) -> tuple[Optional[str], Optional[str]]:
 
         pdf_path = render_lilypond_pdf(ly_path)
         if not pdf_path or not pdf_path.exists():
-            return None, 'LilyPond 渲染失败，请检查文件语法'
+            return None, t('editor.error_lilypond_render_failed')
 
         result = _render_pdf_page(pdf_path, 0)
         if result is None:
-            return None, 'PDF 无法解析'
+            return None, t('editor.error_pdf_unparseable')
         return result[0], None
     except Exception as exc:
-        return None, f'渲染出错: {exc}'
+        return None, t('editor.error_render_exc', exc=exc)
     finally:
         _shutil.rmtree(str(tmp_dir), ignore_errors=True)
 
@@ -93,7 +94,7 @@ class _BinaryImageView(ft.Column):
             ft.Icons.REFRESH_ROUNDED,
             icon_size=18,
             on_click=self._on_refresh_click,
-            tooltip='重新渲染简谱',
+            tooltip=t('editor.tooltip_re_render'),
             width=32,
             height=32,
             visible=False,
@@ -101,9 +102,9 @@ class _BinaryImageView(ft.Column):
         toolbar = ft.Container(
             content=ft.Row(
                 [
-                    ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,   icon_size=18, on_click=self._zoom_out, tooltip='缩小'),
-                    ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,    icon_size=18, on_click=self._zoom_in,  tooltip='放大'),
-                    ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED, icon_size=18, on_click=self._zoom_fit, tooltip='适应'),
+                    ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,   icon_size=18, on_click=self._zoom_out, tooltip=t('common.tooltip_zoom_out')),
+                    ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,    icon_size=18, on_click=self._zoom_in,  tooltip=t('common.tooltip_zoom_in')),
+                    ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED, icon_size=18, on_click=self._zoom_fit, tooltip=t('editor.tooltip_fit')),
                     self._refresh_btn,
                 ],
                 spacing=2,
@@ -135,7 +136,7 @@ class _BinaryImageView(ft.Column):
         self._placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.IMAGE_OUTLINED, size=40, color=ft.Colors.OUTLINE),
-                ft.Text('请先在首页选择并转换文件，或在此页打开对应图像/简谱文件',
+                ft.Text(t('editor.placeholder_select_file'),
                         size=12, color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -159,7 +160,7 @@ class _BinaryImageView(ft.Column):
         self._preview_loading_col = ft.Column(
             [
                 ft.ProgressRing(width=28, height=28, stroke_width=3),
-                ft.Text('渲染中…', size=12, color=ft.Colors.OUTLINE),
+                ft.Text(t('editor.rendering'), size=12, color=ft.Colors.OUTLINE),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -180,7 +181,7 @@ class _BinaryImageView(ft.Column):
         self._preview_placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.PREVIEW_OUTLINED, size=40, color=ft.Colors.OUTLINE),
-                ft.Text('点击「简谱」生成渲染预览', size=12,
+                ft.Text(t('editor.placeholder_click_jianpu'), size=12,
                         color=ft.Colors.OUTLINE, text_align=ft.TextAlign.CENTER),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -248,14 +249,14 @@ class _BinaryImageView(ft.Column):
         try:
             result = _render_pdf_page(path, 0)
             if result is None:
-                self._schedule_load_error('PDF 无法渲染', token)
+                self._schedule_load_error(t('editor.error_pdf_render_failed'), token)
                 return
             raw_b64, _ = result
             if token != self._load_token:
                 return
             self._schedule_image_load(raw_b64, token)
         except Exception as exc:
-            self._schedule_load_error(f'加载失败: {exc}', token)
+            self._schedule_load_error(t('editor.error_load_failed_exc', exc=exc), token)
 
     def _load_async(self, path: Path, token: int) -> None:
         try:
@@ -267,7 +268,7 @@ class _BinaryImageView(ft.Column):
         except Exception as exc:
             if token != self._load_token:
                 return
-            self._schedule_load_error(f'加载失败: {exc}', token)
+            self._schedule_load_error(t('editor.error_load_failed_exc', exc=exc), token)
 
     def _schedule_image_load(self, raw_b64: str, token: int) -> None:
         if not hasattr(self, 'page') or self.page is None:
@@ -461,14 +462,14 @@ class EditorPage(ft.Row):
             icon=ft.Icons.ARROW_BACK_ROUNDED,
             icon_size=18,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='返回简谱预览',
+            tooltip=t('editor.tooltip_back_to_preview'),
             on_click=lambda _: self._state.emit(Event.JIANPU_PREVIEW_BACK),
             width=32,
             height=32,
         )
         open_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开乐谱')],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t('common.open_score'))],
                 tight=True, spacing=6,
             ),
             on_click=self._on_open_click,
@@ -482,7 +483,7 @@ class EditorPage(ft.Row):
             content=ft.Row(
                 [
                     back_btn,
-                    ft.Text('简谱编辑', size=13, font_family=FONT_EMPHASIS,
+                    ft.Text(t('common.jianpu_edit'), size=13, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(expand=True),
                     open_btn,
@@ -521,7 +522,7 @@ class EditorPage(ft.Row):
     async def _pick_open_async(self) -> None:
         init_dir = editor_workspace_dir()
         files = await self._open_picker.pick_files(
-            dialog_title='打开图像文件（PDF / PNG / JPG）',
+            dialog_title=t('editor.file_picker_open_image'),
             allowed_extensions=['png', 'jpg', 'jpeg', 'pdf'],
             allow_multiple=False,
             initial_directory=str(init_dir),
@@ -675,7 +676,7 @@ class EditorPage(ft.Row):
     def _render_preview(self) -> None:
         txt_path = self._state.current_jianpu_txt
         if txt_path is None or not txt_path.exists():
-            self._img_view.show_preview_error('未加载简谱文件')
+            self._img_view.show_preview_error(t('editor.error_no_jianpu_loaded'))
             return
         self._editor.save()
         self._img_view.show_preview_loading()
@@ -697,7 +698,7 @@ class EditorPage(ft.Row):
         if b64:
             self._img_view.show_preview_image(b64)
         else:
-            self._img_view.show_preview_error(err or '渲染失败')
+            self._img_view.show_preview_error(err or t('editor.render_failed_default'))
 
     def reset_view(self) -> None:
         self._img_view.reset()

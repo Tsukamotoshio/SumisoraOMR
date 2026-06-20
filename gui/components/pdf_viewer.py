@@ -15,6 +15,7 @@ from typing import Optional, Any
 import flet as ft
 
 from ..theme import Palette
+from ..strings import t
 
 # 1×1 透明 PNG（base64）——作为 ft.Image 安全的初始 src。
 # InteractiveViewer 要求 content.visible=True，因此图片始终 visible，
@@ -94,17 +95,17 @@ class PdfViewer(ft.Column):
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self._page_label = ft.Text('—', size=13, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._page_label = ft.Text(t('pdf_viewer.page_placeholder'), size=13, color=ft.Colors.ON_SURFACE_VARIANT)
 
         toolbar = ft.Row(
             [
-                ft.IconButton(ft.Icons.CHEVRON_LEFT_ROUNDED,  icon_size=18, on_click=self._prev_page, tooltip='上一页'),
+                ft.IconButton(ft.Icons.CHEVRON_LEFT_ROUNDED,  icon_size=18, on_click=self._prev_page, tooltip=t('pdf_viewer.tooltip_prev_page')),
                 self._page_label,
-                ft.IconButton(ft.Icons.CHEVRON_RIGHT_ROUNDED, icon_size=18, on_click=self._next_page, tooltip='下一页'),
+                ft.IconButton(ft.Icons.CHEVRON_RIGHT_ROUNDED, icon_size=18, on_click=self._next_page, tooltip=t('pdf_viewer.tooltip_next_page')),
                 ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT),
-                ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,      icon_size=18, on_click=self._zoom_out,  tooltip='缩小'),
-                ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,       icon_size=18, on_click=self._zoom_in,   tooltip='放大'),
-                ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,    icon_size=18, on_click=self._zoom_fit,  tooltip='复位缩放'),
+                ft.IconButton(ft.Icons.ZOOM_OUT_ROUNDED,      icon_size=18, on_click=self._zoom_out,  tooltip=t('common.tooltip_zoom_out')),
+                ft.IconButton(ft.Icons.ZOOM_IN_ROUNDED,       icon_size=18, on_click=self._zoom_in,   tooltip=t('common.tooltip_zoom_in')),
+                ft.IconButton(ft.Icons.FIT_SCREEN_ROUNDED,    icon_size=18, on_click=self._zoom_fit,  tooltip=t('pdf_viewer.tooltip_reset_zoom')),
                 *(([ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT)] + self._extra_controls)
                   if self._extra_controls else []),
             ],
@@ -134,7 +135,7 @@ class PdfViewer(ft.Column):
         self._placeholder_col = ft.Column(
             [
                 ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
-                ft.Text('暂无文件', size=14, color=ft.Colors.OUTLINE),
+                ft.Text(t('pdf_viewer.no_file'), size=14, color=ft.Colors.OUTLINE),
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -341,7 +342,7 @@ class PdfViewer(ft.Column):
         self._image.src = _BLANK_PNG_B64
         self._placeholder_col.controls = [
             ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED, size=48, color=ft.Colors.OUTLINE),
-            ft.Text('暂无文件', size=14, color=ft.Colors.OUTLINE),
+            ft.Text(t('pdf_viewer.no_file'), size=14, color=ft.Colors.OUTLINE),
         ]
         self._placeholder.visible = True
         self._update_toolbar()
@@ -368,7 +369,7 @@ class PdfViewer(ft.Column):
             if result is None:
                 if token != self._load_token:
                     return
-                self._show_error('PDF 无法渲染（文件可能已损坏或格式不受支持）')
+                self._show_error(t('pdf_viewer.error_render_failed'))
                 self._update_toolbar()
                 return
             b64, page_count = result
@@ -427,9 +428,9 @@ class PdfViewer(ft.Column):
 
     def _update_toolbar(self) -> None:
         if self._page_count > 0:
-            self._page_label.value = f'{self._current_page + 1} / {self._page_count}'
+            self._page_label.value = t('pdf_viewer.page_label', current=self._current_page + 1, total=self._page_count)
         else:
-            self._page_label.value = '—'
+            self._page_label.value = t('pdf_viewer.page_placeholder')
         self._request_page_refresh()
 
     def _request_page_refresh(self) -> None:

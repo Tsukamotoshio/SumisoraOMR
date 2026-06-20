@@ -21,6 +21,7 @@ from ..components.file_sidebar import FileSidebar
 from ..components.pdf_viewer import PdfViewer
 from ..components.progress_overlay import ProgressOverlay
 from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
+from ..strings import t
 
 
 _ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
@@ -45,11 +46,11 @@ class LandingPage(ft.Row):
         state.on(Event.FILES_CHECK_CHANGED, self._refresh_convert_label)
 
     def _build_engine_options(self) -> list:
-        suffix = '' if self._state.homr_available else '（需下载）'
+        suffix = '' if self._state.homr_available else t("landing.suffix_download_needed")
         return [
-            ft.dropdown.Option('auto',      f'自动选择（推荐）{suffix}'),
-            ft.dropdown.Option('audiveris', 'Audiveris（启发式算法）'),
-            ft.dropdown.Option('homr',      f'Homr（深度学习）{suffix}'),
+            ft.dropdown.Option('auto',      t("landing.option_auto", suffix=suffix)),
+            ft.dropdown.Option('audiveris', t("landing.option_audiveris")),
+            ft.dropdown.Option('homr',      t("landing.option_homr", suffix=suffix)),
         ]
 
     def _build_ui(self) -> None:
@@ -58,7 +59,7 @@ class LandingPage(ft.Row):
 
         # 引擎选择 — 没有下载触发；触发改为「点击开始转换」时检查（_on_convert）。
         self._engine_dd = ft.Dropdown(
-            label='OMR 引擎',
+            label=t("landing.label_omr_engine"),
             value='auto',
             options=self._build_engine_options(),
             text_size=14,
@@ -66,44 +67,44 @@ class LandingPage(ft.Row):
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
-            tooltip='自动选择会根据输入格式与图像质量决定使用 Audiveris 还是 Homr',
+            tooltip=t("landing.tooltip_omr_engine"),
         )
 
         # 超分辨率算法选择
         self._sr_engine_dd = ft.Dropdown(
-            label='超分辨率算法',
+            label=t("landing.label_sr_engine"),
             value='realesrgan',
             options=[
-                ft.dropdown.Option('waifu2x',     'waifu2x（线条画）'),
-                ft.dropdown.Option('realesrgan',  'Real-ESRGAN（anime，默认）'),
+                ft.dropdown.Option('waifu2x',     t("landing.option_waifu2x")),
+                ft.dropdown.Option('realesrgan',  t("landing.option_realesrgan")),
             ],
             text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
-            tooltip='低分辨率图片在识别前会先放大增强；两种算法适合不同风格的图源',
+            tooltip=t("landing.tooltip_sr_engine"),
         )
 
         # 并发处理数（高端机加速；默认 1 = 顺序，低配安全）
         self._parallel_dd = ft.Dropdown(
-            label='并发处理数',
+            label=t("landing.label_concurrency"),
             value='1',
             options=[
-                ft.dropdown.Option('1',    '1（顺序，低配推荐）'),
-                ft.dropdown.Option('2',    '2 个并行'),
-                ft.dropdown.Option('4',    '4 个并行'),
-                ft.dropdown.Option('auto', '自动（按 CPU 核数）'),
+                ft.dropdown.Option('1',    t("landing.option_concurrency_1")),
+                ft.dropdown.Option('2',    t("landing.option_concurrency_2")),
+                ft.dropdown.Option('4',    t("landing.option_concurrency_4")),
+                ft.dropdown.Option('auto', t("landing.option_concurrency_auto")),
             ],
             text_size=14,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             color=ft.Colors.ON_SURFACE,
             border_color=Palette.BORDER_BLUE,
             focused_border_color=Palette.PRIMARY,
-            tooltip='同时转换多个文件可加速批量处理；内存或显存不足时请保持 1',
+            tooltip=t("landing.tooltip_concurrency"),
         )
 
-        self._convert_label = ft.Text('开始转换', size=15, font_family=FONT_EMPHASIS)
+        self._convert_label = ft.Text(t("landing.button_start_convert"), size=15, font_family=FONT_EMPHASIS)
         self._convert_btn = ft.Button(
             content=ft.Row(
                 [ft.Icon(ft.Icons.PLAY_ARROW_ROUNDED, size=20), self._convert_label],
@@ -122,7 +123,7 @@ class LandingPage(ft.Row):
 
         open_output_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开输出目录')],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t("landing.button_open_output_dir"))],
                 tight=True, spacing=6,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
@@ -137,7 +138,7 @@ class LandingPage(ft.Row):
         # HOMR 模型权重的显式管理按钮
         self._download_models_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), ft.Text('下载模型文件')],
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), ft.Text(t("landing.button_download_models"))],
                 tight=True, spacing=6,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
@@ -150,7 +151,7 @@ class LandingPage(ft.Row):
         )
         self._delete_models_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DELETE_OUTLINE_ROUNDED, size=16), ft.Text('删除模型文件')],
+                [ft.Icon(ft.Icons.DELETE_OUTLINE_ROUNDED, size=16), ft.Text(t("landing.button_delete_models"))],
                 tight=True, spacing=6,
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
@@ -167,7 +168,7 @@ class LandingPage(ft.Row):
             content=ft.Column(
                 [
                     ft.Container(
-                        content=ft.Text('转换选项', size=15, font_family=FONT_EMPHASIS,
+                        content=ft.Text(t("landing.section_convert_options"), size=15, font_family=FONT_EMPHASIS,
                                         color=ft.Colors.ON_SURFACE),
                         height=48,
                         padding=ft.Padding.only(left=16, right=16),
@@ -185,7 +186,7 @@ class LandingPage(ft.Row):
                                 open_output_btn,
                                 ft.Container(height=4),
                                 ft.Divider(height=1, thickness=1, color=ft.Colors.OUTLINE_VARIANT),
-                                section_title('HOMR 模型管理'),
+                                section_title(t("landing.section_homr_models")),
                                 self._download_models_btn,
                                 self._delete_models_btn,
                             ],
@@ -241,16 +242,15 @@ class LandingPage(ft.Row):
 
         confirm = ft.AlertDialog(
             modal=True,
-            title=ft.Text('需要下载 HOMR 模型权重',
+            title=ft.Text(t("landing.download_dialog_title"),
                           size=16, font_family=FONT_EMPHASIS),
             content=ft.Text(
-                '使用 HOMR 引擎可以支持图片格式的乐谱识别。\n'
-                '需要下载约 292 MB 模型权重。',
+                t("landing.download_dialog_body"),
                 size=13,
             ),
             actions=[
-                ft.TextButton('暂不下载', on_click=_on_no),
-                ft.ElevatedButton('立即下载', on_click=_on_yes),
+                ft.TextButton(t("landing.button_not_now"), on_click=_on_no),
+                ft.ElevatedButton(t("landing.button_download_now"), on_click=_on_yes),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
@@ -285,7 +285,7 @@ class LandingPage(ft.Row):
     def _refresh_convert_label(self, **_) -> None:
         """在主按钮上显示已勾选文件数，让「将转换什么」一目了然。"""
         n = sum(1 for f in self._state.pinned_files if f in self._state.checked_files)
-        label = f'开始转换（{n}）' if n else '开始转换'
+        label = t("landing.button_start_convert_with_count", n=n) if n else t("landing.button_start_convert")
         try:
             p = self.page
         except RuntimeError:
@@ -340,7 +340,7 @@ class LandingPage(ft.Row):
                         pass
             self._state.homr_available = False
             self._refresh_engine_labels()
-            self._show_snack(f'已删除 {removed} 个模型文件。', Palette.INFO)
+            self._show_snack(t("landing.models_deleted", n=removed), Palette.INFO)
 
         def _cancel_delete(_):
             try:
@@ -350,15 +350,14 @@ class LandingPage(ft.Row):
 
         confirm = ft.AlertDialog(
             modal=True,
-            title=ft.Text('确认删除模型文件', size=16, font_family=FONT_EMPHASIS),
+            title=ft.Text(t("landing.delete_models_dialog_title"), size=16, font_family=FONT_EMPHASIS),
             content=ft.Text(
-                '将删除全部 HOMR 模型权重文件（约 292 MB）。\n'
-                '下次使用 HOMR 引擎时需要重新下载。',
+                t("landing.delete_models_dialog_body"),
                 size=13,
             ),
             actions=[
-                ft.TextButton('取消', on_click=_cancel_delete),
-                ft.ElevatedButton('删除', on_click=_do_delete),
+                ft.TextButton(t("common.cancel"), on_click=_cancel_delete),
+                ft.ElevatedButton(t("common.delete"), on_click=_do_delete),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
@@ -485,12 +484,12 @@ class LandingPage(ft.Row):
             output_dir_path = output_dir(None)
             open_directory(output_dir_path)
         except Exception as exc:
-            self._show_snack(f'无法打开目录: {exc}', Palette.ERROR)
+            self._show_snack(t("common.open_dir_failed", exc=exc), Palette.ERROR)
 
     def _on_convert(self, _e) -> None:
         checked = [f for f in self._state.pinned_files if f in self._state.checked_files]
         if not checked:
-            self._show_snack('请先勾选至少一个乐谱文件。', Palette.WARNING)
+            self._show_snack(t("landing.error_select_at_least_one"), Palette.WARNING)
             return
         if self._state.is_processing:
             return
@@ -519,7 +518,7 @@ class LandingPage(ft.Row):
                     ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,
                             color=Palette.WARNING, size=16),
                     ft.Text(
-                        f'以下 {len(existing)} 个文件已存在输出：',
+                        t("landing.existing_outputs_warning", n=len(existing)),
                         color=Palette.WARNING, size=13,
                     ),
                 ], spacing=4)
@@ -531,11 +530,11 @@ class LandingPage(ft.Row):
                 )
             if len(existing) > 5:
                 warn_items.append(
-                    ft.Text(f'  …等另外 {len(existing)-5} 个',
+                    ft.Text(t("landing.existing_outputs_more", n=len(existing) - 5),
                             size=12, color=ft.Colors.OUTLINE)
                 )
             self._skip_dup_cb = ft.Checkbox(
-                label='跳过重复文件（不重新识别）',
+                label=t("landing.checkbox_skip_duplicates"),
                 value=True,
                 active_color=Palette.PRIMARY,
             )
@@ -555,7 +554,7 @@ class LandingPage(ft.Row):
         self._confirm_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text(
-                f'转换 {len(checked)} 个文件',
+                t("landing.convert_dialog_title", n=len(checked)),
                 size=16, font_family=FONT_EMPHASIS,
             ),
             content=ft.Container(
@@ -569,11 +568,11 @@ class LandingPage(ft.Row):
             ),
             actions=[
                 ft.TextButton(
-                    '取消',
+                    t("common.cancel"),
                     on_click=lambda _ev: self.page.pop_dialog(),
                 ),
                 ft.FilledButton(
-                    '开始转换',
+                    t("landing.button_start_convert"),
                     on_click=_do_confirm,
                 ),
             ],
@@ -593,7 +592,7 @@ class LandingPage(ft.Row):
         self._skip_dup = skip_duplicates
         self._dup_files: set = duplicate_files or set()
         self._state.is_processing = True
-        self._overlay.show('正在运行 OMR 识别…')
+        self._overlay.show(t("landing.running_omr"))
         threading.Thread(target=self._run_conversion, daemon=True).start()
 
     # ── Worker 辅助 ────────────────────────────────────────────────────────────
@@ -739,7 +738,7 @@ class LandingPage(ft.Row):
                                     reason = reason.split('：' if '：' in reason else ':', 1)[-1].strip()
                             _conversion_results['failed'].append({
                                 'file': _current_processing_file,
-                                'reason': reason or '未知原因'
+                                'reason': reason or t("landing.unknown_reason")
                             })
                     elif mtype == 'result':
                         _files_done_this_run += 1
@@ -760,7 +759,7 @@ class LandingPage(ft.Row):
                                 if not any(f['file'] == _current_processing_file for f in _conversion_results['failed']):
                                     _conversion_results['failed'].append({
                                         'file': _current_processing_file,
-                                        'reason': msg.get('reason') or '未知原因',
+                                        'reason': msg.get('reason') or t("landing.unknown_reason"),
                                     })
                     elif mtype == 'done':
                         _done_or_error_received = True
@@ -769,13 +768,13 @@ class LandingPage(ft.Row):
                             'failed_count': len(_conversion_results['failed']),
                             'success_files': _conversion_results['success'],
                             'failed_files': _conversion_results['failed'],
-                            'message': msg.get('message', '完成。'),
+                            'message': msg.get('message', t("landing.done_message")),
                             'total': len(_conversion_results['success']) + len(_conversion_results['failed']),
                         }
-                        self._state.set_done(msg.get('message', '完成。'))
+                        self._state.set_done(msg.get('message', t("landing.done_message")))
                     elif mtype == 'error':
                         _done_or_error_received = True
-                        self._state.set_error(msg.get('message', '未知错误'))
+                        self._state.set_error(msg.get('message', t("landing.unknown_error")))
 
                 proc.wait()
 
@@ -788,16 +787,20 @@ class LandingPage(ft.Row):
                             files = files[_files_done_this_run:]
                             _gpu_crash_count += 1
                             if _gpu_crash_count < 2:
-                                self._state.append_log('[homr] GPU 模式发生崩溃，正在以 GPU 模式重试…')
+                                self._state.append_log(t("landing.log_gpu_crash_retry"))
                             else:
-                                self._state.append_log('[homr] GPU 模式再次崩溃，已回退到 CPU 模式重试…')
+                                self._state.append_log(t("landing.log_gpu_crash_fallback_cpu"))
                             _done_or_error_received = False
                             continue
                         self._state.set_error(
-                            f'Worker 进程异常退出（{proc.returncode}）：{err_text[:300] if err_text else "无详情"}'
+                            t(
+                                "landing.worker_crash_error",
+                                code=proc.returncode,
+                                detail=err_text[:300] if err_text else t("landing.worker_crash_no_detail"),
+                            )
                         )
                     else:
-                        self._state.set_done('完成。')
+                        self._state.set_done(t("landing.done_message"))
                     break
                 else:
                     break
@@ -928,8 +931,8 @@ class LandingPage(ft.Row):
 
                 names_preview = ', '.join(Path(f).name for f in chunk[:3])
                 if len(chunk) > 3:
-                    names_preview += f' 等 {len(chunk)} 个'
-                self._state.append_log(f'[W{i + 1}] 分配: {names_preview}')
+                    names_preview += t("landing.names_preview_more", n=len(chunk))
+                self._state.append_log(t("landing.log_worker_assign", worker=i + 1, names=names_preview))
 
             self._worker_procs = procs
 
@@ -987,7 +990,7 @@ class LandingPage(ft.Row):
                             reason = reason.split('：' if '：' in reason else ':', 1)[-1].strip()
                         _all_results['failed'].append({
                             'file': _current_files[worker_id],
-                            'reason': reason or '未知原因',
+                            'reason': reason or t("landing.unknown_reason"),
                         })
 
                 elif mtype == 'result':
@@ -1008,7 +1011,7 @@ class LandingPage(ft.Row):
                         if cf and not any(f['file'] == cf for f in _all_results['failed']):
                             _all_results['failed'].append({
                                 'file': cf,
-                                'reason': msg.get('reason') or '未知原因',
+                                'reason': msg.get('reason') or t("landing.unknown_reason"),
                             })
 
                 elif mtype == 'done':
@@ -1020,12 +1023,12 @@ class LandingPage(ft.Row):
                 elif mtype == 'error':
                     _any_error = True
                     err_text = msg.get('message', '')
-                    self._state.append_log(f'{prefix}错误: {err_text}')
+                    self._state.append_log(t("landing.log_error_prefix", prefix=prefix, err=err_text))
                     # 该 worker 整批文件均失败（task 级别异常，未进入文件循环）
                     for _f in chunks[worker_id]:
                         _fname = Path(_f).name
                         if not any(r.get('file') == _fname for r in _all_results['failed']):
-                            _all_results['failed'].append({'file': _fname, 'reason': err_text[:80] or '进程错误'})
+                            _all_results['failed'].append({'file': _fname, 'reason': err_text[:80] or t("landing.process_error")})
                     _total_fail += len(chunks[worker_id])
 
             # 等待所有子进程完全退出，同时检测无声崩溃（无 done/error 消息）
@@ -1046,8 +1049,8 @@ class LandingPage(ft.Row):
                 if not _worker_done[i] and rc != 0:
                     # rc=None（仍在运行/无法取到）或非零均视为崩溃
                     _tail = ' | '.join(_stderr_tails[i][-3:]) if _stderr_tails[i] else ''
-                    _crash_hint = f'（代码 {rc}）' + (f'：{_tail[:120]}' if _tail else '')
-                    self._state.append_log(f'[W{i + 1}] 进程异常退出 {_crash_hint}')
+                    _crash_hint = t("landing.crash_hint_code", rc=rc) + (t("landing.crash_hint_tail", tail=_tail[:120]) if _tail else '')
+                    self._state.append_log(t("landing.log_worker_crash", worker=i + 1, hint=_crash_hint))
                     _any_error = True
                     for _f in chunks[i]:
                         _fname = Path(_f).name
@@ -1075,17 +1078,17 @@ class LandingPage(ft.Row):
                 }
                 if n_success == 0 and _any_error:
                     # 全部失败——保持 overlay 打开，让用户看到错误信息
-                    self._state.conversion_summary['message'] = '所有 Worker 进程均失败，请检查日志。'
-                    self._state.set_error('所有 Worker 进程均失败，请检查日志。')
+                    self._state.conversion_summary['message'] = t("landing.all_workers_failed")
+                    self._state.set_error(t("landing.all_workers_failed"))
                 else:
                     _parts: list[str] = []
                     if _total_success > 0:
-                        _parts.append(f'{_total_success} 个成功')
+                        _parts.append(t("landing.summary_success_part", n=_total_success))
                     if _total_fail > 0:
-                        _parts.append(f'{_total_fail} 个失败')
+                        _parts.append(t("landing.summary_fail_part", n=_total_fail))
                     if _total_skipped > 0:
-                        _parts.append(f'{_total_skipped} 个已跳过')
-                    msg_text = '完成：' + '，'.join(_parts) if _parts else '完成'
+                        _parts.append(t("landing.summary_skipped_part", n=_total_skipped))
+                    msg_text = t("landing.summary_done_prefix") + '，'.join(_parts) if _parts else t("landing.summary_done_fallback")
                     self._state.conversion_summary['message'] = msg_text + '。'
                     self._state.set_done(msg_text + '。')
 
@@ -1135,9 +1138,9 @@ class LandingPage(ft.Row):
 
             header_row = ft.Row(
                 [
-                    ft.Text(f'总共 {total} 个文件', size=14, color=ft.Colors.ON_SURFACE),
-                    _stat_chip(f'✓ 成功 {success_count}', Palette.SUCCESS),
-                    _stat_chip(f'✗ 失败 {failed_count}', Palette.ERROR) if failed_count else ft.Container(),
+                    ft.Text(t("landing.stat_total", n=total), size=14, color=ft.Colors.ON_SURFACE),
+                    _stat_chip(t("landing.stat_success", n=success_count), Palette.SUCCESS),
+                    _stat_chip(t("landing.stat_failed", n=failed_count), Palette.ERROR) if failed_count else ft.Container(),
                 ],
                 spacing=8,
                 wrap=True,
@@ -1149,13 +1152,13 @@ class LandingPage(ft.Row):
             if success_files:
                 list_items.append(
                     ft.Container(
-                        ft.Text('成功', size=12, font_family=FONT_EMPHASIS, color=Palette.SUCCESS),
+                        ft.Text(t("landing.section_success"), size=12, font_family=FONT_EMPHASIS, color=Palette.SUCCESS),
                         padding=ft.Padding.only(top=8, bottom=2),
                     )
                 )
                 for item in success_files:
                     if isinstance(item, dict):
-                        file_name   = item.get('file', '未知')
+                        file_name   = item.get('file', t("landing.unknown_file"))
                         engine_used = item.get('engine_used', '')
                         image_type  = item.get('image_type', '')
                     else:
@@ -1163,23 +1166,23 @@ class LandingPage(ft.Row):
 
                     detail_parts: list[str] = []
                     if image_type:
-                        detail_parts.append(f'识别为{image_type}')
+                        detail_parts.append(t("landing.detail_image_type", kind=image_type))
                     if engine_used:
-                        detail_parts.append(f'使用 {engine_used} 引擎')
-                    detail_str = '，'.join(detail_parts) if detail_parts else '转换成功'
+                        detail_parts.append(t("landing.detail_engine_used", engine=engine_used))
+                    detail_str = '，'.join(detail_parts) if detail_parts else t("landing.detail_success_fallback")
 
                     list_items.append(
                         ft.Container(
                             content=ft.Column(
                                 [
                                     ft.Text(
-                                        f'  ✓  {file_name}',
+                                        t("landing.list_item_success", name=file_name),
                                         size=12,
                                         color=ft.Colors.ON_SURFACE,
                                         no_wrap=False,
                                     ),
                                     ft.Text(
-                                        f'       {detail_str}',
+                                        t("landing.list_item_detail", detail=detail_str),
                                         size=11,
                                         color=ft.Colors.ON_SURFACE_VARIANT,
                                     ),
@@ -1195,25 +1198,25 @@ class LandingPage(ft.Row):
             if failed_files:
                 list_items.append(
                     ft.Container(
-                        ft.Text('失败', size=12, font_family=FONT_EMPHASIS, color=Palette.ERROR),
+                        ft.Text(t("landing.section_failed"), size=12, font_family=FONT_EMPHASIS, color=Palette.ERROR),
                         padding=ft.Padding.only(top=10, bottom=2),
                     )
                 )
                 for item in failed_files:
-                    file_name = item.get('file', '未知') if isinstance(item, dict) else item
-                    reason    = (item.get('reason', '') if isinstance(item, dict) else '') or '未知原因'
+                    file_name = (item.get('file', t("landing.unknown_file")) if isinstance(item, dict) else item)
+                    reason    = (item.get('reason', '') if isinstance(item, dict) else '') or t("landing.unknown_reason")
                     list_items.append(
                         ft.Container(
                             content=ft.Column(
                                 [
                                     ft.Text(
-                                        f'  ✗  {file_name}',
+                                        t("landing.list_item_failed", name=file_name),
                                         size=12,
                                         color=ft.Colors.ON_SURFACE,
                                         no_wrap=False,
                                     ),
                                     ft.Text(
-                                        f'       原因：{reason}',
+                                        t("landing.list_item_reason", reason=reason),
                                         size=11,
                                         color=Palette.ERROR,
                                         no_wrap=False,
@@ -1236,15 +1239,15 @@ class LandingPage(ft.Row):
                 self._state.emit(Event.NAVIGATE, name='editor')
 
             actions: list[ft.Control] = [
-                ft.TextButton('打开输出目录', on_click=self._on_open_output_dir),
-                ft.TextButton('关闭', on_click=_close_dialog),
+                ft.TextButton(t("landing.button_open_output_dir"), on_click=self._on_open_output_dir),
+                ft.TextButton(t("common.close"), on_click=_close_dialog),
             ]
             if success_count > 0:
-                actions.append(ft.FilledButton('查看简谱', on_click=_goto_jianpu_preview))
+                actions.append(ft.FilledButton(t("landing.button_view_jianpu"), on_click=_goto_jianpu_preview))
 
             dialog = ft.AlertDialog(
                 modal=True,
-                title=ft.Text('识别结果', size=16, font_family=FONT_EMPHASIS),
+                title=ft.Text(t("landing.result_dialog_title"), size=16, font_family=FONT_EMPHASIS),
                 content=ft.Column(
                     [
                         header_row,

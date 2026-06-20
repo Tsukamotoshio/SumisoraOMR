@@ -13,6 +13,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import xml_scores_dir, build_dir, open_directory
 from ..components.pdf_viewer import PdfViewer
+from ..strings import t
 from ..theme import Palette, section_title, FONT_EMPHASIS
 from core.notation.transposer import INTERVALS, DIATONIC_DEGREES, key_display_cn
 
@@ -22,13 +23,13 @@ _KEYS = ['Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 
 _KEY_DISPLAY = {k: k.replace('#', '♯').replace('b', '♭') for k in _KEYS}
 
 _DIRECTIONS_3 = [
-    ('closest', '最近'),
-    ('up',      '向上'),
-    ('down',    '向下'),
+    ('closest', t("transposer.dir_recent")),
+    ('up',      t("transposer.dir_up")),
+    ('down',    t("transposer.dir_down")),
 ]
 _DIRECTIONS_2 = [
-    ('up',   '向上'),
-    ('down', '向下'),
+    ('up',   t("transposer.dir_up")),
+    ('down', t("transposer.dir_down")),
 ]
 
 _DD_STYLE = dict(
@@ -62,14 +63,14 @@ class TransposerPage(ft.Column):
 
         # ── 移调模式状态 ────────────────────────────────────────────────────
         self._mode: str = 'interval'  # 'interval' | 'key' | 'diatonic'
-        self._interval_name: str = '纯一度'
+        self._interval_name: str = t("transposer.interval_default")
         self._interval_dir: str = 'up'
         self._interval_keysig: bool = True
         self._key_from: str = 'C'
         self._key_to: str = 'G'
         self._key_dir: str = 'closest'
         self._key_keysig: bool = True
-        self._diatonic_degree: str = '三度'
+        self._diatonic_degree: str = t("transposer.degree_default")
         self._diatonic_dir: str = 'up'
 
         self._file_picker = ft.FilePicker()
@@ -94,24 +95,24 @@ class TransposerPage(ft.Column):
         _diat_opts = [ft.dropdown.Option(name) for name, _ in DIATONIC_DEGREES]
 
         # 按音程
-        self._adv_iv_dd  = _dd('音程', '纯一度', _iv_opts, 140)
-        self._adv_iv_dir = _dd('方向', 'up',     _dir3_opts, 100)
-        self._adv_iv_ks  = ft.Checkbox(label='同时移调调号', value=True)
+        self._adv_iv_dd  = _dd(t("transposer.label_interval"), t("transposer.interval_default"), _iv_opts, 140)
+        self._adv_iv_dir = _dd(t("transposer.quick_label_direction"), 'up', _dir3_opts, 100)
+        self._adv_iv_ks  = ft.Checkbox(label=t("transposer.checkbox_transpose_key_signature_adv"), value=True)
         self._adv_iv_sec = ft.Column(
             [ft.Row([self._adv_iv_dd, self._adv_iv_dir], spacing=8), self._adv_iv_ks],
             spacing=8, visible=True,
         )
 
         # 按调
-        self._adv_key_from = _dd('原调',   'C', _key_opts, 110)
-        self._adv_key_to   = _dd('目标调', 'G', _key_opts, 110)
-        self._adv_key_dir  = _dd('方向', 'closest', _dir3_opts, 100)
-        self._adv_key_ks   = ft.Checkbox(label='同时移调调号', value=True)
+        self._adv_key_from = _dd(t("transposer.label_from_key"), 'C', _key_opts, 110)
+        self._adv_key_to   = _dd(t("transposer.label_to_key"), 'G', _key_opts, 110)
+        self._adv_key_dir  = _dd(t("transposer.quick_label_direction"), 'closest', _dir3_opts, 100)
+        self._adv_key_ks   = ft.Checkbox(label=t("transposer.checkbox_transpose_key_signature_adv"), value=True)
         self._adv_key_sec  = ft.Column(
             [
                 ft.Row(
                     [self._adv_key_from,
-                     ft.Text('→', color=ft.Colors.ON_SURFACE_VARIANT, size=15),
+                     ft.Text(t("transposer.arrow"), color=ft.Colors.ON_SURFACE_VARIANT, size=15),
                      self._adv_key_to,
                      self._adv_key_dir],
                     spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -122,8 +123,8 @@ class TransposerPage(ft.Column):
         )
 
         # 全音移调
-        self._adv_diat_deg = _dd('度数', '三度', _diat_opts, 100)
-        self._adv_diat_dir = _dd('方向', 'up',   _dir2_opts, 100)
+        self._adv_diat_deg = _dd(t("transposer.label_degree"), t("transposer.degree_default"), _diat_opts, 100)
+        self._adv_diat_dir = _dd(t("transposer.quick_label_direction"), 'up', _dir2_opts, 100)
         self._adv_diat_sec = ft.Column(
             [ft.Row([self._adv_diat_deg, self._adv_diat_dir], spacing=8)],
             visible=False,
@@ -133,15 +134,15 @@ class TransposerPage(ft.Column):
             value='interval',
             on_change=self._on_adv_mode_change,
             content=ft.Row([
-                ft.Radio(value='interval', label='按音程'),
-                ft.Radio(value='key',      label='按调'),
-                ft.Radio(value='diatonic', label='全音移调'),
+                ft.Radio(value='interval', label=t("transposer.mode_interval")),
+                ft.Radio(value='key',      label=t("transposer.mode_key")),
+                ft.Radio(value='diatonic', label=t("transposer.mode_chromatic")),
             ], spacing=16),
         )
 
         self._adv_dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text('高级选项', size=16, font_family=FONT_EMPHASIS),
+            title=ft.Text(t("transposer.advanced_options_title"), size=16, font_family=FONT_EMPHASIS),
             content=ft.Container(
                 content=ft.Column(
                     [
@@ -157,8 +158,8 @@ class TransposerPage(ft.Column):
                 padding=ft.Padding.only(top=4),
             ),
             actions=[
-                ft.TextButton('取消', on_click=lambda _: self.page.pop_dialog()),
-                ft.FilledButton('确认', on_click=self._confirm_adv_dialog),
+                ft.TextButton(t("common.cancel"), on_click=lambda _: self.page.pop_dialog()),
+                ft.FilledButton(t("common.confirm"), on_click=self._confirm_adv_dialog),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
@@ -193,7 +194,7 @@ class TransposerPage(ft.Column):
         mode = self._adv_mode_radio.value or 'interval'
         self._mode = mode
         if mode == 'interval':
-            self._interval_name  = self._adv_iv_dd.value  or '纯四度'
+            self._interval_name  = self._adv_iv_dd.value  or t("transposer.fallback_interval")
             self._interval_dir   = self._adv_iv_dir.value or 'up'
             self._interval_keysig = bool(self._adv_iv_ks.value)
             self._quick_iv_dd.value  = self._interval_name
@@ -205,7 +206,7 @@ class TransposerPage(ft.Column):
             self._key_dir   = self._adv_key_dir.value  or 'closest'
             self._key_keysig = bool(self._adv_key_ks.value)
         elif mode == 'diatonic':
-            self._diatonic_degree = self._adv_diat_deg.value or '三度'
+            self._diatonic_degree = self._adv_diat_deg.value or t("transposer.degree_default")
             self._diatonic_dir    = self._adv_diat_dir.value or 'up'
         self.page.pop_dialog()  # type: ignore[attr-defined]
         try:
@@ -221,20 +222,20 @@ class TransposerPage(ft.Column):
         _iv_opts   = [ft.dropdown.Option(iv.name) for iv in INTERVALS]
         _dir2_opts = [ft.dropdown.Option(key=v, text=t) for v, t in _DIRECTIONS_2]
 
-        self._quick_iv_dd  = _dd('按音程', '纯一度', _iv_opts, 140)
-        self._quick_dir_dd = _dd('方向',   'up',     _dir2_opts, 100)
+        self._quick_iv_dd  = _dd(t("transposer.mode_interval"), t("transposer.interval_default"), _iv_opts, 140)
+        self._quick_dir_dd = _dd(t("transposer.quick_label_direction"), 'up', _dir2_opts, 100)
         self._quick_iv_dd.on_select  = self._on_quick_change  # type: ignore[attr-defined]
         self._quick_dir_dd.on_select = self._on_quick_change  # type: ignore[attr-defined]
 
         self._quick_keysig_cb = ft.Checkbox(
-            label='移调调号',
+            label=t("transposer.checkbox_transpose_key_signature"),
             value=True,
             on_change=self._on_quick_change,
         )
 
         adv_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.TUNE_ROUNDED, size=15), ft.Text('高级选项')],
+                [ft.Icon(ft.Icons.TUNE_ROUNDED, size=15), ft.Text(t("transposer.advanced_options_title"))],
                 tight=True, spacing=5,
             ),
             on_click=self._open_adv_dialog,
@@ -246,14 +247,14 @@ class TransposerPage(ft.Column):
         )
 
         export_transposed_btn = ft.TextButton(
-            '导出移调乐谱',
+            t("transposer.button_export_transposed"),
             icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
             on_click=self._on_export,
             style=ft.ButtonStyle(color=Palette.PRIMARY),
         )
 
         export_original_btn = ft.TextButton(
-            '导出原调乐谱',
+            t("transposer.button_export_original"),
             icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
             on_click=self._on_export_original,
             style=ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT),
@@ -263,13 +264,13 @@ class TransposerPage(ft.Column):
             icon=ft.Icons.ARROW_BACK_ROUNDED,
             icon_size=20,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='返回五线谱预览',
+            tooltip=t("transposer.tooltip_back_to_score_preview"),
             on_click=lambda _: self._state.emit(Event.SCORE_TRANSPOSER_BACK),
         )
 
         open_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开乐谱')],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t("common.open_score"))],
                 tight=True, spacing=6,
             ),
             on_click=self._on_open_click,
@@ -282,7 +283,7 @@ class TransposerPage(ft.Column):
 
         xml_dir_btn = ft.Button(
             content=ft.Row(
-                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text('打开乐谱目录')],
+                [ft.Icon(ft.Icons.FOLDER_OPEN_ROUNDED, size=16), ft.Text(t("transposer.button_open_score_dir"))],
                 tight=True, spacing=6,
             ),
             on_click=self._on_open_xml_dir,
@@ -305,7 +306,7 @@ class TransposerPage(ft.Column):
                     back_btn,
                     ft.Column(
                         [
-                            section_title('移调功能', self._state.dark_mode),
+                            section_title(t("transposer.section_title"), self._state.dark_mode),
                             ft.Row(
                                 [
                                     self._quick_iv_dd,
@@ -338,7 +339,7 @@ class TransposerPage(ft.Column):
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Text('原调', size=13, font_family=FONT_EMPHASIS,
+                            ft.Text(t("transposer.label_from_key"), size=13, font_family=FONT_EMPHASIS,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Container(expand=True),
                             export_original_btn,
@@ -359,7 +360,7 @@ class TransposerPage(ft.Column):
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Text('移调后', size=13, font_family=FONT_EMPHASIS,
+                            ft.Text(t("transposer.label_transposed_col"), size=13, font_family=FONT_EMPHASIS,
                                     color=Palette.PRIMARY),
                             ft.Container(expand=True),
                             export_transposed_btn,
@@ -386,7 +387,7 @@ class TransposerPage(ft.Column):
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
-        self._status   = ft.Text('请先打开乐谱文件。', size=13, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._status   = ft.Text(t("transposer.status_open_score_first"), size=13, color=ft.Colors.ON_SURFACE_VARIANT)
         self._progress = ft.ProgressBar(
             value=0, visible=False,
             bgcolor=ft.Colors.SURFACE_CONTAINER, color=Palette.PRIMARY, height=3,
@@ -412,7 +413,7 @@ class TransposerPage(ft.Column):
 
     def _on_quick_change(self, _e) -> None:
         self._mode = 'interval'
-        self._interval_name   = self._quick_iv_dd.value      or '纯四度'
+        self._interval_name   = self._quick_iv_dd.value      or t("transposer.fallback_interval")
         self._interval_dir    = self._quick_dir_dd.value     or 'up'
         self._interval_keysig = bool(self._quick_keysig_cb.value)
         self._on_transpose(None)
@@ -430,20 +431,20 @@ class TransposerPage(ft.Column):
 
     def _on_save_transposed(self, _e) -> None:
         if self._transposed_mxl is None:
-            self._set_status('请先等待移调预览生成后再保存。')
+            self._set_status(t("transposer.status_wait_preview_save"))
             return
         try:
             import shutil
             dest = xml_scores_dir() / self._transposed_mxl.name
             shutil.copy2(str(self._transposed_mxl), str(dest))
-            self._set_status(f'已保存移调版乐谱 → {dest.name}')
+            self._set_status(t("transposer.status_saved", name=dest.name))
         except Exception as exc:
-            self._set_status(f'保存失败: {exc}')
+            self._set_status(t("transposer.status_save_failed", exc=exc))
 
     async def _pick_file_async(self) -> None:
         _init_dir = str(self._xml_dir) if self._xml_dir.exists() else None
         files = await self._file_picker.pick_files(
-            dialog_title='打开乐谱文件（MusicXML）',
+            dialog_title=t("transposer.file_picker_open_musicxml"),
             allowed_extensions=['musicxml', 'mxl', 'xml'],
             allow_multiple=False,
             initial_directory=_init_dir,
@@ -458,7 +459,7 @@ class TransposerPage(ft.Column):
             self._state.current_mxl = path
             self._orig_render_token += 1
             current_token = self._orig_render_token
-            self._set_status(f'已加载: {path.name}')
+            self._set_status(t("common.loaded_file", name=path.name))
             threading.Thread(target=self._render_orig, args=(current_token,), daemon=True).start()
             self.page.update(self._orig_viewer)  # type: ignore[attr-defined]
             self._on_auto_detect(None)
@@ -466,7 +467,7 @@ class TransposerPage(ft.Column):
             self._clear_transposed_preview()
             self._orig_render_token += 1
             self._orig_viewer.load(path)
-            self._set_status(f'预览: {path.name}（仅预览，移调需 MXL 格式）')
+            self._set_status(t("transposer.status_preview_only", name=path.name))
             self.page.update(self._orig_viewer)  # type: ignore[attr-defined]
 
     def _on_mxl_ready(self, path: Path, **_kw) -> None:
@@ -475,7 +476,7 @@ class TransposerPage(ft.Column):
         self._state.current_mxl = path
         self._orig_render_token += 1
         current_token = self._orig_render_token
-        self._set_status(f'已加载: {path.name}')
+        self._set_status(t("common.loaded_file", name=path.name))
         threading.Thread(target=self._render_orig, args=(current_token,), daemon=True).start()
         self._on_auto_detect(None)
 
@@ -508,17 +509,17 @@ class TransposerPage(ft.Column):
             # 更新按调模式的原调
             self._key_from = key
             self._adv_key_from.value = key
-            self._set_status(f'检测到原调: {key_display_cn(key)}')
+            self._set_status(t("transposer.status_detected_key", key=key_display_cn(key)))
         except Exception as exc:
             if token != self._auto_detect_token:
                 return
-            self._set_status(f'调号检测失败: {exc}')
+            self._set_status(t("transposer.status_key_detect_failed", exc=exc))
 
     # ── 移调 ──────────────────────────────────────────────────────────────────
 
     def _on_transpose(self, _e) -> None:
         if self._orig_mxl is None:
-            self._set_status('请先在首页转换文件或打开乐谱。')
+            self._set_status(t("transposer.status_convert_or_open_first"))
             return
         self._transpose_token += 1
         current_token = self._transpose_token
@@ -583,14 +584,14 @@ class TransposerPage(ft.Column):
             self._state.emit(Event.TRANSPOSED_READY, path=transposed)
             self._trans_render_token += 1
             trans_token = self._trans_render_token
-            self._set_status(f'移调完成 → {transposed.name}')
+            self._set_status(t("transposer.status_transpose_done", name=transposed.name))
             threading.Thread(target=self._render_transposed, args=(trans_token,), daemon=True).start()
             _render_started = True  # busy 将由 _render_transposed 关闭
 
         except Exception as exc:
             if token != self._transpose_token:
                 return
-            self._set_status(f'移调失败: {exc}')
+            self._set_status(t("transposer.status_transpose_failed", exc=exc))
         finally:
             if token == self._transpose_token and not _render_started:
                 self._set_busy(False)
@@ -599,7 +600,7 @@ class TransposerPage(ft.Column):
 
     def _on_export(self, _e) -> None:
         if self._transposed_mxl is None:
-            self._set_status('请先等待移调预览生成后再导出。')
+            self._set_status(t("transposer.status_wait_preview_export"))
             return
         self.page.run_task(self._export_transposed_async)  # type: ignore[attr-defined]
 
@@ -608,7 +609,7 @@ class TransposerPage(ft.Column):
         _fname = f'{self._transposed_mxl.stem}_staff.pdf'
         self._export_dir_picker.file_name = _fname
         dest_str = await self._export_dir_picker.save_file(
-            dialog_title='导出移调版 PDF',
+            dialog_title=t("transposer.file_picker_export_transposed"),
             file_name=_fname,
             allowed_extensions=['pdf'],
         )
@@ -622,7 +623,7 @@ class TransposerPage(ft.Column):
 
     def _on_export_original(self, _e) -> None:
         if self._orig_mxl is None:
-            self._set_status('请先加载原调乐谱后再导出。')
+            self._set_status(t("transposer.status_open_original_first"))
             return
         self.page.run_task(self._export_original_async)  # type: ignore[attr-defined]
 
@@ -631,7 +632,7 @@ class TransposerPage(ft.Column):
         _fname = f'{self._orig_mxl.stem}_staff.pdf'
         self._export_dir_picker.file_name = _fname
         dest_str = await self._export_dir_picker.save_file(
-            dialog_title='导出原调乐谱 PDF',
+            dialog_title=t("transposer.file_picker_export_original"),
             file_name=_fname,
             allowed_extensions=['pdf'],
         )
@@ -659,14 +660,14 @@ class TransposerPage(ft.Column):
                 return
             if pdf and pdf.exists():
                 shutil.copy2(str(pdf), str(dest_path))
-                self._set_status(f'导出完成 → {dest_path}')
+                self._set_status(t("transposer.export_done", dest=dest_path))
                 self._state.output_pdf = dest_path
             else:
-                self._set_status('导出失败：无法生成五线谱 PDF，请检查 LilyPond / musicxml2ly 是否可用。')
+                self._set_status(t("transposer.export_failed_transposed"))
         except Exception as exc:
             if token != self._export_token:
                 return
-            self._set_status(f'导出失败: {exc}')
+            self._set_status(t("common.export_failed_exc", exc=exc))
         finally:
             if token == self._export_token:
                 self._set_busy(False)
@@ -687,13 +688,13 @@ class TransposerPage(ft.Column):
                 return
             if pdf and pdf.exists():
                 shutil.copy2(str(pdf), str(dest_path))
-                self._set_status(f'导出完成 → {dest_path}')
+                self._set_status(t("transposer.export_done", dest=dest_path))
             else:
-                self._set_status('导出失败：无法生成原调乐谱 PDF，请检查 LilyPond / musicxml2ly 是否可用。')
+                self._set_status(t("transposer.export_failed_original"))
         except Exception as exc:
             if token != self._orig_export_token:
                 return
-            self._set_status(f'导出失败: {exc}')
+            self._set_status(t("common.export_failed_exc", exc=exc))
         finally:
             if token == self._orig_export_token:
                 self._set_busy(False)
@@ -710,7 +711,7 @@ class TransposerPage(ft.Column):
                 return
             if pdf:
                 self._orig_viewer.load(pdf)
-                self._set_status(f'已加载: {self._orig_mxl.name}')
+                self._set_status(t("common.loaded_file", name=self._orig_mxl.name))
         finally:
             if token == self._orig_render_token:
                 self._set_busy(False)
@@ -754,7 +755,7 @@ class TransposerPage(ft.Column):
             shutil.rmtree(tmp, ignore_errors=True)
             return None
         except Exception as exc:
-            self._set_status(f'预览渲染失败: {exc}')
+            self._set_status(t("transposer.status_preview_render_failed", exc=exc))
             return None
 
     def reset_view(self) -> None:
@@ -762,7 +763,7 @@ class TransposerPage(ft.Column):
         self._transposed_mxl = None
         self._orig_viewer.reset()
         self._trans_viewer.reset()
-        self._status.value = '请先打开乐谱文件。'
+        self._status.value = t("transposer.status_open_score_first")
         p = self.page
         if p is not None:
             p.loop.call_soon_threadsafe(  # type: ignore[attr-defined]
@@ -778,7 +779,7 @@ class TransposerPage(ft.Column):
         self._state.current_mxl = path
         self._orig_render_token += 1
         current_token = self._orig_render_token
-        self._set_status(f'已加载: {path.name}')
+        self._set_status(t("common.loaded_file", name=path.name))
         threading.Thread(target=self._render_orig, args=(current_token,), daemon=True).start()
         self._on_auto_detect(None)
 

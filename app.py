@@ -95,6 +95,7 @@ if __name__ == '__main__' and '--worker' in sys.argv:
 import flet as ft
 
 from gui.app_state import AppState, Event
+from gui.strings import t
 from gui.theme import Palette, with_alpha, make_dark_theme, make_light_theme, FONT_BODY, FONT_EMPHASIS
 from gui.pages.landing_page import LandingPage
 from gui.pages.jianpu_preview_page import JianpuPreviewPage
@@ -111,10 +112,10 @@ from core.config import APP_VERSION
 # ─────────────────────────────────────────────────────────────────────────────
 
 _NAV_ITEMS = [
-    ('landing',       ft.Icons.DOCUMENT_SCANNER_ROUNDED,    ft.Icons.DOCUMENT_SCANNER_OUTLINED,    '乐谱识别'),
-    ('editor',        ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,           '简谱预览'),
-    ('score_preview', ft.Icons.LIBRARY_MUSIC_ROUNDED,       ft.Icons.LIBRARY_MUSIC_OUTLINED,       '五线谱预览'),
-    ('about',         ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,         '关于'),
+    ('landing',       ft.Icons.DOCUMENT_SCANNER_ROUNDED,    ft.Icons.DOCUMENT_SCANNER_OUTLINED,    t('app.nav_landing')),
+    ('editor',        ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,           t('app.nav_editor')),
+    ('score_preview', ft.Icons.LIBRARY_MUSIC_ROUNDED,       ft.Icons.LIBRARY_MUSIC_OUTLINED,       t('app.nav_score_preview')),
+    ('about',         ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,         t('app.nav_about')),
 ]
 
 
@@ -210,7 +211,7 @@ def _check_homr_models(state: AppState) -> None:
 
 async def main(page: ft.Page) -> None:
     # ── Page base configuration ───────────────────────────────────────────────
-    page.title       = 'SumisoraOMR'
+    page.title       = t('app.window_title')
     _base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     _ico_path = os.path.join(_base_dir, 'assets', 'icon.ico')
     if os.path.isfile(_ico_path):
@@ -350,7 +351,7 @@ async def main(page: ft.Page) -> None:
         icon=ft.Icons.CHEVRON_LEFT_ROUNDED,
         icon_size=18,
         icon_color=ft.Colors.ON_SURFACE_VARIANT,
-        tooltip='隐藏标签',
+        tooltip=t('app.tooltip_hide_label'),
     )
 
     nav_rail = ft.NavigationRail(
@@ -379,11 +380,11 @@ async def main(page: ft.Page) -> None:
         if _nav_labels_shown[0]:
             nav_rail.label_type = ft.NavigationRailLabelType.ALL
             _nav_label_toggle_btn.icon = ft.Icons.CHEVRON_LEFT_ROUNDED
-            _nav_label_toggle_btn.tooltip = '隐藏标签'
+            _nav_label_toggle_btn.tooltip = t('app.tooltip_hide_label')
         else:
             nav_rail.label_type = ft.NavigationRailLabelType.SELECTED
             _nav_label_toggle_btn.icon = ft.Icons.CHEVRON_RIGHT_ROUNDED
-            _nav_label_toggle_btn.tooltip = '显示标签'
+            _nav_label_toggle_btn.tooltip = t('app.tooltip_show_label')
         try:
             nav_rail.update()
             _nav_label_toggle_btn.update()
@@ -396,7 +397,7 @@ async def main(page: ft.Page) -> None:
     _theme_icon = ft.IconButton(
         icon=ft.Icons.LIGHT_MODE_ROUNDED,
         icon_color=ft.Colors.ON_SURFACE_VARIANT,
-        tooltip='切换明暗主题',
+        tooltip=t('app.tooltip_theme_toggle'),
         on_click=lambda _e: _toggle_theme(),
     )
 
@@ -429,7 +430,7 @@ async def main(page: ft.Page) -> None:
         icon=ft.Icons.CROP_SQUARE,
         icon_size=14,
         icon_color=ft.Colors.ON_SURFACE_VARIANT,
-        tooltip='最大化 / 还原',
+        tooltip=t('app.tooltip_maximize'),
         width=32,
         height=32,
         style=ft.ButtonStyle(
@@ -478,7 +479,7 @@ async def main(page: ft.Page) -> None:
                             ft.Image(src='Sumisora.png', width=18, height=18),
                             ft.Container(width=6),
                             ft.Text(
-                                f'SumisoraOMR  v{APP_VERSION}',
+                                t('app.title_bar', version=APP_VERSION),
                                 size=13,
                                 font_family=FONT_EMPHASIS,
                                 color=ft.Colors.ON_SURFACE,
@@ -495,7 +496,7 @@ async def main(page: ft.Page) -> None:
                     icon=ft.Icons.REMOVE,
                     icon_size=14,
                     icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                    tooltip='最小化',
+                    tooltip=t('app.tooltip_minimize'),
                     width=32,
                     height=32,
                     style=_wc_btn_style,
@@ -506,7 +507,7 @@ async def main(page: ft.Page) -> None:
                     icon=ft.Icons.CLOSE,
                     icon_size=14,
                     icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                    tooltip='关闭',
+                    tooltip=t('app.tooltip_close'),
                     width=32,
                     height=32,
                     style=ft.ButtonStyle(
@@ -541,10 +542,10 @@ async def main(page: ft.Page) -> None:
         # 工作线程通过 state.emit() 同步调用此回调；
         # 用 run_task 调度到 asyncio 事件循环，避免与计时器 page.update() 竞争。
         async def _do():
-            _show_snack(f'错误: {message}', Palette.ERROR)
+            _show_snack(t('app.snack_error', message=message), Palette.ERROR)
         page.run_task(_do)
 
-    def _on_done(message: str = '完成', **_kw) -> None:
+    def _on_done(message: str = t('app.snack_done_default'), **_kw) -> None:
         async def _do():
             _show_snack(message, Palette.SUCCESS)
             # 转换完成后刷新两个预览页（mtime 缓存键确保新 PDF 不会命中旧缓存）
@@ -892,8 +893,8 @@ if __name__ == '__main__':
         if _ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
             _ctypes.windll.user32.MessageBoxW(
                 0,
-                'Sumisora OMR 已在运行中。\n\n请查看任务栏。',
-                'Sumisora OMR',
+                t('app.single_instance_body'),
+                t('app.single_instance_title'),
                 0x30,  # MB_ICONWARNING | MB_OK
             )
             sys.exit(0)

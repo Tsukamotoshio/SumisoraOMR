@@ -14,6 +14,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import xml_scores_dir, build_dir, output_dir
 from ..components.pdf_viewer import PdfViewer
+from ..strings import t
 from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
 
 
@@ -40,7 +41,7 @@ class ScorePreviewPage(ft.Row):
             icon=ft.Icons.PLAY_CIRCLE_OUTLINE_ROUNDED,
             icon_size=18,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='播放 MIDI',
+            tooltip=t("common.tooltip_play_midi"),
             on_click=self._on_play_midi,
         )
         self._viewer = PdfViewer(extra_controls=[self._play_midi_icon_btn])
@@ -56,7 +57,7 @@ class ScorePreviewPage(ft.Row):
                 [
                     ft.Icon(ft.Icons.LIBRARY_MUSIC_OUTLINED, size=40, color=ft.Colors.OUTLINE),
                     ft.Text(
-                        '请先识别乐谱文件\n或点击刷新按钮',
+                        t("common.empty_score_hint"),
                         size=13,
                         color=ft.Colors.OUTLINE,
                         text_align=ft.TextAlign.CENTER,
@@ -74,7 +75,7 @@ class ScorePreviewPage(ft.Row):
             icon=ft.Icons.REFRESH_ROUNDED,
             icon_size=17,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='刷新列表',
+            tooltip=t("common.tooltip_refresh_list"),
             on_click=lambda _: self.reload(),
             width=28,
             height=28,
@@ -87,7 +88,7 @@ class ScorePreviewPage(ft.Row):
             icon=ft.Icons.CHECK_BOX_OUTLINE_BLANK,
             icon_size=17,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='全选 / 全不选',
+            tooltip=t("common.tooltip_toggle_select_all"),
             on_click=self._on_select_all,
             width=28,
             height=28,
@@ -97,7 +98,7 @@ class ScorePreviewPage(ft.Row):
             icon=ft.Icons.DOWNLOAD_ROUNDED,
             icon_size=17,
             icon_color=Palette.PRIMARY,
-            tooltip='导出已勾选的五线谱 PDF',
+            tooltip=t("score_preview.tooltip_export_checked"),
             on_click=self._on_batch_export_click,
             width=28,
             height=28,
@@ -107,7 +108,7 @@ class ScorePreviewPage(ft.Row):
             icon=ft.Icons.DELETE_OUTLINE_ROUNDED,
             icon_size=17,
             icon_color=Palette.ERROR,
-            tooltip='删除已勾选的五线谱',
+            tooltip=t("score_preview.tooltip_delete_checked"),
             on_click=self._on_delete_checked_click,
             width=28,
             height=28,
@@ -117,7 +118,7 @@ class ScorePreviewPage(ft.Row):
         sidebar_header = ft.Container(
             content=ft.Row(
                 [
-                    ft.Row([self._select_all_btn, section_title('五线谱文件')], spacing=0),
+                    ft.Row([self._select_all_btn, section_title(t("score_preview.section_title"))], spacing=0),
                     ft.Container(expand=True),
                     batch_export_btn,
                     self._delete_checked_btn,
@@ -158,7 +159,7 @@ class ScorePreviewPage(ft.Row):
 
         export_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), ft.Text('导出乐谱')],
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), ft.Text(t("score_preview.button_export"))],
                 tight=True, spacing=5,
             ),
             on_click=self._on_export_click,
@@ -171,7 +172,7 @@ class ScorePreviewPage(ft.Row):
 
         transpose_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.COMPARE_ARROWS_ROUNDED, size=15), ft.Text('乐谱移调')],
+                [ft.Icon(ft.Icons.COMPARE_ARROWS_ROUNDED, size=15), ft.Text(t("score_preview.button_transpose"))],
                 tight=True, spacing=5,
             ),
             on_click=self._on_transpose_click,
@@ -308,7 +309,7 @@ class ScorePreviewPage(ft.Row):
                         icon=ft.Icons.CLOSE_ROUNDED,
                         icon_size=12,
                         icon_color=ft.Colors.OUTLINE,
-                        tooltip='删除此文件',
+                        tooltip=t("common.tooltip_delete_file"),
                         on_click=lambda _, p=path: self._on_delete_single(p),
                         width=24,
                         height=24,
@@ -367,16 +368,16 @@ class ScorePreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('删除五线谱文件', size=15, font_family=FONT_EMPHASIS),
+            title=ft.Text(t("score_preview.delete_dialog_title"), size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
-                f'将永久删除：{path.name}',
+                t("score_preview.delete_dialog_body", name=path.name),
                 size=13,
                 color=ft.Colors.ON_SURFACE,
             ),
             actions=[
-                ft.TextButton('取消', on_click=_cancel),
+                ft.TextButton(t("common.cancel"), on_click=_cancel),
                 ft.FilledButton(
-                    '删除',
+                    t("common.delete"),
                     on_click=_do,
                     style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
                 ),
@@ -421,16 +422,16 @@ class ScorePreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('批量删除五线谱文件', size=15, font_family=FONT_EMPHASIS),
+            title=ft.Text(t("score_preview.batch_delete_dialog_title"), size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
-                f'将永久删除已勾选的 {n} 个五线谱文件。',
+                t("score_preview.batch_delete_dialog_body", n=n),
                 size=13,
                 color=ft.Colors.ON_SURFACE,
             ),
             actions=[
-                ft.TextButton('取消', on_click=_cancel),
+                ft.TextButton(t("common.cancel"), on_click=_cancel),
                 ft.FilledButton(
-                    '删除',
+                    t("common.delete"),
                     on_click=_do,
                     style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
                 ),
@@ -508,7 +509,7 @@ class ScorePreviewPage(ft.Row):
     def _render_preview(self, path: Path) -> None:
         self._render_token += 1
         current_token = self._render_token
-        self._set_status(f'渲染中: {path.name}...')
+        self._set_status(t("score_preview.status_rendering", name=path.name))
         self._set_busy(True)
         threading.Thread(
             target=self._render_async, args=(current_token, path), daemon=True
@@ -532,14 +533,14 @@ class ScorePreviewPage(ft.Row):
                 shutil.rmtree(tmp, ignore_errors=True)
                 self._viewer.load(flat_pdf)
                 self._preview_pdf_cache[path] = flat_pdf
-                self._set_status(f'已加载: {path.name}')
+                self._set_status(t("common.loaded_file", name=path.name))
             else:
                 shutil.rmtree(tmp, ignore_errors=True)
-                self._set_status('预览渲染失败：LilyPond 不可用或文件有误')
+                self._set_status(t("score_preview.error_preview_render_failed"))
         except Exception as exc:
             if token != self._render_token:
                 return
-            self._set_status(f'渲染失败: {exc}')
+            self._set_status(t("score_preview.error_render_failed_exc", exc=exc))
         finally:
             if token == self._render_token:
                 self._set_busy(False)
@@ -561,7 +562,7 @@ class ScorePreviewPage(ft.Row):
             except Exception as exc:
                 try:
                     self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                        content=ft.Text(f'无法打开 MIDI 文件: {exc}', size=14),
+                        content=ft.Text(t("common.midi_open_failed", exc=exc), size=14),
                         duration=3000,
                     ))
                 except Exception:
@@ -569,7 +570,7 @@ class ScorePreviewPage(ft.Row):
         else:
             try:
                 self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                    content=ft.Text(f'未找到 MIDI 文件：{midi_path.name}', size=14),
+                    content=ft.Text(t("common.midi_not_found", name=midi_path.name), size=14),
                     duration=3000,
                 ))
             except Exception:
@@ -579,7 +580,7 @@ class ScorePreviewPage(ft.Row):
 
     def _on_export_click(self, _e) -> None:
         if self._current_path is None:
-            self._set_status('请先选择乐谱文件。')
+            self._set_status(t("score_preview.error_select_score_first"))
             return
         self.page.run_task(self._export_single_async)  # type: ignore[attr-defined]
 
@@ -592,7 +593,7 @@ class ScorePreviewPage(ft.Row):
         default_name = mxl.stem + '_staff.pdf'
         self._export_picker.file_name = default_name
         dest_str = await self._export_picker.save_file(
-            dialog_title='导出五线谱 PDF',
+            dialog_title=t("score_preview.file_picker_export"),
             file_name=default_name,
             allowed_extensions=['pdf'],
         )
@@ -614,7 +615,7 @@ class ScorePreviewPage(ft.Row):
             cached = self._preview_pdf_cache.get(self._current_path)
             if cached and cached.exists():
                 shutil.copy2(str(cached), str(dest_path))
-                self._set_status(f'导出完成 → {dest_path}')
+                self._set_status(t("score_preview.export_done", dest=dest_path))
                 return
             from core.render.lilypond_runner import render_musicxml_staff_pdf
             tmp = build_dir() / f'_score_export_{self._current_path.stem}'
@@ -630,14 +631,14 @@ class ScorePreviewPage(ft.Row):
                 shutil.copy2(str(pdf), str(flat_pdf))
                 shutil.rmtree(tmp, ignore_errors=True)
                 self._preview_pdf_cache[self._current_path] = flat_pdf
-                self._set_status(f'导出完成 → {dest_path}')
+                self._set_status(t("score_preview.export_done", dest=dest_path))
             else:
                 shutil.rmtree(tmp, ignore_errors=True)
-                self._set_status('导出失败：无法生成五线谱 PDF，请检查 LilyPond 是否可用。')
+                self._set_status(t("score_preview.error_export_failed"))
         except Exception as exc:
             if token != self._export_token:
                 return
-            self._set_status(f'导出失败: {exc}')
+            self._set_status(t("common.export_failed_exc", exc=exc))
         finally:
             if token == self._export_token:
                 self._set_busy(False)
@@ -646,12 +647,12 @@ class ScorePreviewPage(ft.Row):
 
     def _on_batch_export_click(self, _e) -> None:
         if not self._checked:
-            self._set_status('请先勾选要导出的五线谱文件。')
+            self._set_status(t("score_preview.error_select_for_export"))
             return
         self.page.run_task(self._batch_export_dir_async)  # type: ignore[attr-defined]
 
     async def _batch_export_dir_async(self) -> None:
-        dest_str = await self._batch_export_picker.get_directory_path(dialog_title='选择导出目标目录')
+        dest_str = await self._batch_export_picker.get_directory_path(dialog_title=t("score_preview.dir_picker_export"))
         if not dest_str:
             return
         files = list(self._checked)
@@ -661,7 +662,7 @@ class ScorePreviewPage(ft.Row):
 
     def _batch_export_async(self, dest_parent: Path, mxl_files: list[Path]) -> None:
         self._set_busy(True)
-        self._set_status(f'批量导出 {len(mxl_files)} 个文件...')
+        self._set_status(t("score_preview.batch_export_start", n=len(mxl_files)))
         dest = dest_parent / 'score_output'
         dest.mkdir(parents=True, exist_ok=True)
         exported, failed = 0, []
@@ -672,7 +673,7 @@ class ScorePreviewPage(ft.Row):
                 if cached and cached.exists():
                     shutil.copy2(str(cached), str(dest / cached.name))
                     exported += 1
-                    self._set_status(f'导出中... {exported}/{len(mxl_files)}')
+                    self._set_status(t("score_preview.batch_export_progress", done=exported, total=len(mxl_files)))
                     continue
                 tmp = build_dir() / f'_score_export_{mxl.stem}'
                 tmp.mkdir(exist_ok=True)
@@ -684,16 +685,16 @@ class ScorePreviewPage(ft.Row):
                     shutil.rmtree(tmp, ignore_errors=True)
                     self._preview_pdf_cache[mxl] = flat_pdf
                     exported += 1
-                    self._set_status(f'导出中... {exported}/{len(mxl_files)}')
+                    self._set_status(t("score_preview.batch_export_progress", done=exported, total=len(mxl_files)))
                 else:
                     shutil.rmtree(tmp, ignore_errors=True)
                     failed.append(mxl.name)
             except Exception as exc:
                 failed.append(f'{mxl.name}: {exc}')
         if failed:
-            self._set_status(f'导出完成：{exported} 个成功，{len(failed)} 个失败')
+            self._set_status(t("score_preview.batch_export_done_counts", success=exported, fail=len(failed)))
         else:
-            self._set_status(f'已导出 {exported} 个五线谱 PDF 至 {dest}')
+            self._set_status(t("score_preview.batch_export_done_summary", n=exported, dest=dest))
         self._set_busy(False)
 
     # ── 乐谱移调 ──────────────────────────────────────────────────────────────

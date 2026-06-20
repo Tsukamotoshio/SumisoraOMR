@@ -8,6 +8,7 @@ import time
 import flet as ft
 from ..app_state import AppState, Event
 from ..theme import Palette
+from ..strings import t
 
 
 class ProgressOverlay(ft.Stack):
@@ -73,7 +74,7 @@ class ProgressOverlay(ft.Stack):
             icon=ft.Icons.CLOSE_ROUNDED,
             icon_size=18,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='关闭',
+            tooltip=t('common.close'),
             on_click=self._on_close_click,
         )
 
@@ -81,7 +82,7 @@ class ProgressOverlay(ft.Stack):
         self._log_visible = False
         self._log_toggle_icon = ft.Icon(
             ft.Icons.EXPAND_MORE_ROUNDED, size=16, color=ft.Colors.ON_SURFACE_VARIANT)
-        self._log_toggle_text = ft.Text('显示详细日志', size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._log_toggle_text = ft.Text(t('progress_overlay.button_show_log'), size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self._log_toggle_btn = ft.TextButton(
             content=ft.Row(
                 [self._log_toggle_icon, self._log_toggle_text],
@@ -247,13 +248,13 @@ class ProgressOverlay(ft.Stack):
 
     # ── 显示 / 隐藏 ──────────────────────────────────────────────────────────
 
-    def show(self, message: str = '处理中…') -> None:
+    def show(self, message: str = t('progress_overlay.default_message')) -> None:
         self._status_text.value = message
         self._spinner.visible = True
         self._spinner.color = Palette.PRIMARY
         self._progress_bar.value = 0.0
         self._progress_bar.color = Palette.PRIMARY
-        self._elapsed_text.value = '00:00'
+        self._elapsed_text.value = t('progress_overlay.elapsed_initial')
         self._log_list.controls.clear()
         self._pending_logs.clear()
         self._pending_progress.clear()
@@ -311,10 +312,10 @@ class ProgressOverlay(ft.Stack):
         self._log_container.visible = visible
         if visible:
             self._log_toggle_icon.icon = ft.Icons.EXPAND_LESS_ROUNDED
-            self._log_toggle_text.value = '隐藏详细日志'
+            self._log_toggle_text.value = t('progress_overlay.button_hide_log')
         else:
             self._log_toggle_icon.icon = ft.Icons.EXPAND_MORE_ROUNDED
-            self._log_toggle_text.value = '显示详细日志'
+            self._log_toggle_text.value = t('progress_overlay.button_show_log')
 
     def _on_toggle_log(self, _e) -> None:
         self._set_log_visible(not self._log_visible)
@@ -330,7 +331,7 @@ class ProgressOverlay(ft.Stack):
         # 工作线程非阻塞：追加到队列，由 _timer_task 按序刷新
         self._pending_progress.append((value, message))
 
-    def _on_done(self, message: str = '完成', **_kw) -> None:
+    def _on_done(self, message: str = t('progress_overlay.done_default'), **_kw) -> None:
         # 追加到队列，由计时器线程统一渲染，避免工作线程直接调用 page.update()
         self._pending_progress.append((1.0, message))
         self._spinner.visible = False  # 属性修改，计时器下次刷新时生效
@@ -344,7 +345,7 @@ class ProgressOverlay(ft.Stack):
         async def _apply():
             self._progress_bar.value = 0.0
             self._progress_bar.color = Palette.ERROR
-            self._status_text.value = f'错误：{message}'
+            self._status_text.value = t('progress_overlay.error_status', message=message)
             self._spinner.color = Palette.ERROR
             self._set_log_visible(True)  # 出错时自动展开日志，方便定位原因
             # 计时器已停止，不会再消费队列；把剩余日志一次性排空到列表
@@ -363,7 +364,7 @@ class ProgressOverlay(ft.Stack):
         else:
             self._progress_bar.value = 0.0
             self._progress_bar.color = Palette.ERROR
-            self._status_text.value = f'错误：{message}'
+            self._status_text.value = t('progress_overlay.error_status', message=message)
             self._spinner.color = Palette.ERROR
             self._set_log_visible(True)
 

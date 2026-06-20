@@ -12,6 +12,7 @@ from typing import Callable, Optional
 import flet as ft
 
 from ..app_state import AppState, Event
+from ..strings import t
 from ..theme import Palette, section_title, FONT_EMPHASIS
 
 
@@ -61,11 +62,11 @@ class JianpuEditor(ft.Column):
     # ── 构建 UI ──────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self._title = section_title('简谱编辑器', self._state.dark_mode)
+        self._title = section_title(t("jianpu_editor.title"), self._state.dark_mode)
         self._undo_btn = ft.IconButton(
             icon=ft.Icons.UNDO_ROUNDED,
             icon_size=16,
-            tooltip='撤销 (Ctrl+Z)',
+            tooltip=t("jianpu_editor.tooltip_undo"),
             on_click=self._on_undo,
             disabled=True,
             width=32,
@@ -74,37 +75,37 @@ class JianpuEditor(ft.Column):
         self._redo_btn = ft.IconButton(
             icon=ft.Icons.REDO_ROUNDED,
             icon_size=16,
-            tooltip='重做 (Ctrl+Y)',
+            tooltip=t("jianpu_editor.tooltip_redo"),
             on_click=self._on_redo,
             disabled=True,
             width=32,
             height=32,
         )
         save_btn = ft.TextButton(
-            '保存',
+            t("jianpu_editor.button_save"),
             icon=ft.Icons.SAVE_OUTLINED,
             on_click=self._on_save,
             style=ft.ButtonStyle(color=Palette.PRIMARY),
         )
         export_btn = ft.TextButton(
-            '导出PDF',
+            t("jianpu_editor.button_export_pdf"),
             icon=ft.Icons.PICTURE_AS_PDF_OUTLINED,
             on_click=self._on_export_pdf,
             style=ft.ButtonStyle(color=ft.Colors.ON_SURFACE_VARIANT),
-            tooltip='将当前简谱文件通过 LilyPond 渲染为 PDF',
+            tooltip=t("jianpu_editor.tooltip_export_pdf"),
         )
 
         self._symbol_btn = ft.IconButton(
             icon=ft.Icons.HELP_OUTLINE_ROUNDED,
             icon_size=16,
-            tooltip='简谱符号速查',
+            tooltip=t("jianpu_editor.tooltip_symbol_panel"),
             on_click=self._toggle_symbol_panel,
             width=32,
             height=32,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
         )
         self._view_toggle_btn = ft.TextButton(
-            '简谱',
+            t("jianpu_editor.toggle_jianpu"),
             on_click=self._on_view_toggle_click,
             style=ft.ButtonStyle(color=Palette.PRIMARY),
         )
@@ -137,7 +138,7 @@ class JianpuEditor(ft.Column):
             cursor_color=Palette.PRIMARY,
             on_change=self._on_text_change,
             on_selection_change=self._on_selection_change,
-            hint_text='尚未加载简谱文件…',
+            hint_text=t("jianpu_editor.hint_no_file"),
             hint_style=ft.TextStyle(color=ft.Colors.OUTLINE),
         )
 
@@ -183,31 +184,31 @@ class JianpuEditor(ft.Column):
             )
 
         rows = [
-            _section('── 音符'),
-            _row('1 2 3 4 5 6 7', 'Do Re Mi Fa Sol La Si'),
-            _row('0', '休止符'),
-            _row('#1  b3', '升 Do / 降 Mi（写在数字前）'),
-            _row("1'  1''", '高八度 / 超高八度'),
-            _row('1,  1,,', '低八度 / 超低八度'),
-            _section('── 时值'),
-            _row('1', '四分音符（1 拍）'),
-            _row('1 -', '二分音符（2 拍）'),
-            _row('1 - - -', '全音符（4 拍）'),
-            _row('q1', '八分音符（½ 拍）'),
-            _row('s1', '十六分音符（¼ 拍）'),
-            _row('d1', '三十二分音符（⅛ 拍）'),
-            _row('1.', '附点四分（1.5 拍）'),
-            _row('q1.', '附点八分（0.75 拍）'),
-            _section('── 结构'),
-            _row('|', '小节线'),
-            _row('title=曲名', '标题（文件头部）'),
-            _row('1=C  1=G', '调号（大调，1=主音）'),
-            _row('6=A  6=D', '调号（小调，6=主音）'),
-            _row('4/4,8', '拍号（分母=最小时值）'),
-            _section('── 多声部'),
-            _row('NextPart', '分隔声部；每个声部单独渲染'),
-            _row('NextPart  4/4,8  ...', '换声部后必须立即重写拍号'),
-            _row('声部1 / NextPart\n4/4,8 / 声部2', '同组声部并排显示在同一行谱上'),
+            _section(t("jianpu_editor.symbol_section_notes")),
+            _row(t("jianpu_editor.symbol_notes_row"), t("jianpu_editor.symbol_notes_desc")),
+            _row(t("jianpu_editor.symbol_rest_row"), t("jianpu_editor.symbol_rest_desc")),
+            _row(t("jianpu_editor.symbol_accidental_row"), t("jianpu_editor.symbol_accidental_desc")),
+            _row(t("jianpu_editor.symbol_high_octave_row"), t("jianpu_editor.symbol_high_octave_desc")),
+            _row(t("jianpu_editor.symbol_low_octave_row"), t("jianpu_editor.symbol_low_octave_desc")),
+            _section(t("jianpu_editor.symbol_section_duration")),
+            _row(t("jianpu_editor.symbol_duration_row_1"), t("jianpu_editor.symbol_duration_desc_1")),
+            _row(t("jianpu_editor.symbol_duration_row_2"), t("jianpu_editor.symbol_duration_desc_2")),
+            _row(t("jianpu_editor.symbol_duration_row_3"), t("jianpu_editor.symbol_duration_desc_3")),
+            _row(t("jianpu_editor.symbol_duration_row_4"), t("jianpu_editor.symbol_duration_desc_4")),
+            _row(t("jianpu_editor.symbol_duration_row_5"), t("jianpu_editor.symbol_duration_desc_5")),
+            _row(t("jianpu_editor.symbol_duration_row_6"), t("jianpu_editor.symbol_duration_desc_6")),
+            _row(t("jianpu_editor.symbol_duration_row_7"), t("jianpu_editor.symbol_duration_desc_7")),
+            _row(t("jianpu_editor.symbol_duration_row_8"), t("jianpu_editor.symbol_duration_desc_8")),
+            _section(t("jianpu_editor.symbol_section_structure")),
+            _row(t("jianpu_editor.symbol_structure_row_1"), t("jianpu_editor.symbol_structure_desc_1")),
+            _row(t("jianpu_editor.symbol_structure_row_2"), t("jianpu_editor.symbol_structure_desc_2")),
+            _row(t("jianpu_editor.symbol_structure_row_3"), t("jianpu_editor.symbol_structure_desc_3")),
+            _row(t("jianpu_editor.symbol_structure_row_4"), t("jianpu_editor.symbol_structure_desc_4")),
+            _row(t("jianpu_editor.symbol_structure_row_5"), t("jianpu_editor.symbol_structure_desc_5")),
+            _section(t("jianpu_editor.symbol_section_polyphony")),
+            _row(t("jianpu_editor.symbol_polyphony_row_1"), t("jianpu_editor.symbol_polyphony_desc_1")),
+            _row(t("jianpu_editor.symbol_polyphony_row_2"), t("jianpu_editor.symbol_polyphony_desc_2")),
+            _row(t("jianpu_editor.symbol_polyphony_row_3"), t("jianpu_editor.symbol_polyphony_desc_3")),
         ]
 
         return ft.Container(
@@ -234,7 +235,10 @@ class JianpuEditor(ft.Column):
 
     def _on_view_toggle_click(self, _e) -> None:
         self._preview_active = not self._preview_active
-        self._view_toggle_btn.content = '原图' if self._preview_active else '简谱'
+        self._view_toggle_btn.content = (
+            t("jianpu_editor.toggle_original") if self._preview_active
+            else t("jianpu_editor.toggle_jianpu")
+        )
         self._view_toggle_btn.style = ft.ButtonStyle(
             color=ft.Colors.ON_SURFACE_VARIANT if self._preview_active else Palette.PRIMARY,
         )
@@ -246,7 +250,9 @@ class JianpuEditor(ft.Column):
             self._on_view_toggle(self._preview_active)
 
     def _update_title(self) -> None:
-        self._title.value = '简谱编辑器' + (' *' if self._is_dirty else '')
+        self._title.value = t("jianpu_editor.title") + (
+            t("jianpu_editor.title_dirty_suffix") if self._is_dirty else ''
+        )
         try:
             self._title.update()
         except Exception:
@@ -280,7 +286,7 @@ class JianpuEditor(ft.Column):
         except Exception as exc:
             if token != self._load_token:
                 return
-            self._schedule_load_error(f'# 文件读取失败: {exc}', token)
+            self._schedule_load_error(t("jianpu_editor.error_read_failed", exc=exc), token)
 
     def _schedule_load_complete(self, text: str, token: int) -> None:
         if not hasattr(self, 'page') or self.page is None:
@@ -314,7 +320,7 @@ class JianpuEditor(ft.Column):
             self._snapshot_timer = None
         if self._preview_active:
             self._preview_active = False
-            self._view_toggle_btn.content = '简谱'
+            self._view_toggle_btn.content = t("jianpu_editor.toggle_jianpu")
             self._view_toggle_btn.style = ft.ButtonStyle(color=Palette.PRIMARY)
         self._file_header, body = self._split_header(text)
         self._lines = body.splitlines()
@@ -380,9 +386,9 @@ class JianpuEditor(ft.Column):
                 self._path.write_text(content, encoding='utf-8')
             self._is_dirty = False
             self._update_title()
-            self._state.append_log(f'已保存: {self._path.name}')
+            self._state.append_log(t("jianpu_editor.log_saved", name=self._path.name))
         except Exception as exc:
-            self._state.append_log(f'保存失败: {exc}')
+            self._state.append_log(t("jianpu_editor.log_save_failed", exc=exc))
 
     def _handle_keyboard(self, e: ft.KeyboardEvent) -> None:
         if not e.ctrl:
@@ -459,7 +465,7 @@ class JianpuEditor(ft.Column):
 
     async def _export_pdf_ask_dir(self) -> None:
         if self._path is None:
-            self._state.append_log('导出失败：请先加载简谱文件')
+            self._state.append_log(t("jianpu_editor.error_export_no_file"))
             return
         # 先保存最新内容
         try:
@@ -467,9 +473,10 @@ class JianpuEditor(ft.Column):
             with self._file_lock:
                 self._path.write_text(content, encoding='utf-8')
         except Exception as exc:
-            self._state.append_log(f'保存失败（导出前）: {exc}')
+            self._state.append_log(t("jianpu_editor.log_save_failed_pre_export", exc=exc))
             return
-        dest_str = await self._export_dir_picker.get_directory_path(dialog_title='选择 PDF 导出目录')
+        dest_str = await self._export_dir_picker.get_directory_path(
+            dialog_title=t("jianpu_editor.dir_picker_export_pdf"))
         if not dest_str:
             return
         dest_dir = Path(dest_str)
@@ -485,11 +492,11 @@ class JianpuEditor(ft.Column):
             if txt_path is None:
                 return
             ly_path  = txt_path.with_suffix('.ly')
-            self._state.append_log(f'正在生成 LilyPond 中间文件: {ly_path.name}')
+            self._state.append_log(t("jianpu_editor.log_generating_ly", name=ly_path.name))
             with self._file_lock:
                 ok = render_jianpu_ly(txt_path, ly_path)
             if not ok:
-                self._state.append_log('jianpu-ly 转换失败，请确认 LilyPond 与 jianpu-ly.py 已安装')
+                self._state.append_log(t("jianpu_editor.error_jianpu_ly_failed"))
                 return
             # 规范化 .ly 文件：注入 CJK 字体与 \markup 标题块，与转换流水线保持一致
             try:
@@ -503,16 +510,16 @@ class JianpuEditor(ft.Column):
                 sanitize_generated_lilypond_file(ly_path, _title)
             except Exception:
                 pass
-            self._state.append_log('正在渲染 PDF…')
+            self._state.append_log(t("jianpu_editor.log_rendering_pdf"))
             pdf_path = render_lilypond_pdf(ly_path)
             if pdf_path and pdf_path.exists():
                 dest_pdf = dest_dir / pdf_path.name
                 shutil.copy2(str(pdf_path), str(dest_pdf))
-                self._state.append_log(f'PDF 已导出: {dest_pdf}')
+                self._state.append_log(t("jianpu_editor.log_pdf_exported", path=dest_pdf))
             else:
-                self._state.append_log('PDF 渲染失败，请检查 LilyPond 安装')
+                self._state.append_log(t("jianpu_editor.error_pdf_render_failed"))
         except Exception as exc:
-            self._state.append_log(f'导出 PDF 出错: {exc}')
+            self._state.append_log(t("jianpu_editor.error_export_exc", exc=exc))
         finally:
             # 清理中间文件：.ly、LilyPond 顺带生成的 .midi、以及已复制到目标目录的 .pdf
             for _tmp in (
@@ -563,7 +570,7 @@ class JianpuEditor(ft.Column):
         self._redo_stack = []
         self._is_dirty = False
         self._preview_active = False
-        self._view_toggle_btn.content = '简谱'
+        self._view_toggle_btn.content = t("jianpu_editor.toggle_jianpu")
         self._view_toggle_btn.style = ft.ButtonStyle(color=Palette.PRIMARY)
         if self._symbol_panel in self.controls:
             self.controls.remove(self._symbol_panel)

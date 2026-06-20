@@ -15,6 +15,7 @@ import flet as ft
 from ..app_state import AppState, Event
 from core.app.backend import output_dir, editor_workspace_dir, build_dir
 from ..components.pdf_viewer import PdfViewer
+from ..strings import t
 from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
 
 
@@ -38,7 +39,7 @@ class JianpuPreviewPage(ft.Row):
             icon=ft.Icons.PLAY_CIRCLE_OUTLINE_ROUNDED,
             icon_size=18,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='播放 MIDI',
+            tooltip=t('common.tooltip_play_midi'),
             on_click=self._on_play_midi,
         )
         self._viewer = PdfViewer(extra_controls=[self._play_midi_icon_btn])
@@ -54,7 +55,7 @@ class JianpuPreviewPage(ft.Row):
                 [
                     ft.Icon(ft.Icons.MUSIC_NOTE_OUTLINED, size=40, color=ft.Colors.OUTLINE),
                     ft.Text(
-                        '请先识别乐谱文件\n或点击刷新按钮',
+                        t('common.empty_score_hint'),
                         size=13,
                         color=ft.Colors.OUTLINE,
                         text_align=ft.TextAlign.CENTER,
@@ -72,7 +73,7 @@ class JianpuPreviewPage(ft.Row):
             icon=ft.Icons.CHECK_BOX_OUTLINE_BLANK,
             icon_size=17,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='全选 / 全不选',
+            tooltip=t('common.tooltip_toggle_select_all'),
             on_click=self._on_select_all,
             width=28,
             height=28,
@@ -82,7 +83,7 @@ class JianpuPreviewPage(ft.Row):
             icon=ft.Icons.REFRESH_ROUNDED,
             icon_size=17,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='刷新列表',
+            tooltip=t('common.tooltip_refresh_list'),
             on_click=lambda _: self.reload(),
             width=28,
             height=28,
@@ -92,7 +93,7 @@ class JianpuPreviewPage(ft.Row):
             icon=ft.Icons.DOWNLOAD_ROUNDED,
             icon_size=17,
             icon_color=Palette.PRIMARY,
-            tooltip='导出已勾选的简谱',
+            tooltip=t('jianpu_preview.tooltip_export_checked'),
             on_click=self._on_export_click,
             width=28,
             height=28,
@@ -102,7 +103,7 @@ class JianpuPreviewPage(ft.Row):
             icon=ft.Icons.DELETE_OUTLINE_ROUNDED,
             icon_size=17,
             icon_color=Palette.ERROR,
-            tooltip='删除已勾选的简谱',
+            tooltip=t('jianpu_preview.tooltip_delete_checked'),
             on_click=self._on_delete_checked_click,
             width=28,
             height=28,
@@ -112,7 +113,7 @@ class JianpuPreviewPage(ft.Row):
         sidebar_header = ft.Container(
             content=ft.Row(
                 [
-                    ft.Row([self._select_all_btn, section_title('简谱文件')], spacing=0),
+                    ft.Row([self._select_all_btn, section_title(t('jianpu_preview.section_title'))], spacing=0),
                     ft.Container(expand=True),
                     self._export_btn,
                     self._delete_checked_btn,
@@ -139,7 +140,7 @@ class JianpuPreviewPage(ft.Row):
 
         export_jianpu_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), ft.Text('导出简谱', size=14)],
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=15), ft.Text(t('jianpu_preview.button_export'), size=14)],
                 tight=True,
                 spacing=6,
             ),
@@ -154,11 +155,11 @@ class JianpuPreviewPage(ft.Row):
 
         self._regen_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.REFRESH_ROUNDED, size=15), ft.Text('重新渲染', size=14)],
+                [ft.Icon(ft.Icons.REFRESH_ROUNDED, size=15), ft.Text(t('jianpu_preview.button_re_render'), size=14)],
                 tight=True,
                 spacing=6,
             ),
-            tooltip='从编辑器文本重新生成简谱 PDF（无需重跑识别）',
+            tooltip=t('jianpu_preview.tooltip_re_render_from_text'),
             on_click=self._on_regenerate_click,
             style=ft.ButtonStyle(
                 color=ft.Colors.ON_SURFACE_VARIANT,
@@ -170,7 +171,7 @@ class JianpuPreviewPage(ft.Row):
 
         edit_jianpu_btn = ft.OutlinedButton(
             content=ft.Row(
-                [ft.Icon(ft.Icons.EDIT_NOTE_ROUNDED, size=16), ft.Text('简谱编辑', size=14)],
+                [ft.Icon(ft.Icons.EDIT_NOTE_ROUNDED, size=16), ft.Text(t('common.jianpu_edit'), size=14)],
                 tight=True,
                 spacing=6,
             ),
@@ -307,16 +308,16 @@ class JianpuPreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('删除简谱文件', size=15, font_family=FONT_EMPHASIS),
+            title=ft.Text(t('jianpu_preview.delete_dialog_title'), size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
-                f'将永久删除：{path.name} 及其关联的 MIDI 和编辑文本。',
+                t('jianpu_preview.delete_dialog_body', name=path.name),
                 size=13,
                 color=ft.Colors.ON_SURFACE,
             ),
             actions=[
-                ft.TextButton('取消', on_click=_cancel),
+                ft.TextButton(t('common.cancel'), on_click=_cancel),
                 ft.FilledButton(
-                    '删除',
+                    t('common.delete'),
                     on_click=_do,
                     style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
                 ),
@@ -354,16 +355,16 @@ class JianpuPreviewPage(ft.Row):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('批量删除简谱文件', size=15, font_family=FONT_EMPHASIS),
+            title=ft.Text(t('jianpu_preview.batch_delete_dialog_title'), size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(
-                f'将永久删除已勾选的 {n} 个简谱文件及其关联文件。',
+                t('jianpu_preview.batch_delete_dialog_body', n=n),
                 size=13,
                 color=ft.Colors.ON_SURFACE,
             ),
             actions=[
-                ft.TextButton('取消', on_click=_cancel),
+                ft.TextButton(t('common.cancel'), on_click=_cancel),
                 ft.FilledButton(
-                    '删除',
+                    t('common.delete'),
                     on_click=_do,
                     style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
                 ),
@@ -403,7 +404,7 @@ class JianpuPreviewPage(ft.Row):
                         icon=ft.Icons.CLOSE_ROUNDED,
                         icon_size=12,
                         icon_color=ft.Colors.OUTLINE,
-                        tooltip='删除此文件',
+                        tooltip=t('common.tooltip_delete_file'),
                         on_click=lambda _, p=path: self._on_delete_single(p),
                         width=24,
                         height=24,
@@ -499,7 +500,7 @@ class JianpuPreviewPage(ft.Row):
             except Exception as exc:
                 try:
                     self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                        content=ft.Text(f'无法打开 MIDI 文件: {exc}', size=14),
+                        content=ft.Text(t('common.midi_open_failed', exc=exc), size=14),
                         duration=3000,
                     ))
                 except Exception:
@@ -507,7 +508,7 @@ class JianpuPreviewPage(ft.Row):
         else:
             try:
                 self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                    content=ft.Text(f'未找到 MIDI 文件：{midi_path.name}', size=14),
+                    content=ft.Text(t('common.midi_not_found', name=midi_path.name), size=14),
                     duration=3000,
                 ))
             except Exception:
@@ -519,7 +520,7 @@ class JianpuPreviewPage(ft.Row):
         if self._current_path is None:
             try:
                 self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                    content=ft.Text('请先选择要重新渲染的简谱文件', size=14),
+                    content=ft.Text(t('jianpu_preview.error_select_for_render'), size=14),
                     duration=2000,
                 ))
             except Exception:
@@ -532,7 +533,7 @@ class JianpuPreviewPage(ft.Row):
         if not txt_path.exists():
             try:
                 self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                    content=ft.Text(f'未找到对应的简谱文本文件：{txt_path.name}', size=14),
+                    content=ft.Text(t('jianpu_preview.error_txt_not_found', name=txt_path.name), size=14),
                     duration=3000,
                 ))
             except Exception:
@@ -559,7 +560,7 @@ class JianpuPreviewPage(ft.Row):
             # jianpu-ly 文本 → .ly
             ok = render_jianpu_ly(txt_path, ly_path)
             if not ok or not ly_path.exists():
-                self._show_snack('重新渲染失败：jianpu-ly 转换出错')
+                self._show_snack(t('jianpu_preview.error_re_render_jianpu_ly'))
                 return
 
             # 注入 CJK 字体与标题
@@ -576,7 +577,7 @@ class JianpuPreviewPage(ft.Row):
             # .ly → PDF
             pdf_path = render_lilypond_pdf(ly_path)
             if pdf_path is None or not pdf_path.exists():
-                self._show_snack('重新渲染失败：LilyPond 未能生成 PDF')
+                self._show_snack(t('jianpu_preview.error_re_render_lilypond'))
                 return
 
             # 覆写 Output/ 中的旧 PDF
@@ -591,9 +592,9 @@ class JianpuPreviewPage(ft.Row):
                     except Exception:
                         pass
 
-            self._show_snack(f'重新渲染完成 → {out_pdf.name}')
+            self._show_snack(t('jianpu_preview.re_render_done', name=out_pdf.name))
         except Exception as exc:
-            self._show_snack(f'重新渲染出错: {exc}')
+            self._show_snack(t('jianpu_preview.re_render_error', exc=exc))
         finally:
             if tmp_dir is not None:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -636,7 +637,7 @@ class JianpuPreviewPage(ft.Row):
         if self._current_path is None:
             try:
                 self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                    content=ft.Text('请先选择要导出的简谱文件', size=14),
+                    content=ft.Text(t('jianpu_preview.error_select_for_export'), size=14),
                     duration=2000,
                 ))
             except Exception:
@@ -650,7 +651,7 @@ class JianpuPreviewPage(ft.Row):
         pdf = self._current_path
         self._save_picker.file_name = pdf.name
         dest_str = await self._save_picker.save_file(
-            dialog_title='导出简谱 PDF',
+            dialog_title=t('jianpu_preview.file_picker_export'),
             file_name=pdf.name,
             allowed_extensions=['pdf'],
         )
@@ -658,9 +659,9 @@ class JianpuPreviewPage(ft.Row):
             return
         try:
             shutil.copy2(str(pdf), dest_str)
-            self._state.emit(Event.PROGRESS_DONE, message=f'已导出 → {Path(dest_str).name}')
+            self._state.emit(Event.PROGRESS_DONE, message=t('jianpu_preview.export_single_done', name=Path(dest_str).name))
         except Exception as exc:
-            self._state.emit(Event.PROGRESS_DONE, message=f'导出失败: {exc}')
+            self._state.emit(Event.PROGRESS_DONE, message=t('common.export_failed_exc', exc=exc))
 
     # ── 批量导出 ────────────────────────────────────────────────
 
@@ -668,7 +669,7 @@ class JianpuPreviewPage(ft.Row):
         if not self._checked:
             try:
                 self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                    content=ft.Text('请先勾选要导出的简谱文件', size=14),
+                    content=ft.Text(t('jianpu_preview.error_checked_for_export'), size=14),
                     duration=2000,
                 ))
             except Exception:
@@ -677,7 +678,7 @@ class JianpuPreviewPage(ft.Row):
         self.page.run_task(self._pick_export_dir_async)  # type: ignore[attr-defined]
 
     async def _pick_export_dir_async(self) -> None:
-        await self._export_picker.get_directory_path(dialog_title='选择导出目标目录')
+        await self._export_picker.get_directory_path(dialog_title=t('jianpu_preview.dir_picker_export'))
 
     def _on_export_result(self, e: ft.FilePickerResultEvent) -> None:
         if not e.path:
@@ -692,7 +693,7 @@ class JianpuPreviewPage(ft.Row):
             except Exception as exc:
                 failed.append(f'{pdf.name}: {exc}')
         if failed:
-            msg = f'导出完成：{exported} 个成功，{len(failed)} 个失败'
+            msg = t('jianpu_preview.export_done_counts', success=exported, fail=len(failed))
         else:
-            msg = f'已导出 {exported} 个简谱至 {dest}'
+            msg = t('jianpu_preview.export_done_summary', n=exported, dest=dest)
         self._state.emit(Event.PROGRESS_DONE, message=msg)

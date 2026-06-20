@@ -9,6 +9,7 @@ import webbrowser
 import flet as ft
 
 from ..theme import Palette, with_alpha, FONT_EMPHASIS
+from ..strings import t
 from core.config import APP_VERSION
 
 
@@ -87,7 +88,7 @@ class AboutPage(ft.Column):
                              border_radius=ft.BorderRadius.all(12)),
                     ft.Text('SumisoraOMR', size=24,
                             font_family=FONT_EMPHASIS, color=ft.Colors.ON_SURFACE),
-                    ft.Text('五线谱识别与简谱生成工具', size=15, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(t('about.subtitle'), size=15, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(f'v{APP_VERSION}', size=13, color=Palette.PRIMARY,
                                         font_family=FONT_EMPHASIS),
@@ -105,7 +106,7 @@ class AboutPage(ft.Column):
         author_card = _card(
             ft.Column(
                 [
-                    ft.Text('作者', size=14, font_family=FONT_EMPHASIS,
+                    ft.Text(t('about.author_label'), size=14, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
@@ -115,7 +116,7 @@ class AboutPage(ft.Column):
                         spacing=8,
                     ),
                     ft.Divider(height=1, color=ft.Colors.OUTLINE_VARIANT),
-                    ft.Text('项目主页', size=14, font_family=FONT_EMPHASIS,
+                    ft.Text(t('about.homepage_label'), size=14, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Row(
                         [
@@ -142,7 +143,7 @@ class AboutPage(ft.Column):
         license_card = _card(
             ft.Column(
                 [
-                    ft.Text('开源许可证 (AGPL-3.0)', size=14, font_family=FONT_EMPHASIS,
+                    ft.Text(t('about.license_label'), size=14, font_family=FONT_EMPHASIS,
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(

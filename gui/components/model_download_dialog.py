@@ -17,6 +17,7 @@ from typing import Optional, Callable
 import flet as ft
 
 from ..app_state import AppState, Event
+from ..strings import t
 from ..theme import FONT_EMPHASIS
 
 
@@ -33,9 +34,9 @@ class ModelDownloadDialog:
 
     # 下载源选项 (name, label, description). 'auto' 默认（探测最快源）。
     _SOURCE_OPTIONS = [
-        ('auto',       '自动选择',          '自动检测延迟最低的可用源（推荐）'),
-        ('modelscope', 'ModelScope',       'ModelScope CDN — 大陆访问优先'),
-        ('github',     'GitHub Releases',  'GitHub — 海外访问优先'),
+        ('auto',       t("model_download.source_auto_label"),       t("model_download.source_auto_desc")),
+        ('modelscope', t("model_download.source_modelscope_label"), t("model_download.source_modelscope_desc")),
+        ('github',     t("model_download.source_github_label"),     t("model_download.source_github_desc")),
     ]
 
     def __init__(self,
@@ -77,13 +78,13 @@ class ModelDownloadDialog:
         """Build a bare AlertDialog whose title/content/actions are set per state."""
         return ft.AlertDialog(
             modal=True,
-            title=ft.Text("HOMR 模型权重", size=16, font_family=FONT_EMPHASIS),
+            title=ft.Text(t("model_download.dialog_title"), size=16, font_family=FONT_EMPHASIS),
         )
 
     def _render_picker(self) -> None:
         """PICKER state: source selector + confirm/cancel buttons."""
         self._source_selector = ft.Dropdown(
-            label="下载源",
+            label=t("model_download.label_source"),
             value='auto',
             options=[ft.dropdown.Option(name, label)
                      for name, label, _desc in self._SOURCE_OPTIONS],
@@ -96,13 +97,13 @@ class ModelDownloadDialog:
             size=12, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
         )
         intro = ft.Text(
-            "选择下载源后点击「开始下载」。HOMR 模型约 292 MB（GitHub 源以压缩包分发，实际下载约 265 MB），下载到 models/ 目录。",
+            t("model_download.intro_text"),
             size=12, color=ft.Colors.ON_SURFACE_VARIANT,
         )
 
         if self._dialog is None:
             return
-        self._dialog.title = ft.Text("下载 HOMR 模型权重",
+        self._dialog.title = ft.Text(t("model_download.picker_dialog_title"),
                                      size=16, font_family=FONT_EMPHASIS)
         self._dialog.content = ft.Column(
             [
@@ -114,8 +115,8 @@ class ModelDownloadDialog:
             tight=True, spacing=4, width=420,
         )
         self._dialog.actions = [
-            ft.TextButton("取消",     on_click=self._on_picker_cancel),
-            ft.ElevatedButton("开始下载", on_click=self._on_picker_confirm),
+            ft.TextButton(t("common.cancel"),     on_click=self._on_picker_cancel),
+            ft.ElevatedButton(t("model_download.button_start_download"), on_click=self._on_picker_confirm),
         ]
         try:
             self._page.update()
@@ -124,17 +125,17 @@ class ModelDownloadDialog:
 
     def _render_progress(self) -> None:
         """DOWNLOADING state: progress UI + cancel button."""
-        self._source_text  = ft.Text("当前源: 测试中…",
+        self._source_text  = ft.Text(t("model_download.source_status_testing"),
                                      size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-        self._file_text    = ft.Text("准备中…", size=13)
+        self._file_text    = ft.Text(t("model_download.file_status_preparing"), size=13)
         self._size_text    = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-        self._overall_text = ft.Text("0 / ? MB", size=12,
+        self._overall_text = ft.Text(t("model_download.progress_initial"), size=12,
                                      color=ft.Colors.ON_SURFACE_VARIANT)
         self._overall_bar  = ft.ProgressBar(value=0, expand=True)
 
         if self._dialog is None:
             return
-        self._dialog.title = ft.Text("正在下载 HOMR 模型权重",
+        self._dialog.title = ft.Text(t("model_download.downloading_dialog_title"),
                                      size=16, font_family=FONT_EMPHASIS)
         self._dialog.content = ft.Column(
             [
@@ -148,7 +149,7 @@ class ModelDownloadDialog:
             tight=True, spacing=4, width=420,
         )
         self._dialog.actions = [
-            ft.TextButton("取消", on_click=self._on_progress_cancel),
+            ft.TextButton(t("common.cancel"), on_click=self._on_progress_cancel),
         ]
         try:
             self._page.update()
@@ -159,15 +160,15 @@ class ModelDownloadDialog:
         """ERROR state: error message + retry/close buttons."""
         if self._dialog is None:
             return
-        self._dialog.title = ft.Text("下载出错",
+        self._dialog.title = ft.Text(t("model_download.error_dialog_title"),
                                      size=16, font_family=FONT_EMPHASIS)
         self._dialog.content = ft.Column(
             [ft.Text(msg, size=13)],
             tight=True, spacing=4, width=420,
         )
         self._dialog.actions = [
-            ft.TextButton("重试", on_click=self._on_error_retry),
-            ft.TextButton("关闭", on_click=self._on_error_close),
+            ft.TextButton(t("model_download.button_retry"), on_click=self._on_error_retry),
+            ft.TextButton(t("common.close"), on_click=self._on_error_close),
         ]
         try:
             self._page.update()
@@ -254,13 +255,13 @@ class ModelDownloadDialog:
         except DownloadCancelled:
             return  # dialog closed or user cancelled
         except NoSourceAvailable:
-            self._marshal(self._render_error, "下载失败 — 请检查网络连接")
+            self._marshal(self._render_error, t("model_download.error_no_source"))
             return
         except HashMismatch as e:
-            self._marshal(self._render_error, f"权重文件校验失败：{e}")
+            self._marshal(self._render_error, t("model_download.error_hash_mismatch", exc=e))
             return
         except Exception as e:
-            self._marshal(self._render_error, f"下载失败：{e}")
+            self._marshal(self._render_error, t("model_download.error_generic", exc=e))
             return
 
         # Success
@@ -288,20 +289,29 @@ class ModelDownloadDialog:
             if self._file_text is None:
                 return  # dialog closed or in non-progress state
             display_name = fname[:50] + ('…' if len(fname) > 50 else '')
-            self._file_text.value = f"下载中 ({idx + 1}/{total_files}): {display_name}"
+            self._file_text.value = t(
+                "model_download.file_progress",
+                index=idx + 1, total=total_files, name=display_name,
+            )
             if file_total > 0:
                 pct = file_done * 100 // file_total
-                self._size_text.value = (
-                    f"{file_done // 1024 // 1024} / "
-                    f"{file_total // 1024 // 1024} MB ({pct}%)"
+                self._size_text.value = t(
+                    "model_download.file_size_progress",
+                    done=file_done // 1024 // 1024,
+                    total=file_total // 1024 // 1024,
+                    pct=pct,
                 )
             else:
-                self._size_text.value = f"{file_done // 1024 // 1024} MB"
+                self._size_text.value = t(
+                    "model_download.file_size_progress_no_total",
+                    done=file_done // 1024 // 1024,
+                )
             if overall_total > 0 and self._overall_bar is not None:
                 self._overall_bar.value = overall_done / overall_total
-                self._overall_text.value = (
-                    f"{overall_done // 1024 // 1024} / "
-                    f"{overall_total // 1024 // 1024} MB"
+                self._overall_text.value = t(
+                    "model_download.overall_progress",
+                    done=overall_done // 1024 // 1024,
+                    total=overall_total // 1024 // 1024,
                 )
             try:
                 self._page.update()
@@ -316,10 +326,12 @@ class ModelDownloadDialog:
             is_modelscope = "modelscope" in source
             sel = getattr(self, '_selected_source', 'auto')
             if sel == 'auto':
-                label = "ModelScope" if is_modelscope else "GitHub（备用）"
+                label = (t("model_download.source_auto_modelscope") if is_modelscope
+                          else t("model_download.source_auto_github_fallback"))
             else:
-                label = "ModelScope" if is_modelscope else "GitHub"
-            self._source_text.value = f"当前源: {label}"
+                label = (t("model_download.source_label_modelscope") if is_modelscope
+                          else t("model_download.source_label_github"))
+            self._source_text.value = t("model_download.source_status", label=label)
             try:
                 self._page.update()
             except Exception:

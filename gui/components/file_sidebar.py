@@ -13,6 +13,7 @@ from typing import Optional
 from ..app_state import AppState, Event
 from core.app.backend import app_base_dir
 from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
+from ..strings import t
 
 
 class FileSidebar(ft.Column):
@@ -45,7 +46,7 @@ class FileSidebar(ft.Column):
             icon=ft.Icons.CHECK_BOX_OUTLINE_BLANK,
             icon_size=17,
             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-            tooltip='全选 / 全不选',
+            tooltip=t('common.tooltip_toggle_select_all'),
             on_click=self._on_select_all_click,
             width=28,
             height=28,
@@ -55,7 +56,7 @@ class FileSidebar(ft.Column):
             icon=ft.Icons.DELETE_OUTLINE_ROUNDED,
             icon_size=18,
             icon_color=Palette.ERROR,
-            tooltip='删除已勾选的文件',
+            tooltip=t('file_sidebar.tooltip_delete_checked'),
             on_click=self._on_batch_delete_click,
             disabled=True,
         )
@@ -65,7 +66,7 @@ class FileSidebar(ft.Column):
                 ft.Row(
                     [
                         self._select_all_btn,
-                        section_title('文件列表', self._state.dark_mode),
+                        section_title(t('file_sidebar.section_title'), self._state.dark_mode),
                     ],
                     spacing=0,
                 ),
@@ -76,14 +77,14 @@ class FileSidebar(ft.Column):
                             icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED,
                             icon_size=18,
                             icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                            tooltip='添加文件夹',
+                            tooltip=t('file_sidebar.tooltip_add_folder'),
                             on_click=self._on_add_folder_click,
                         ),
                         ft.IconButton(
                             icon=ft.Icons.ADD_ROUNDED,
                             icon_size=18,
                             icon_color=Palette.PRIMARY,
-                            tooltip='添加文件',
+                            tooltip=t('file_sidebar.tooltip_add_file'),
                             on_click=self._on_add_click,
                         ),
                     ],
@@ -103,21 +104,21 @@ class FileSidebar(ft.Column):
                 [
                     ft.Icon(ft.Icons.QUEUE_MUSIC_ROUNDED, size=40, color=ft.Colors.OUTLINE),
                     ft.Text(
-                        '还没有乐谱文件',
+                        t('file_sidebar.empty_hint'),
                         size=13,
                         color=ft.Colors.OUTLINE,
                         text_align=ft.TextAlign.CENTER,
                     ),
                     ft.TextButton(
                         content=ft.Row(
-                            [ft.Icon(ft.Icons.ADD_ROUNDED, size=16), ft.Text('添加文件', size=13)],
+                            [ft.Icon(ft.Icons.ADD_ROUNDED, size=16), ft.Text(t('file_sidebar.button_add_file'), size=13)],
                             tight=True, spacing=4,
                         ),
                         on_click=self._on_add_click,
                         style=ft.ButtonStyle(color=Palette.PRIMARY),
                     ),
                     ft.Text(
-                        '支持 PDF / PNG / JPG\n也可直接放入 Input 文件夹',
+                        t('file_sidebar.empty_supported_formats'),
                         size=11,
                         color=ft.Colors.OUTLINE,
                         text_align=ft.TextAlign.CENTER,
@@ -204,15 +205,15 @@ class FileSidebar(ft.Column):
 
             _confirm_dlg = ft.AlertDialog(
                 modal=True,
-                title=ft.Text('删除文件', size=15, font_family=FONT_EMPHASIS),
+                title=ft.Text(t('file_sidebar.delete_dialog_title'), size=15, font_family=FONT_EMPHASIS),
                 content=ft.Text(
-                    f'将从 Input 文件夹中永久删除：\n{p.name}',
+                    t('file_sidebar.delete_dialog_body', name=p.name),
                     size=13,
                     color=ft.Colors.ON_SURFACE,
                 ),
                 actions=[
-                    ft.TextButton('取消', on_click=_cancel),
-                    ft.FilledButton('删除', on_click=_do_delete),
+                    ft.TextButton(t('common.cancel'), on_click=_cancel),
+                    ft.FilledButton(t('common.delete'), on_click=_do_delete),
                 ],
                 actions_alignment=ft.MainAxisAlignment.END,
             )
@@ -244,7 +245,7 @@ class FileSidebar(ft.Column):
                         icon=ft.Icons.CLOSE_ROUNDED,
                         icon_size=12,
                         icon_color=ft.Colors.OUTLINE,
-                        tooltip='从 Input 文件夹删除',
+                        tooltip=t('file_sidebar.tooltip_remove_from_input'),
                         on_click=_on_remove,
                         width=24,
                         height=24,
@@ -292,12 +293,12 @@ class FileSidebar(ft.Column):
 
         if m > 0:
             msg = (
-                f'将永久删除 {m} 个 Input 文件夹中的文件，另有 {n - m} 个仅从列表移除。'
+                t('file_sidebar.batch_delete_body_mixed', m=m, n=n - m)
                 if n > m else
-                f'将永久删除 {n} 个 Input 文件夹中的文件。'
+                t('file_sidebar.batch_delete_body_all_input', n=n)
             )
         else:
-            msg = f'将从列表移除 {n} 个文件（不删除磁盘文件）。'
+            msg = t('file_sidebar.batch_delete_body_list_only', n=n)
 
         def _do(_e) -> None:
             self.page.pop_dialog()
@@ -319,12 +320,12 @@ class FileSidebar(ft.Column):
 
         self.page.show_dialog(ft.AlertDialog(
             modal=True,
-            title=ft.Text('批量删除文件', size=15, font_family=FONT_EMPHASIS),
+            title=ft.Text(t('file_sidebar.batch_delete_dialog_title'), size=15, font_family=FONT_EMPHASIS),
             content=ft.Text(msg, size=13, color=ft.Colors.ON_SURFACE),
             actions=[
-                ft.TextButton('取消', on_click=_cancel),
+                ft.TextButton(t('common.cancel'), on_click=_cancel),
                 ft.FilledButton(
-                    '删除',
+                    t('common.delete'),
                     on_click=_do,
                     style=ft.ButtonStyle(bgcolor=Palette.ERROR, color='#FFFFFF'),
                 ),
@@ -344,7 +345,7 @@ class FileSidebar(ft.Column):
         input_dir = app_base_dir() / 'Input'
         init_dir = str(input_dir) if input_dir.exists() else None
         files = await self._file_picker.pick_files(
-            dialog_title='选择乐谱文件',
+            dialog_title=t('file_sidebar.file_picker_select_score'),
             allowed_extensions=['pdf', 'png', 'jpg', 'jpeg'],
             allow_multiple=True,
             initial_directory=init_dir,
@@ -358,7 +359,7 @@ class FileSidebar(ft.Column):
         input_dir = app_base_dir() / 'Input'
         init_dir = str(input_dir) if input_dir.exists() else None
         folder_path = await self._folder_picker.get_directory_path(
-            dialog_title='选择包含乐谱文件的文件夹',
+            dialog_title=t('file_sidebar.folder_picker_select'),
             initial_directory=init_dir,
         )
         if not folder_path:
@@ -385,7 +386,7 @@ class FileSidebar(ft.Column):
         n = len(source_paths)
 
         # ── Progress dialog ──────────────────────────────────────────────────
-        _prog_text = ft.Text('准备中…', size=13, color=ft.Colors.ON_SURFACE)
+        _prog_text = ft.Text(t('file_sidebar.import_preparing'), size=13, color=ft.Colors.ON_SURFACE)
         _prog_bar  = ft.ProgressBar(
             value=0,
             width=340,
@@ -395,7 +396,7 @@ class FileSidebar(ft.Column):
         )
         _dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text(f'导入 {n} 个文件', size=15, font_family=FONT_EMPHASIS),
+            title=ft.Text(t('file_sidebar.import_dialog_title', n=n), size=15, font_family=FONT_EMPHASIS),
             content=ft.Column(
                 [_prog_text, _prog_bar],
                 spacing=14,
@@ -409,7 +410,7 @@ class FileSidebar(ft.Column):
         # ── Copy loop ────────────────────────────────────────────────────────
         copied: list[Path] = []
         for i, src in enumerate(source_paths):
-            _prog_text.value = f'({i + 1}/{n})  {src.name}'
+            _prog_text.value = t('file_sidebar.import_progress', index=i + 1, total=n, name=src.name)
             _prog_bar.value  = i / n
             self.page.update()  # push progress delta before yielding to copy thread
 
@@ -439,7 +440,7 @@ class FileSidebar(ft.Column):
                 copied.append(src)  # fallback: keep original path
 
         # ── Registration phase (batch, single UI update) ─────────────────────
-        _prog_text.value = f'正在整理 {len(copied)} 个文件…'
+        _prog_text.value = t('file_sidebar.import_organizing', n=len(copied))
         _prog_bar.value  = 1.0
         self.page.update()
         await asyncio.sleep(0)  # let the "整理中" state render
