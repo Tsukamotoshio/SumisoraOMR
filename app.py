@@ -553,8 +553,17 @@ async def main(page: ft.Page) -> None:
                 ft.ControlState.PRESSED: '#AAF44336',
             },
         ),
-        on_click=lambda _: page.run_task(page.window.close),
+        on_click=lambda _: page.run_task(_close_window),
     )
+
+    async def _close_window() -> None:
+        # 关闭窗口会让 Flutter 断开 WebSocket、销毁会话；若 close() 的远程调用
+        # 在会话销毁之后才落地，invoke_method 会抛 "Session closed"。这是关闭时的
+        # 良性竞态（窗口照常关闭），吞掉异常即可，避免退出时打印无意义的 traceback。
+        try:
+            await page.window.close()
+        except Exception:
+            pass
 
     _titlebar = ft.Container(
         content=ft.Row(
