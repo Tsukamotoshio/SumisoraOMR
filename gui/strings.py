@@ -41,9 +41,11 @@ STRINGS: dict[str, dict[str, str]] = {
     "common.midi_not_found": {"zh": "未找到 MIDI 文件：{name}", "en": "MIDI file not found: {name}"},
 
     # ── app.py ───────────────────────────────────────────────────────────────
-    "app.nav_landing": {"zh": "乐谱识别", "en": "Score Recognition"},
-    "app.nav_editor": {"zh": "简谱预览", "en": "Jianpu Preview"},
-    "app.nav_score_preview": {"zh": "五线谱预览", "en": "Staff Preview"},
+    # NOTE: nav-rail labels sit under an icon in a ~80px-wide column, so the
+    # English text must stay short (single word) to avoid ugly wrapping.
+    "app.nav_landing": {"zh": "乐谱识别", "en": "Recognize"},
+    "app.nav_editor": {"zh": "简谱预览", "en": "Jianpu"},
+    "app.nav_score_preview": {"zh": "五线谱预览", "en": "Staff"},
     "app.nav_about": {"zh": "关于", "en": "About"},
     "app.window_title": {"zh": "SumisoraOMR", "en": "SumisoraOMR"},
     "app.tooltip_hide_label": {"zh": "隐藏标签", "en": "Hide Labels"},
@@ -65,6 +67,40 @@ STRINGS: dict[str, dict[str, str]] = {
     "about.author_label": {"zh": "作者", "en": "Author"},
     "about.homepage_label": {"zh": "项目主页", "en": "Project Homepage"},
     "about.license_label": {"zh": "开源许可证 (AGPL-3.0)", "en": "Open Source License (AGPL-3.0)"},
+    "about.license_text": {
+        "zh": (
+            "GNU Affero General Public License v3.0\n\n"
+            "Copyright (c) 2026 Tsukamotoshio\n\n"
+            "本程序是自由软件：您可以根据自由软件基金会发布的 GNU Affero 通用公共许可证\n"
+            "（第 3 版或更高版本）重新分发或修改它。\n\n"
+            "本程序的发布是希望它有用，但不提供任何担保；甚至不提供对适销性或特定用途\n"
+            "适用性的隐含担保。详情请参阅 GNU Affero 通用公共许可证。\n\n"
+            "您应该已收到 GNU Affero 通用公共许可证的副本；如未收到，请访问：\n"
+            "https://www.gnu.org/licenses/agpl-3.0.html\n\n"
+            "附加条款：若您通过网络向用户提供此程序的修改版本，您必须向所有与之交互的\n"
+            "用户提供获取对应源代码的途径（AGPL-3.0 第 13 条）。\n\n"
+            "完整许可证文本：https://github.com/Tsukamotoshio/SumisoraOMR/blob/main/LICENSE"
+        ),
+        "en": (
+            "GNU Affero General Public License v3.0\n\n"
+            "Copyright (c) 2026 Tsukamotoshio\n\n"
+            "This program is free software: you can redistribute it and/or modify it\n"
+            "under the terms of the GNU Affero General Public License as published by\n"
+            "the Free Software Foundation, either version 3 of the License, or (at your\n"
+            "option) any later version.\n\n"
+            "This program is distributed in the hope that it will be useful, but WITHOUT\n"
+            "ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS\n"
+            "FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more\n"
+            "details.\n\n"
+            "You should have received a copy of the GNU Affero General Public License\n"
+            "along with this program. If not, see:\n"
+            "https://www.gnu.org/licenses/agpl-3.0.html\n\n"
+            "Additional term: If you make a modified version of this program available to\n"
+            "users over a network, you must give all interacting users access to the\n"
+            "corresponding source code (AGPL-3.0 Section 13).\n\n"
+            "Full license text: https://github.com/Tsukamotoshio/SumisoraOMR/blob/main/LICENSE"
+        ),
+    },
 
     # ── gui/pages/editor_page.py ────────────────────────────────────────────
     "editor.error_jianpu_ly_failed": {"zh": "jianpu-ly 转换失败，请确认安装", "en": "jianpu-ly conversion failed — please confirm it's installed"},

@@ -13,26 +13,6 @@ from ..strings import t
 from core.config import APP_VERSION
 
 
-_AGPL_LICENSE = """\
-GNU Affero General Public License v3.0
-
-Copyright (c) 2026 Tsukamotoshio
-
-本程序是自由软件：您可以根据自由软件基金会发布的 GNU Affero 通用公共许可证
-（第 3 版或更高版本）重新分发或修改它。
-
-本程序的发布是希望它有用，但不提供任何担保；甚至不提供对适销性或特定用途
-适用性的隐含担保。详情请参阅 GNU Affero 通用公共许可证。
-
-您应该已收到 GNU Affero 通用公共许可证的副本；如未收到，请访问：
-https://www.gnu.org/licenses/agpl-3.0.html
-
-附加条款：若您通过网络向用户提供此程序的修改版本，您必须向所有与之交互的
-用户提供获取对应源代码的途径（AGPL-3.0 第 13 条）。
-
-完整许可证文本：https://github.com/Tsukamotoshio/SumisoraOMR/blob/main/LICENSE"""
-
-
 class AboutPage(ft.Column):
     """About page: author, project URL, license."""
 
@@ -159,7 +139,7 @@ class AboutPage(ft.Column):
                             color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(
-                            _AGPL_LICENSE,
+                            t('about.license_text'),
                             size=12,
                             color=ft.Colors.ON_SURFACE_VARIANT,
                             font_family='Consolas',
