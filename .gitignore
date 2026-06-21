@@ -52,6 +52,7 @@ scripts/jianpu-ly.py
 /Output/
 /logs/
 /conversion_history.json
+/ui-settings.json
 /test_score.png
 /test_score.ly
 /%STAGING%

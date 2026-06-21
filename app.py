@@ -95,7 +95,8 @@ if __name__ == '__main__' and '--worker' in sys.argv:
 import flet as ft
 
 from gui.app_state import AppState, Event
-from gui.strings import t
+from gui.strings import t, set_language
+from gui.settings import get_saved_language, set_saved_language
 from gui.theme import Palette, with_alpha, make_dark_theme, make_light_theme, FONT_BODY, FONT_EMPHASIS
 from gui.pages.landing_page import LandingPage
 from gui.pages.jianpu_preview_page import JianpuPreviewPage
@@ -241,6 +242,12 @@ async def main(page: ft.Page) -> None:
     state = AppState()
     _check_homr_models(state)
 
+    # 应用上次保存的界面语言（必须在构建任何页面/控件之前，因为各控件在构造时
+    # 即调用 t() 取当前语言的文案）。
+    _saved_lang = get_saved_language()
+    state.language = _saved_lang
+    set_language(_saved_lang)
+
     # 将 core/utils.log_message 重定向到 GUI 日志流
     try:
         import logging as _logging
@@ -370,9 +377,11 @@ async def main(page: ft.Page) -> None:
             ft.NavigationRailDestination(
                 icon=icon_out,
                 selected_icon=icon_sel,
-                label=label,
+                # 用 t() 取当前语言文案，而非 _NAV_ITEMS 里在 import 时冻结的中文标签，
+                # 保证以保存的英文语言启动时导航栏也正确显示。
+                label=t(f'app.nav_{name}'),
             )
-            for _, icon_sel, icon_out, label in _NAV_ITEMS
+            for name, icon_sel, icon_out, _label in _NAV_ITEMS
         ],
         min_width=80,
         min_extended_width=150,
@@ -436,6 +445,7 @@ async def main(page: ft.Page) -> None:
         if state.current_page == 'jianpu_edit':
             return
         state.toggle_language()  # 更新 state.language 并切换 gui.strings 的活动语言
+        set_saved_language(state.language)  # 持久化，下次启动沿用
         # 重新本地化所有持久化控件：导航栏标签、标题栏 tooltip、各页面 retranslate()。
         for i, item in enumerate(_NAV_ITEMS):
             nav_rail.destinations[i].label = t(f'app.nav_{item[0]}')
