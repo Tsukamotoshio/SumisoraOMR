@@ -105,3 +105,8 @@ Project_Convert.code-workspace
 
 # Local Claude Code harness behavior config (machine-specific)
 /claude-code-harness.config.json
+
+# claude-code-harness plugin artifacts (local/machine-specific, not committed)
+/Plans.md
+/harness.toml
+/.claude-plugin/
