@@ -59,7 +59,12 @@ _W_BEAT_ALIGN      =  2   # 合并时值对齐半音符边界
 _W_CLEAN_CONTEXT   =  1   # 同声部且无任何装饰
 _W_ARTICULATION    = -3   # 第二音符含装饰或动态
 _W_BEAM_BOUNDARY   = -2   # beam 组边界（独立发音证据）
-_W_SLUR_PRESENT    = -2   # slur 存在（非 tie 的连线）
+# 候选对已被预过滤为同音高、首尾紧贴（见 _decide 调用处的 groups 分组），
+# 对这类对画连线在传统记谱里几乎只会是延音线，极少是乐句连奏记号
+# （连奏记号通常连接不同音高）；保留惩罚会导致同小节延音线
+# （只能靠 align+clean 的 +3，扛不住 -2）被系统性漏判，只有跨小节
+# （+3 起步）才能越过阈值。故对此场景设为中性而非惩罚。
+_W_SLUR_PRESENT    =  0   # slur 存在（同音高对场景下不构成证据）
 
 _THRESHOLD_TIE     =  2   # score >= 2 → 必然延音
 _THRESHOLD_NON_TIE = -2   # score <= -2 → 必然非延音

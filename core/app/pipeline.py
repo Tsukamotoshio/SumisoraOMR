@@ -343,6 +343,15 @@ def process_single_input_to_jianpu(
         except Exception as _fix_exc:
             log_message(f'  [Homr 后处理] 结构清洗异常（不影响输出）：{_fix_exc}', logging.WARNING)
 
+        # Homr 不输出 <tie> 符号（只有 <slur>），启发式重建延音线
+        try:
+            from ..notation.tie_reconstruction import reconstruct_ties_in_mxl
+            _tie_count = reconstruct_ties_in_mxl(mxl_file)
+            if _tie_count:
+                log_message(f'  [Homr 后处理] 重建延音线 {_tie_count} 对')
+        except Exception as _tie_exc:
+            log_message(f'  [Homr 后处理] 延音线重建异常（不影响输出）：{_tie_exc}', logging.WARNING)
+
     _report_subprogress(0.70, '正在生成简谱 PDF…')
 
     preferred_title = source_file.stem
