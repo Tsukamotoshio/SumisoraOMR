@@ -766,7 +766,6 @@ def _overlay_cjk_title_on_staff_pdf(pdf_path: Path, title: str) -> None:
         from reportlab.pdfgen import canvas as rl_canvas
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.lib.units import pt
 
         # ── 读取原始 PDF，取第一页尺寸 ──────────────────────────────────────
         reader = pypdf.PdfReader(str(pdf_path))
