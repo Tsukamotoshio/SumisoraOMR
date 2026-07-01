@@ -297,8 +297,11 @@ def process_single_input_to_jianpu(
         engine_label = 'Audiveris'
 
         # ── Audiveris 失败时回退到 Homr ─────────────────────────────────────
+        # 注意：这一步只是"尝试回退"，不是终态失败，不能用 ✗ 标记——
+        # worker_main.py 的 GUI 结算页面把日志里的 ✗ 当作文件失败信号扫描，
+        # 若这里用 ✗ 会导致回退成功的文件被误判为"失败"（同时又出现在成功列表里）。
         if omr_out is None:
-            log_message(f'  ✗ Audiveris 处理失败，正在尝试 Homr 引擎作为回退...')
+            log_message(f'  [回退] Audiveris 处理失败，正在尝试 Homr 引擎作为回退...')
             omr_out = _try_run_homr()
             if omr_out is not None:
                 engine_label = 'Homr'
