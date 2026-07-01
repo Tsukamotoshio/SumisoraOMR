@@ -92,6 +92,12 @@ def _patch_log_message() -> None:
                 _current_file_detail['image_type'] = '位图'
             elif '图片格式' in message:
                 _current_file_detail['image_type'] = '位图'
+        # 引擎回退（如 Audiveris 失败后改用 Homr）：标记 fallback_used，
+        # 并把实际生效的引擎更新为回退成功后使用的那个，而不是最初选择的引擎
+        if '[回退]' in message:
+            _current_file_detail['fallback_used'] = True
+        if '回退成功' in message and 'Homr' in message:
+            _current_file_detail['engine_used'] = 'Homr'
         # 继续写入日志文件
         if not _utils.LOGGER.handlers:
             try:
@@ -289,6 +295,7 @@ def run_worker() -> None:
                     'archived_mxl': str(archived_mxl) if archived_mxl else None,
                     'engine_used': _current_file_detail.get('engine_used', ''),
                     'image_type': _current_file_detail.get('image_type', ''),
+                    'fallback_used': _current_file_detail.get('fallback_used', False),
                 })
             else:
                 fail_count += 1

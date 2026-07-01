@@ -674,7 +674,7 @@ class LandingPage(ft.Row):
 
     def _run_single_worker(self, files: list[Path]) -> None:
         _done_or_error_received = False
-        _conversion_results = {'success': [], 'failed': []}
+        _conversion_results = {'success': [], 'fallback': [], 'failed': []}
 
         try:
             base_dir = app_base_dir()
@@ -789,11 +789,18 @@ class LandingPage(ft.Row):
                                 self._state.current_mxl = archived
                                 self._state.emit(Event.MXL_READY, path=archived)
                             if _current_processing_file:
-                                _conversion_results['success'].append({
+                                entry = {
                                     'file': _current_processing_file,
                                     'engine_used': msg.get('engine_used', ''),
                                     'image_type': msg.get('image_type', ''),
-                                })
+                                }
+                                # 识别过程中发生过引擎回退（例如 Audiveris 失败后改用
+                                # Homr）：单独归入 fallback 列表，不算失败，也不与
+                                # 干净成功的文件混在一起，方便用户知晓需要留意质量。
+                                if msg.get('fallback_used'):
+                                    _conversion_results['fallback'].append(entry)
+                                else:
+                                    _conversion_results['success'].append(entry)
                         else:
                             if _current_processing_file:
                                 if not any(f['file'] == _current_processing_file for f in _conversion_results['failed']):
@@ -805,11 +812,13 @@ class LandingPage(ft.Row):
                         _done_or_error_received = True
                         self._state.conversion_summary = {
                             'success_count': len(_conversion_results['success']),
+                            'fallback_count': len(_conversion_results['fallback']),
                             'failed_count': len(_conversion_results['failed']),
                             'success_files': _conversion_results['success'],
+                            'fallback_files': _conversion_results['fallback'],
                             'failed_files': _conversion_results['failed'],
                             'message': msg.get('message', t("landing.done_message")),
-                            'total': len(_conversion_results['success']) + len(_conversion_results['failed']),
+                            'total': len(_conversion_results['success']) + len(_conversion_results['fallback']) + len(_conversion_results['failed']),
                         }
                         self._state.set_done(msg.get('message', t("landing.done_message")))
                     elif mtype == 'error':
@@ -866,7 +875,7 @@ class LandingPage(ft.Row):
 
     def _run_parallel_workers(self, files: list[Path], n: int) -> None:
         """将文件列表分片，同时启动 n 个 Worker 子进程，聚合进度和结果。"""
-        _all_results: dict = {'success': [], 'failed': []}
+        _all_results: dict = {'success': [], 'fallback': [], 'failed': []}
         _any_error = False
 
         try:
@@ -1041,11 +1050,15 @@ class LandingPage(ft.Row):
                             self._state.current_mxl = archived
                             self._state.emit(Event.MXL_READY, path=archived)
                         if _current_files[worker_id]:
-                            _all_results['success'].append({
+                            entry = {
                                 'file': _current_files[worker_id],
                                 'engine_used': msg.get('engine_used', ''),
                                 'image_type': msg.get('image_type', ''),
-                            })
+                            }
+                            if msg.get('fallback_used'):
+                                _all_results['fallback'].append(entry)
+                            else:
+                                _all_results['success'].append(entry)
                     else:
                         cf = _current_files[worker_id]
                         if cf and not any(f['file'] == cf for f in _all_results['failed']):
@@ -1107,16 +1120,19 @@ class LandingPage(ft.Row):
 
             if self._state.is_processing:
                 n_success = len(_all_results['success'])
+                n_fallback = len(_all_results['fallback'])
                 n_failed = len(_all_results['failed'])
                 self._state.conversion_summary = {
                     'success_count': n_success,
+                    'fallback_count': n_fallback,
                     'failed_count': n_failed,
                     'success_files': _all_results['success'],
+                    'fallback_files': _all_results['fallback'],
                     'failed_files': _all_results['failed'],
-                    'total': n_success + n_failed,
+                    'total': n_success + n_fallback + n_failed,
                     'message': '',
                 }
-                if n_success == 0 and _any_error:
+                if n_success == 0 and n_fallback == 0 and _any_error:
                     # 全部失败——保持 overlay 打开，让用户看到错误信息
                     self._state.conversion_summary['message'] = t("landing.all_workers_failed")
                     self._state.set_error(t("landing.all_workers_failed"))
@@ -1161,11 +1177,13 @@ class LandingPage(ft.Row):
             if not summary:
                 return
 
-            success_count = summary.get('success_count', 0)
-            failed_count  = summary.get('failed_count', 0)
-            total         = summary.get('total', success_count + failed_count)
-            success_files = summary.get('success_files', [])
-            failed_files  = summary.get('failed_files', [])
+            success_count  = summary.get('success_count', 0)
+            fallback_count = summary.get('fallback_count', 0)
+            failed_count   = summary.get('failed_count', 0)
+            total          = summary.get('total', success_count + fallback_count + failed_count)
+            success_files  = summary.get('success_files', [])
+            fallback_files = summary.get('fallback_files', [])
+            failed_files   = summary.get('failed_files', [])
 
             # ── 标题行：总共 X 文件，成功 Y，失败 Z ──
             def _stat_chip(label: str, color: str) -> ft.Container:
@@ -1180,6 +1198,7 @@ class LandingPage(ft.Row):
                 [
                     ft.Text(t("landing.stat_total", n=total), size=14, color=ft.Colors.ON_SURFACE),
                     _stat_chip(t("landing.stat_success", n=success_count), Palette.SUCCESS),
+                    _stat_chip(t("landing.stat_fallback", n=fallback_count), Palette.WARNING) if fallback_count else ft.Container(),
                     _stat_chip(t("landing.stat_failed", n=failed_count), Palette.ERROR) if failed_count else ft.Container(),
                 ],
                 spacing=8,
@@ -1225,6 +1244,58 @@ class LandingPage(ft.Row):
                                         t("landing.list_item_detail", detail=detail_str),
                                         size=11,
                                         color=ft.Colors.ON_SURFACE_VARIANT,
+                                    ),
+                                ],
+                                spacing=1,
+                                tight=True,
+                            ),
+                            padding=ft.Padding.symmetric(vertical=3),
+                        )
+                    )
+
+            # ── 回退成功条目（例如 Audiveris 失败后自动改用 Homr 引擎，最终仍成功）──
+            # 单独列出而不是并入"成功"，方便用户注意到这些文件走了非常规路径，
+            # 值得多看一眼识别质量；但也不计入"失败"，因为最终确实生成了简谱。
+            if fallback_files:
+                list_items.append(
+                    ft.Container(
+                        ft.Text(t("landing.section_fallback"), size=12, font_family=FONT_EMPHASIS, color=Palette.WARNING),
+                        padding=ft.Padding.only(top=10, bottom=2),
+                    )
+                )
+                for item in fallback_files:
+                    if isinstance(item, dict):
+                        file_name   = item.get('file', t("landing.unknown_file"))
+                        engine_used = item.get('engine_used', '')
+                        image_type  = item.get('image_type', '')
+                    else:
+                        file_name, engine_used, image_type = item, '', ''
+
+                    detail_parts: list[str] = []
+                    if image_type:
+                        detail_parts.append(t("landing.detail_image_type", kind=image_type))
+                    if engine_used:
+                        detail_parts.append(t("landing.detail_engine_used", engine=engine_used))
+                    detail_str = '，'.join(detail_parts) if detail_parts else ''
+                    detail_str = (
+                        t("landing.detail_fallback_used", detail=detail_str)
+                        if detail_str else t("landing.detail_fallback_used_bare")
+                    )
+
+                    list_items.append(
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    ft.Text(
+                                        t("landing.list_item_fallback", name=file_name),
+                                        size=12,
+                                        color=ft.Colors.ON_SURFACE,
+                                        no_wrap=False,
+                                    ),
+                                    ft.Text(
+                                        t("landing.list_item_detail", detail=detail_str),
+                                        size=11,
+                                        color=Palette.WARNING,
                                     ),
                                 ],
                                 spacing=1,
@@ -1282,7 +1353,7 @@ class LandingPage(ft.Row):
                 ft.TextButton(t("landing.button_open_output_dir"), on_click=self._on_open_output_dir),
                 ft.TextButton(t("common.close"), on_click=_close_dialog),
             ]
-            if success_count > 0:
+            if success_count > 0 or fallback_count > 0:
                 actions.append(ft.FilledButton(t("landing.button_view_jianpu"), on_click=_goto_jianpu_preview))
 
             dialog = ft.AlertDialog(
