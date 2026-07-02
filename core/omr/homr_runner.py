@@ -165,11 +165,16 @@ def _run_with_heartbeat(
     label: str,
     heartbeat_interval: int = 30,
     on_heartbeat=None,
+    max_seconds: Optional[float] = MAX_HOMR_SECONDS,
+    heartbeat_message: str = '仍在识别中',
 ) -> None:
     """Run *fn* in a worker thread while emitting a progress log line every *heartbeat_interval* seconds.
 
     若 fn 抛出异常，异常会在主线程重新抛出。
     on_heartbeat: 可选回调，签名 on_heartbeat(elapsed_seconds: int)，每次心跳触发一次。
+    max_seconds: 超过该秒数仍未完成则抛出 TimeoutError（None 表示不限时）。
+        fn 运行在 daemon 线程中，Python 无法强制终止线程——超时只是放弃等待，
+        后台推理会继续占用资源直到自然结束或 worker 进程退出。
     """
     exc_holder: list[BaseException] = []
 
@@ -187,7 +192,9 @@ def _run_with_heartbeat(
         t.join(timeout=heartbeat_interval)
         if t.is_alive():
             elapsed = int(time.monotonic() - start)
-            log_message(f'  {label}仍在识别中…已耗时 {elapsed} 秒，请耐心等待。')
+            if max_seconds is not None and elapsed >= max_seconds:
+                raise TimeoutError(f'{label}超时（>{int(max_seconds)}s），已放弃等待。')
+            log_message(f'  {label}{heartbeat_message}…已耗时 {elapsed} 秒，请耐心等待。')
             if on_heartbeat is not None:
                 try:
                     on_heartbeat(elapsed)
@@ -685,22 +692,25 @@ def run_homr_batch(
     _add_nvidia_cuda_dll_dirs()
     try:
         import homr.main as homr_main  # type: ignore[import-not-found]
-        # download_weights 需要联网，在弱网/限速环境下可能长时间挂起，限制为 120s
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
-        with ThreadPoolExecutor(max_workers=1) as _dl_ex:
-            # homr.download_weights 只会下载缺失的 ONNX 模型权重。
-            # 如果本地已经存在对应 GPU/CPU 模型文件，则不会联网下载。
-            log_message('[homr] 检查模型权重…')
-            with _suppress_homr_output():
-                _dl_future = _dl_ex.submit(homr_main.download_weights, use_gpu_inference)
-                try:
-                    _dl_future.result(timeout=120)
-                except _TimeoutError:
-                    log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
-                    return None
-                except Exception as _dl_exc:
-                    log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
-                    return None
+        # homr.download_weights 只会下载缺失的 ONNX 模型权重。
+        # 如果本地已经存在对应 GPU/CPU 模型文件，则不会联网下载。
+        # download_weights 需要联网，在弱网/限速环境下可能长时间挂起，限制为 120s。
+        # 不能用 ThreadPoolExecutor + result(timeout)：with 退出时 shutdown(wait=True)
+        # 会阻塞到挂起的下载跑完，且池线程非 daemon，还会卡住解释器退出。
+        log_message('[homr] 检查模型权重…')
+        try:
+            _run_with_heartbeat(
+                lambda: homr_main.download_weights(use_gpu_inference),
+                label='[homr] 模型权重下载',
+                max_seconds=120,
+                heartbeat_message='仍在下载中',
+            )
+        except TimeoutError:
+            log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
+            return None
+        except Exception as _dl_exc:
+            log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
+            return None
         config = homr_main.ProcessingConfig(
             enable_debug=False,
             enable_cache=False,

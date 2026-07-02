@@ -15,7 +15,6 @@ from ..config import (
     AppConfig,
     ConversionSummary,
     MAX_AUDIVERIS_SECONDS,
-    MAX_HOMR_SECONDS,
     OMREngine,
 )
 from ..omr.homr_runner import check_homr_available, run_homr_batch
@@ -251,27 +250,19 @@ def process_single_input_to_jianpu(
         if not check_homr_available():
             return None
         _report_subprogress(0.05, '[Homr] 启动 OMR 识别…')
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
-        with ThreadPoolExecutor(max_workers=1) as _homr_ex:
-            _homr_future = _homr_ex.submit(
-                run_homr_batch,
+        # 超时控制在 homr_runner._run_with_heartbeat 内部（每次推理调用限
+        # MAX_HOMR_SECONDS）。此前这里用 ThreadPoolExecutor + result(timeout)
+        # 是假超时：cancel() 对运行中任务无效，with 退出还会阻塞到任务跑完。
+        try:
+            return run_homr_batch(
                 _omr_source,
                 file_temp_dir,
                 use_gpu_inference=use_gpu_inference,
                 progress_fn=_report_subprogress,
             )
-            try:
-                return _homr_future.result(timeout=MAX_HOMR_SECONDS)
-            except _TimeoutError:
-                log_message(
-                    f'  [Homr] 识别超时（>{MAX_HOMR_SECONDS}s），已中止 {source_file.name}。',
-                    logging.WARNING,
-                )
-                _homr_future.cancel()
-                return None
-            except Exception as _exc:
-                log_message(f'  [Homr] 识别异常：{_exc}', logging.WARNING)
-                return None
+        except Exception as _exc:
+            log_message(f'  [Homr] 识别异常：{_exc}', logging.WARNING)
+            return None
 
     # ── Homr (single-engine mode, with validation fallback) ─────────────────
     if effective_engine is OMREngine.HOMR:
