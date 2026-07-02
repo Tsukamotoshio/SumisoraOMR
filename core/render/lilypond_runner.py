@@ -18,6 +18,7 @@ from ..config import (
     JIANPU_LY_URLS,
     LILYPOND_RUNTIME_DIR_NAME,
     LOGGER,
+    MAX_LILYPOND_SECONDS,
 )
 from ..utils import (
     find_packaged_runtime_dir,
@@ -97,9 +98,12 @@ def render_lilypond_pdf(ly_path: Path) -> Optional[Path]:
         pass
     log_message(f'使用 LilyPond 执行: {lilypond_exe}')
     try:
-        subprocess.run([lilypond_exe, str(ly_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, cwd=str(ly_path.parent.resolve()), creationflags=_WIN_NO_WINDOW)
+        subprocess.run([lilypond_exe, str(ly_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, cwd=str(ly_path.parent.resolve()), creationflags=_WIN_NO_WINDOW, timeout=MAX_LILYPOND_SECONDS)
         pdf_path = ly_path.with_suffix('.pdf')
         return pdf_path if pdf_path.exists() else None
+    except subprocess.TimeoutExpired:
+        log_message(f'LilyPond 渲染超时（>{MAX_LILYPOND_SECONDS}s），已终止: {ly_path.name}', logging.WARNING)
+        return None
     except subprocess.CalledProcessError as exc:
         raw_stderr = exc.stderr.decode('utf-8', errors='ignore')
         # 过滤纯弃用警告行，仅保留实际错误行，防止数万行警告涌入日志

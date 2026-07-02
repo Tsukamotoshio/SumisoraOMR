@@ -18,6 +18,7 @@ from ..config import (
     JIANPU_LY_URLS,
     LILYPOND_RUNTIME_DIR_NAME,
     LOGGER,
+    MAX_JIANPU_LY_SECONDS,
 )
 from ..utils import (
     find_packaged_runtime_dir,
@@ -162,16 +163,23 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
         if cmd is not None:
             try:
                 with ly_path.open('w', encoding='utf-8') as out:
-                    subprocess.run([cmd, str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                    subprocess.run([cmd, str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW, timeout=MAX_JIANPU_LY_SECONDS)
                 return True
+            except subprocess.TimeoutExpired:
+                # 超时直接失败：三条 fallback 路径运行的是同一个 jianpu-ly 程序，换路径只会再挂一次
+                log_message(f'jianpu-ly 命令执行超时（>{MAX_JIANPU_LY_SECONDS}s），已终止。', logging.WARNING)
+                return False
             except subprocess.CalledProcessError as exc:
                 log_message(f'jianpu-ly 命令执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
 
         if find_jianpu_ly_module():
             try:
                 with ly_path.open('w', encoding='utf-8') as out:
-                    subprocess.run([sys.executable, '-m', 'jianpu_ly', str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                    subprocess.run([sys.executable, '-m', 'jianpu_ly', str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW, timeout=MAX_JIANPU_LY_SECONDS)
                 return True
+            except subprocess.TimeoutExpired:
+                log_message(f'jianpu_ly 模块执行超时（>{MAX_JIANPU_LY_SECONDS}s），已终止。', logging.WARNING)
+                return False
             except subprocess.CalledProcessError as exc:
                 log_message(f'jianpu_ly 模块执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
 
@@ -186,8 +194,11 @@ def render_jianpu_ly(txt_path: Path, ly_path: Path) -> bool:
 
         try:
             with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([*python_cmd, str(script_path), str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                subprocess.run([*python_cmd, str(script_path), str(_clean_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(txt_path.parent), env=env, creationflags=_WIN_NO_WINDOW, timeout=MAX_JIANPU_LY_SECONDS)
             return True
+        except subprocess.TimeoutExpired:
+            log_message(f'jianpu-ly 脚本执行超时（>{MAX_JIANPU_LY_SECONDS}s），已终止。', logging.WARNING)
+            return False
         except subprocess.CalledProcessError as exc:
             log_message(f'jianpu-ly 脚本执行失败: {exc.stderr.decode("utf-8", errors="ignore").strip()}', logging.WARNING)
             return False
@@ -210,16 +221,22 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
     if cmd is not None:
         try:
             with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([cmd, str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                subprocess.run([cmd, str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW, timeout=MAX_JIANPU_LY_SECONDS)
             return True
+        except subprocess.TimeoutExpired:
+            log_message(f'jianpu-ly 命令处理 MXL 超时（>{MAX_JIANPU_LY_SECONDS}s），已终止。', logging.WARNING)
+            return False
         except subprocess.CalledProcessError as exc:
             log_message(f'jianpu-ly 命令处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
 
     if find_jianpu_ly_module():
         try:
             with ly_path.open('w', encoding='utf-8') as out:
-                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+                subprocess.run([sys.executable, '-m', 'jianpu_ly', str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW, timeout=MAX_JIANPU_LY_SECONDS)
             return True
+        except subprocess.TimeoutExpired:
+            log_message(f'jianpu_ly 模块处理 MXL 超时（>{MAX_JIANPU_LY_SECONDS}s），已终止。', logging.WARNING)
+            return False
         except subprocess.CalledProcessError as exc:
             log_message(f'jianpu_ly 模块处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
 
@@ -234,8 +251,11 @@ def render_jianpu_ly_from_mxl(mxl_path: Path, ly_path: Path) -> bool:
 
     try:
         with ly_path.open('w', encoding='utf-8') as out:
-            subprocess.run([*python_cmd, str(script_path), str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW)
+            subprocess.run([*python_cmd, str(script_path), str(mxl_path)], stdout=out, stderr=subprocess.PIPE, check=True, cwd=str(mxl_path.parent), env=env, creationflags=_WIN_NO_WINDOW, timeout=MAX_JIANPU_LY_SECONDS)
         return True
+    except subprocess.TimeoutExpired:
+        log_message(f'jianpu-ly 脚本处理 MXL 超时（>{MAX_JIANPU_LY_SECONDS}s），已终止。', logging.WARNING)
+        return False
     except subprocess.CalledProcessError as exc:
         log_message(f'jianpu-ly 脚本处理 MXL 失败: {exc.stderr.decode("utf-8", errors="ignore")}', logging.WARNING)
         return False
