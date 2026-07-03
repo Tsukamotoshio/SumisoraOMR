@@ -301,6 +301,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "pdf_viewer.tooltip_next_page": {"zh": "下一页", "en": "Next Page"},
     "pdf_viewer.tooltip_reset_zoom": {"zh": "复位缩放", "en": "Reset Zoom"},
     "pdf_viewer.no_file": {"zh": "暂无文件", "en": "No File"},
+    "pdf_viewer.loading": {"zh": "加载中…", "en": "Loading…"},
     "pdf_viewer.error_render_failed": {"zh": "PDF 无法渲染（文件可能已损坏或格式不受支持）", "en": "Unable to render the PDF (the file may be corrupted or unsupported)"},
     "pdf_viewer.page_label": {"zh": "{current} / {total}", "en": "{current} / {total}"},
 

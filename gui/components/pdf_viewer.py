@@ -292,10 +292,8 @@ class PdfViewer(ft.Column):
                 self._image.width = None
                 self._image.height = None
 
-        # 立即进入加载中状态（显示占位符，图像重置为透明占位）
+        # 立即清空旧图像（透明占位）；是否显示加载动画取决于下方缓存命中与否。
         self._image.src = _BLANK_PNG_B64
-        self._placeholder.visible = True
-        self._request_page_refresh()
 
         # 切换文件时重置缩放 / 平移状态
         try:
@@ -305,11 +303,15 @@ class PdfViewer(ft.Column):
 
         cache = self._get_cached_preview(path)
         if cache is not None:
+            # 缓存命中：内容立即可用，无需加载动画（避免闪一下 spinner）。
             self._page_count = cache['page_count']
             self._set_image_b64(cache['b64'])
             self._update_toolbar()
             return
 
+        # 缓存未命中：真正的渲染在后台线程进行，先在预览区显示加载动画，
+        # 明确告知用户正在后台加载，而非界面卡死或空白。
+        self._show_loading()
         if is_image:
             self._executor.submit(self._load_image_async, path, current_token)
         else:
@@ -436,6 +438,21 @@ class PdfViewer(ft.Column):
         self._image.src = b64
         self._placeholder.visible = False
         self._apply_viewer_size()
+        self._request_page_refresh()
+
+    def _show_loading(self) -> None:
+        """Show a spinner + '加载中…' over the preview while a file renders in the background.
+
+        Rendering (PDFium / large image base64) runs on the executor and can lag
+        under a preload burst, so the preview area would otherwise sit blank and
+        look frozen. Replaced by the rendered page on success or by _show_error on
+        failure (both flip _placeholder.visible themselves).
+        """
+        self._placeholder_col.controls = [
+            ft.ProgressRing(width=32, height=32, stroke_width=3, color=Palette.PRIMARY),
+            ft.Text(t('pdf_viewer.loading'), size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+        ]
+        self._placeholder.visible = True
         self._request_page_refresh()
 
     def _show_error(self, msg: str) -> None:
