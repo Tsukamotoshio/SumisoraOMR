@@ -491,19 +491,23 @@ def _run_homr_multipage_pdf(
     try:
         import homr.main as homr_main  # type: ignore[import-not-found]
         _apply_ort_thread_override()  # parallel-batch: cap ONNX threads to this worker's CPU share
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
-        with ThreadPoolExecutor(max_workers=1) as _dl_ex:
-            log_message('[homr] 检查模型权重…')
-            with _suppress_homr_output():
-                _dl_future = _dl_ex.submit(homr_main.download_weights, use_gpu_inference)
-                try:
-                    _dl_future.result(timeout=120)
-                except _TimeoutError:
-                    log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
-                    return None
-                except Exception as _dl_exc:
-                    log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
-                    return None
+        # 与 run_homr_batch 相同：download_weights 只下载缺失权重，弱网下可能长时间挂起。
+        # 不能用 ThreadPoolExecutor + result(timeout)（假超时：with 退出阻塞到任务跑完，
+        # 且池线程非 daemon 会卡住解释器退出），改用带真超时的 _run_with_heartbeat。
+        log_message('[homr] 检查模型权重…')
+        try:
+            _run_with_heartbeat(
+                lambda: homr_main.download_weights(use_gpu_inference),
+                label='[homr] 模型权重下载',
+                max_seconds=120,
+                heartbeat_message='仍在下载中',
+            )
+        except TimeoutError:
+            log_message('[homr] 模型权重下载超时（>120s），请检查网络后重试。')
+            return None
+        except Exception as _dl_exc:
+            log_message(f'[homr] 模型权重下载失败: {_dl_exc}')
+            return None
     except Exception as exc:
         log_message(f'[homr] homr 模块初始化失败: {exc}')
         if source_dir is not None:
