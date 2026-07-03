@@ -906,6 +906,11 @@ class LandingPage(ft.Row):
             from core.app.backend import models_dir as _models_dir
             _env = os.environ.copy()
             _env['HOMR_MODELS_DIR'] = str(_models_dir())
+            # 并行 worker 会各自把 ONNX intra-op 线程开到 (核数-2)，n 个 worker 一起
+            # 就是 n×(核数-2) 抢占核数个核 → 超额订阅、上下文切换抖动，实测比顺序还慢。
+            # 按并发数把每个 worker 的线程上限压到约 核数/n，让总线程数不超过核数。
+            _cpu = os.cpu_count() or 4
+            _env['HOMR_ORT_INTRA_THREADS'] = str(max(1, _cpu // max(1, n_actual) - 1))
             if 'env' not in extra_kwargs:
                 extra_kwargs['env'] = _env
 

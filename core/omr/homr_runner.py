@@ -285,6 +285,43 @@ def _ensure_homr_import_path() -> Optional[Path]:
     return None
 
 
+def _apply_ort_thread_override() -> None:
+    """Honor HOMR_ORT_INTRA_THREADS by capping the ONNX Runtime intra-op threads.
+
+    The homr submodule hardcodes ``_ORT_INTRA_THREADS = cpu_count - 2`` at import
+    time in its SegNet / encoder / decoder inference modules. That is fine for a
+    single worker, but the parallel-batch path runs several worker processes at
+    once — N workers × (cores-2) threads on ``cores`` cores oversubscribes the CPU
+    and thrashes, so parallelism ends up *slower* than sequential. The parallel
+    launcher sets this env var to roughly ``cores / N`` so each worker stays within
+    its share; we push that value into the submodule module globals before any
+    session is created (session opts read the global at creation time).
+
+    No-op when the env var is unset (single-worker path keeps the full thread
+    count) or malformed. Must be called after ``import homr.main`` so the
+    submodule packages are importable.
+    """
+    raw = os.environ.get('HOMR_ORT_INTRA_THREADS')
+    if not raw:
+        return
+    try:
+        cap = int(raw)
+    except ValueError:
+        return
+    if cap < 1:
+        return
+    import importlib
+    for mod_name in (
+        'homr.segmentation.inference_segnet',
+        'homr.transformer.encoder_inference',
+        'homr.transformer.decoder_inference',
+    ):
+        try:
+            importlib.import_module(mod_name)._ORT_INTRA_THREADS = cap
+        except Exception:
+            pass
+
+
 def _cuda_dlls_available() -> bool:
     """Check for CUDA and cuDNN core DLLs via file-system inspection (does not call LoadLibrary)."""
     import site, shutil
@@ -453,6 +490,7 @@ def _run_homr_multipage_pdf(
     _add_nvidia_cuda_dll_dirs()
     try:
         import homr.main as homr_main  # type: ignore[import-not-found]
+        _apply_ort_thread_override()  # parallel-batch: cap ONNX threads to this worker's CPU share
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TimeoutError
         with ThreadPoolExecutor(max_workers=1) as _dl_ex:
             log_message('[homr] 检查模型权重…')
@@ -692,6 +730,7 @@ def run_homr_batch(
     _add_nvidia_cuda_dll_dirs()
     try:
         import homr.main as homr_main  # type: ignore[import-not-found]
+        _apply_ort_thread_override()  # parallel-batch: cap ONNX threads to this worker's CPU share
         # homr.download_weights 只会下载缺失的 ONNX 模型权重。
         # 如果本地已经存在对应 GPU/CPU 模型文件，则不会联网下载。
         # download_weights 需要联网，在弱网/限速环境下可能长时间挂起，限制为 120s。
