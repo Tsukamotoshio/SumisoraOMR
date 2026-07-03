@@ -58,29 +58,39 @@ os.environ.setdefault('NUMEXPR_NUM_THREADS',      _onnx_threads)
 
 # ─── Bootstrap: ensure correct virtual environment ───────────────────────────
 def _bootstrap_venv() -> None:
+    """Re-exec with the project .venv interpreter unless already running from it.
+
+    判断依据是解释器身份，而不是"能否 import flet"：一旦系统 Python 里也装了
+    flet（例如在 venv 之外运行了 pip install -r requirements.txt），哨兵式检测
+    就被击穿——应用会在依赖版本不受控的系统环境里运行，窗口静默启动失败。
+    只要项目 .venv 存在且当前解释器不是它，就无条件切换过去。
+    """
+    if getattr(sys, 'frozen', False):
+        return  # 打包版：依赖已捆绑，无 venv 概念
+    _here = os.path.dirname(os.path.abspath(__file__))
+    for _rel in (('.venv', 'Scripts', 'python.exe'), ('.venv', 'bin', 'python')):
+        _py = os.path.join(_here, *_rel)
+        if not os.path.isfile(_py):
+            continue
+        if os.path.normcase(os.path.abspath(sys.executable)) == os.path.normcase(_py):
+            return  # 已经在项目 venv 里
+        import subprocess
+        # 用 .venv 的解释器重新启动自己。父进程（系统 Python）只是转发等待，
+        # 这期间终端不会返回提示符——这是正常的，GUI 正在子进程里运行。
+        print('[启动] 检测到当前不是项目 .venv 解释器，切换到 .venv 运行（GUI 启动中，请稍候）…',
+              file=sys.stderr, flush=True)
+        try:
+            sys.exit(subprocess.run([_py] + sys.argv).returncode)
+        except KeyboardInterrupt:
+            # 用户在终端 Ctrl+C：子进程已随进程组一并收到信号，
+            # 这里安静退出，避免向用户抛出无意义的 subprocess 等待堆栈。
+            sys.exit(130)
+    # 项目 .venv 不存在 —— 回退到依赖可用性检测（允许用户自备环境）
     try:
         import flet  # noqa: F401
         return
     except ImportError:
         pass
-    _here = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(_here, '.venv', 'Scripts', 'python.exe'),
-        os.path.join(_here, '.venv', 'bin', 'python'),
-    ]
-    for _py in candidates:
-        if os.path.isfile(_py):
-            import subprocess
-            # 用 .venv 的解释器重新启动自己。父进程（系统 Python）只是转发等待，
-            # 这期间终端不会返回提示符——这是正常的，GUI 正在子进程里运行。
-            print('[启动] 切换到 .venv 解释器运行（GUI 启动中，请稍候）…',
-                  file=sys.stderr, flush=True)
-            try:
-                sys.exit(subprocess.run([_py] + sys.argv).returncode)
-            except KeyboardInterrupt:
-                # 用户在终端 Ctrl+C：子进程已随进程组一并收到信号，
-                # 这里安静退出，避免向用户抛出无意义的 subprocess 等待堆栈。
-                sys.exit(130)
     print(
         '\n[错误] 未找到虚拟环境或 flet 未安装。\n'
         '  pip install -r requirements.txt\n'
@@ -161,6 +171,61 @@ def _prune_orphan_weights(target_dir, expected_files) -> None:
             pass
 
 
+def _load_homr_weight_manifest() -> tuple[list[str], dict[str, str]]:
+    """Read _WEIGHT_FILES / _WEIGHT_HASHES from the homr submodule *source* via AST.
+
+    Importing ``homr.main`` would pull onnxruntime / cv2 / rapidocr (and trigger
+    CUDA initialisation) into the GUI process at startup — the exact heavy work
+    the worker subprocess exists to isolate. On some GPUs that init hangs the
+    launch, which then keeps the single-instance mutex held so every later launch
+    silently exits ("main window won't show"). These two symbols are plain
+    module-level literals, so parse them out of the source without executing it.
+    Returns ([], {}) on any failure (caller treats models as absent).
+    """
+    import ast
+    from pathlib import Path
+    src = Path(__file__).parent / 'omr_engine' / 'homr' / 'homr' / 'main.py'
+    files: list[str] = []
+    hashes: dict[str, str] = {}
+    try:
+        tree = ast.parse(src.read_text(encoding='utf-8', errors='ignore'))
+    except Exception:
+        return files, hashes
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            target = node.targets[0].id
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target = node.target.id
+        else:
+            continue
+        if target not in ('_WEIGHT_FILES', '_WEIGHT_HASHES') or node.value is None:
+            continue
+        try:
+            val = ast.literal_eval(node.value)
+        except Exception:
+            continue
+        if target == '_WEIGHT_FILES' and isinstance(val, list):
+            files = [str(x) for x in val]
+        elif target == '_WEIGHT_HASHES' and isinstance(val, dict):
+            hashes = {str(k): str(v) for k, v in val.items()}
+    return files, hashes
+
+
+def _verify_weight_sha256(path, expected: str) -> bool:
+    """Local copy of homr.main.verify_sha256 (empty ``expected`` → True)."""
+    if not expected:
+        return True
+    import hashlib
+    h = hashlib.sha256()
+    try:
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                h.update(chunk)
+    except OSError:
+        return False
+    return h.hexdigest().lower() == expected.lower()
+
+
 def _check_homr_models(state: AppState) -> None:
     """Migrate legacy weights and update state.homr_available.
 
@@ -176,9 +241,12 @@ def _check_homr_models(state: AppState) -> None:
     from pathlib import Path
     from core.app.backend import models_dir
     _homr_src = Path(__file__).parent / 'omr_engine' / 'homr'
-    if str(_homr_src) not in sys.path:
-        sys.path.insert(0, str(_homr_src))
-    from homr.main import _WEIGHT_FILES, _WEIGHT_HASHES, verify_sha256  # type: ignore[import-not-found]
+    # Read the weight manifest from source (no `import homr.main` → no onnxruntime
+    # / CUDA in the GUI process; see _load_homr_weight_manifest for why).
+    _WEIGHT_FILES, _WEIGHT_HASHES = _load_homr_weight_manifest()
+    if not _WEIGHT_FILES:
+        state.homr_available = False
+        return
 
     target_dir = models_dir()
 
@@ -202,7 +270,7 @@ def _check_homr_models(state: AppState) -> None:
     # Verify all 6 are present and (if hashes are filled in) valid.
     state.homr_available = all(
         (target_dir / fname).exists()
-        and verify_sha256(str(target_dir / fname), _WEIGHT_HASHES.get(fname, ''))
+        and _verify_weight_sha256(str(target_dir / fname), _WEIGHT_HASHES.get(fname, ''))
         for fname in _WEIGHT_FILES
     )
 

@@ -322,22 +322,33 @@ class LandingPage(ft.Row):
         self._refresh_model_buttons()
 
     def _homr_pinned_version(self) -> str:
-        """Return the pinned HOMR transcription model version (e.g. '367').
+        """Return the HOMR transcription model version (e.g. '367') for display.
 
-        Parsed from the bundled submodule's ``_WEIGHT_FILES``, so it tracks the
-        release automatically (the encoder filename is
-        ``encoder_pytorch_model_<ver>-<sha>.onnx``). Returns '?' if the homr
-        package can't be imported.
+        Parsed from the encoder weight filename
+        (``encoder_pytorch_model_<ver>-<sha>.onnx``): first from an installed
+        weight in ``models/``, else by text-scanning the bundled submodule's
+        ``main.py``. Deliberately does NOT ``import homr.main`` — that pulls
+        onnxruntime / cv2 / rapidocr (and triggers CUDA init) into the GUI
+        process at startup, which belongs only in the worker subprocess.
+        Returns '?' if it can't be determined.
         """
+        import re as _re
+        pat = _re.compile(r'encoder_pytorch_model_(\d+)-')
+        # 1) 实际已安装的权重文件名（最能反映"当前装的是哪一版"）
         try:
-            _homr_src = str(Path(__file__).parent.parent.parent / 'omr_engine' / 'homr')
-            if _homr_src not in sys.path:
-                sys.path.insert(0, _homr_src)
-            from homr.main import _WEIGHT_FILES  # type: ignore[import-not-found]
-            prefix = 'encoder_pytorch_model_'
-            for fname in _WEIGHT_FILES:
-                if fname.startswith(prefix):
-                    return fname[len(prefix):].split('-')[0]
+            from core.app.backend import models_dir
+            for p in models_dir().glob('encoder_pytorch_model_*.onnx'):
+                m = pat.match(p.name)
+                if m:
+                    return m.group(1)
+        except Exception:
+            pass
+        # 2) 子模块源码里钉住的版本（纯文本解析，不触发任何重导入）
+        try:
+            src = Path(__file__).parent.parent.parent / 'omr_engine' / 'homr' / 'homr' / 'main.py'
+            m = pat.search(src.read_text(encoding='utf-8', errors='ignore'))
+            if m:
+                return m.group(1)
         except Exception:
             pass
         return '?'
