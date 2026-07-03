@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from core.app.backend import app_base_dir
+from core.utils import atomic_write_text
 
 _SETTINGS_FILE = 'ui-settings.json'
 
@@ -30,7 +31,7 @@ def save_ui_settings(settings: dict[str, Any]) -> None:
     """Persist the UI preferences dict to disk (best-effort, silent on failure)."""
     path = app_base_dir() / _SETTINGS_FILE
     try:
-        path.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding='utf-8')
+        atomic_write_text(path, json.dumps(settings, ensure_ascii=False, indent=2))
     except OSError:
         pass
 

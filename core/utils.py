@@ -8,6 +8,7 @@ import platform
 import re
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -187,11 +188,36 @@ def load_conversion_history(base_dir: Path) -> dict[str, dict]:
         return {}
 
 
+def atomic_write_text(path: Path, text: str, encoding: str = 'utf-8') -> None:
+    """Write *text* to *path* atomically: write a temp file, then os.replace().
+
+    A direct ``write_text`` truncates the target before writing, so a crash or
+    power loss mid-write leaves an empty/half-written file. Writing to a sibling
+    temp file and renaming means readers ever only see the old file or the new
+    one — never a partial one (os.replace is atomic on the same filesystem).
+    Raises on failure so callers can decide how to report it.
+    """
+    path = Path(path)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=path.name + '.', suffix='.tmp'
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, 'w', encoding=encoding) as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def save_conversion_history(base_dir: Path, history: dict[str, dict]) -> None:
-    """Serialise the conversion history dict to JSON and write it to disk."""
+    """Serialise the conversion history dict to JSON and write it to disk atomically."""
     history_path = base_dir / CONVERSION_HISTORY_FILE
     try:
-        history_path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding='utf-8')
+        atomic_write_text(history_path, json.dumps(history, ensure_ascii=False, indent=2))
     except OSError as exc:
         log_message(f'保存转换记录失败: {exc}', logging.WARNING)
 
