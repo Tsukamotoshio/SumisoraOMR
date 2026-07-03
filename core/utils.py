@@ -443,15 +443,32 @@ def cleanup_old_temporary_paths(paths: list[Path], max_age_days: int = 7) -> Non
                 safe_remove_file(entry)
 
 
-def cleanup_output_directory(output_dir: Path, generate_midi: bool) -> None:
-    """Remove intermediate files from output dir, keeping only PDF (and MIDI if requested)."""
-    allowed_suffixes = {'.pdf'}
-    if generate_midi:
-        allowed_suffixes.update({'.mid', '.midi'})
+# Render byproducts this pipeline may leave in the output dir. Deliberately a
+# denylist of things we emit — not "everything that isn't a PDF/MIDI" — so a
+# file the user dropped into Output/ is never mistaken for our garbage.
+_OUTPUT_INTERMEDIATE_SUFFIXES = {
+    '.ly', '.musicxml', '.mxl',                         # jianpu-ly / MusicXML intermediates
+    '.ps', '.eps', '.log', '.count', '.tex', '.texi',  # LilyPond aux files
+}
+
+
+def cleanup_output_directory(output_dir: Path) -> None:
+    """Remove only this pipeline's known intermediate artifacts from the output dir.
+
+    The previous implementation deleted every subdirectory and every file that
+    wasn't a .pdf/.mid — so anything a user parked in Output/ (their own notes,
+    folders, unrelated files) got silently wiped. Modern conversions write all
+    intermediates to the temp dir, so a denylist of the render byproducts we
+    actually emit is both sufficient and safe: subdirectories and unrecognised
+    files are never touched.
+    """
+    if not output_dir.is_dir():
+        return
     for path in output_dir.iterdir():
-        if path.is_dir():
-            safe_remove_tree(path)
-        elif path.is_file() and path.suffix.lower() not in allowed_suffixes:
+        if not path.is_file():
+            continue  # never recurse into subdirectories — they may be the user's
+        name = path.name.lower()
+        if name.endswith('.jianpu.txt') or path.suffix.lower() in _OUTPUT_INTERMEDIATE_SUFFIXES:
             safe_remove_file(path)
 
 

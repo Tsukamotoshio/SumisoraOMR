@@ -556,7 +556,7 @@ def process_bulk_input_to_jianpu(
 
     log_message('\n正在清理临时文件...')
     safe_remove_tree(temp_dir)
-    cleanup_output_directory(output_dir, generate_midi)
+    cleanup_output_directory(output_dir)
     print_conversion_summary(summary, generate_midi, output_dir)
     return summary
 
