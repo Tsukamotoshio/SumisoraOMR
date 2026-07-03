@@ -165,6 +165,12 @@ class LandingPage(ft.Row):
                 shape=ft.RoundedRectangleBorder(radius=8),
             ),
         )
+        # 主界面模型权重版本小字提示（随 _WEIGHT_FILES 自动反映打包的子模块版本）
+        self._homr_version = self._homr_pinned_version()
+        self._model_version_label = ft.Text(
+            '', size=11, color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltip=t("landing.tooltip_model_version"),
+        )
         self._refresh_model_buttons()
 
         options_panel = ft.Container(
@@ -192,6 +198,10 @@ class LandingPage(ft.Row):
                                 (_sec_homr := section_title(t("landing.section_homr_models"))),
                                 self._download_models_btn,
                                 self._delete_models_btn,
+                                ft.Container(
+                                    content=self._model_version_label,
+                                    padding=ft.Padding.only(left=4),
+                                ),
                             ],
                             spacing=10,
                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
@@ -242,6 +252,10 @@ class LandingPage(ft.Row):
         self._delete_models_label.value = t("landing.button_delete_models")
         self._section_convert_options.value = t("landing.section_convert_options")
         self._section_homr_models.value = t("landing.section_homr_models")
+        # 模型权重版本小字提示随语言重译
+        self._model_version_label.tooltip = t("landing.tooltip_model_version")
+        _mv_key = "landing.model_version_ready" if self._state.homr_available else "landing.model_version_missing"
+        self._model_version_label.value = t(_mv_key, ver=self._homr_version)
         # engine dropdown options（含「需下载」后缀）与转换按钮计数文案沿用已有刷新逻辑
         self._engine_dd.options = self._build_engine_options()
         self._refresh_convert_label()
@@ -307,6 +321,27 @@ class LandingPage(ft.Row):
             pass
         self._refresh_model_buttons()
 
+    def _homr_pinned_version(self) -> str:
+        """Return the pinned HOMR transcription model version (e.g. '367').
+
+        Parsed from the bundled submodule's ``_WEIGHT_FILES``, so it tracks the
+        release automatically (the encoder filename is
+        ``encoder_pytorch_model_<ver>-<sha>.onnx``). Returns '?' if the homr
+        package can't be imported.
+        """
+        try:
+            _homr_src = str(Path(__file__).parent.parent.parent / 'omr_engine' / 'homr')
+            if _homr_src not in sys.path:
+                sys.path.insert(0, _homr_src)
+            from homr.main import _WEIGHT_FILES  # type: ignore[import-not-found]
+            prefix = 'encoder_pytorch_model_'
+            for fname in _WEIGHT_FILES:
+                if fname.startswith(prefix):
+                    return fname[len(prefix):].split('-')[0]
+        except Exception:
+            pass
+        return '?'
+
     def _refresh_model_buttons(self) -> None:
         """Toggle the 下载/删除 buttons' enabled state based on weights presence."""
         if not hasattr(self, '_download_models_btn'):
@@ -316,9 +351,15 @@ class LandingPage(ft.Row):
         self._download_models_btn.disabled = present
         # Delete button: only enabled when models exist
         self._delete_models_btn.disabled = not present
+        # 同步版本小字提示的就绪状态
+        if getattr(self, '_model_version_label', None) is not None:
+            key = "landing.model_version_ready" if present else "landing.model_version_missing"
+            self._model_version_label.value = t(key, ver=self._homr_version)
         try:
             self._download_models_btn.update()
             self._delete_models_btn.update()
+            if getattr(self, '_model_version_label', None) is not None:
+                self._model_version_label.update()
         except Exception:
             pass
 

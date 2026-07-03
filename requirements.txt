@@ -1,4 +1,4 @@
-flet>=0.85.0
+flet[desktop]>=0.85.0
 music21>=10.5.0
 pillow>=12.2.0
 opencv-python-headless>=4.8.0
@@ -7,6 +7,10 @@ rich>=15.0.0
 pyinstaller>=6.20.0
 pypdfium2>=5.11.0
 pypdf>=6.14.2
+# PyMuPDF (imports as `fitz`): PDF 渲染 / 类型检测 / 页面转 PNG。
+# 被 core/utils.py、core/omr/engine_router.py、core/omr/homr_runner.py 使用；
+# 缺失时上述功能优雅降级（但 PDF 输入无法处理）。
+PyMuPDF>=1.24.0
 typing_extensions>=4.0.0
 
 # ── ONNX Runtime 后端 ────────────────────────────────────────────────────────

@@ -167,6 +167,9 @@ STRINGS: dict[str, dict[str, str]] = {
     "landing.button_delete_models": {"zh": "删除模型文件", "en": "Delete Model Files"},
     "landing.section_convert_options": {"zh": "转换选项", "en": "Conversion Options"},
     "landing.section_homr_models": {"zh": "HOMR 模型管理", "en": "HOMR Model Management"},
+    "landing.model_version_ready": {"zh": "OMR 模型权重 v{ver} · 已就绪", "en": "OMR weights v{ver} · Ready"},
+    "landing.model_version_missing": {"zh": "OMR 模型权重 v{ver} · 未下载", "en": "OMR weights v{ver} · Not downloaded"},
+    "landing.tooltip_model_version": {"zh": "OMR 模型权重版本（随发布更新）", "en": "OMR model weight version (updated with each release)"},
     "landing.download_dialog_title": {"zh": "需要下载 HOMR 模型权重", "en": "HOMR Model Weights Required"},
     "landing.download_dialog_body": {"zh": "使用 HOMR 引擎可以支持图片格式的乐谱识别。\n需要下载约 292 MB 模型权重。", "en": "The HOMR engine enables recognition of image-format scores.\nIt requires downloading about 292 MB of model weights."},
     "landing.button_not_now": {"zh": "暂不下载", "en": "Not Now"},
@@ -245,6 +248,13 @@ STRINGS: dict[str, dict[str, str]] = {
     "score_preview.batch_export_progress": {"zh": "导出中... {done}/{total}", "en": "Exporting... {done}/{total}"},
     "score_preview.batch_export_done_counts": {"zh": "导出完成：{success} 个成功，{fail} 个失败", "en": "Export complete: {success} succeeded, {fail} failed"},
     "score_preview.batch_export_done_summary": {"zh": "已导出 {n} 个五线谱 PDF 至 {dest}", "en": "Exported {n} staff notation PDF(s) to {dest}"},
+    "score_preview.midi_generate_title": {"zh": "生成 MIDI", "en": "Generate MIDI"},
+    "score_preview.midi_generate_body": {"zh": "尚未找到 {name}。\n是否从当前乐谱生成 MIDI 并播放？", "en": "{name} was not found.\nGenerate MIDI from the current score and play it?"},
+    "score_preview.midi_generate_confirm": {"zh": "生成并播放", "en": "Generate & Play"},
+    "score_preview.midi_generating": {"zh": "正在生成 MIDI…", "en": "Generating MIDI…"},
+    "score_preview.midi_generated": {"zh": "已生成 MIDI: {name}", "en": "MIDI generated: {name}"},
+    "score_preview.midi_generate_failed": {"zh": "生成 MIDI 失败：乐谱无法转换", "en": "Failed to generate MIDI: the score could not be converted"},
+    "score_preview.midi_generate_failed_exc": {"zh": "生成 MIDI 失败: {exc}", "en": "Failed to generate MIDI: {exc}"},
 
     # ── gui/pages/transposer_page.py ────────────────────────────────────────
     "transposer.dir_recent": {"zh": "最近", "en": "Nearest"},
