@@ -7,7 +7,6 @@ import re
 import shutil
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -15,7 +14,6 @@ from typing import Optional
 _WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 from ..config import (
-    JIANPU_LY_URLS,
     LILYPOND_RUNTIME_DIR_NAME,
     LOGGER,
     MAX_JIANPU_LY_SECONDS,
@@ -59,30 +57,20 @@ def find_jianpu_ly_script() -> Optional[Path]:
     return None
 
 
-def download_jianpu_ly_script(dest: Path) -> bool:
-    """Download jianpu-ly.py from the fallback URL list and write it to dest."""
-    for url in JIANPU_LY_URLS:
-        try:
-            with urllib.request.urlopen(url, timeout=15) as resp:
-                if resp.status != 200:
-                    continue
-                dest.write_bytes(resp.read())
-            return True
-        except Exception:
-            continue
-    return False
-
-
 def _ensure_jianpu_script() -> Optional[Path]:
-    """Ensure jianpu-ly.py is available, downloading it to the app dir or scripts/ if necessary."""
+    """Locate the vendored jianpu-ly.py; no runtime download.
+
+    jianpu-ly.py 随仓库/安装包分发（scripts/jianpu-ly.py，固定版本 + 本地补丁）。
+    早期实现会在缺失时联网下载并直接执行，无任何哈希校验——源站被篡改或中间人
+    攻击即任意代码执行，且下载到的上游版不含本地补丁，行为与开发机不一致，故移除。
+    """
     script_path = find_jianpu_ly_script()
-    if script_path is not None:
-        return script_path
-    script_path = get_app_base_dir() / 'scripts' / 'jianpu-ly.py'
-    script_path.parent.mkdir(parents=True, exist_ok=True)
-    if script_path.exists() or download_jianpu_ly_script(script_path):
-        return script_path
-    return None
+    if script_path is None:
+        log_message(
+            '未找到 jianpu-ly.py（应随应用分发，位于程序目录或 scripts/ 下）。',
+            logging.WARNING,
+        )
+    return script_path
 
 
 def find_python_script_command() -> Optional[list[str]]:

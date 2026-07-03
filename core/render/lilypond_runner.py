@@ -7,7 +7,6 @@ import re
 import shutil
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -15,7 +14,6 @@ from typing import Optional
 _WIN_NO_WINDOW: int = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 from ..config import (
-    JIANPU_LY_URLS,
     LILYPOND_RUNTIME_DIR_NAME,
     LOGGER,
     MAX_LILYPOND_SECONDS,
@@ -1068,7 +1066,6 @@ from .jianpu_runner import (  # noqa: E402, F401
     find_jianpu_ly_command,
     find_jianpu_ly_module,
     find_jianpu_ly_script,
-    download_jianpu_ly_script,
     find_python_script_command,
     render_jianpu_ly,
     render_jianpu_ly_from_mxl,

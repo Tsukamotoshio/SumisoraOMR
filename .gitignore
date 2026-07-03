@@ -45,7 +45,6 @@ scripts/publish_release.bat
 
 # Installer build config (private distribution setup)
 convert_setup.iss
-scripts/jianpu-ly.py
 
 # Generated conversion artifacts
 /Input/
