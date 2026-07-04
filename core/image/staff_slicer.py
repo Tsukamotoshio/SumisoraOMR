@@ -9,7 +9,6 @@ from typing import Optional
 
 from .image_preprocess import (
     HAS_PILLOW,
-    LOW_RES_PIXEL_THRESHOLD,
     detect_and_correct_rotation,
 )
 from .sr_upscale import (

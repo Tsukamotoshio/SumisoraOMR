@@ -385,7 +385,7 @@ def merge_polyphonic_jianpu_staves(
     replacements: list[tuple[int, int, str]] = []
     consumed: set[int] = set()
 
-    for sec_idx, match in enumerate(sections):
+    for sec_idx, _match in enumerate(sections):
         if sec_idx in consumed:
             continue
         group = section_to_group.get(sec_idx, [sec_idx])

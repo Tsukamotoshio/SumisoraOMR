@@ -2,7 +2,6 @@
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 # Jianpu note name map (Western pitch → numbered notation digit)

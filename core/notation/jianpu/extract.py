@@ -16,7 +16,6 @@ from .primitives import (
 )
 from .measure import (
     _detect_trailing_rest_pickup,
-    _parse_anacrusis_units,
     clone_monophonic_element,
     repair_jianpu_measure,
 )

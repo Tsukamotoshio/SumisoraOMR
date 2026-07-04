@@ -149,7 +149,7 @@ def cmd_download(models_dir: Path, only_new: bool, force: bool) -> int:
                         target.unlink()
                     shutil.move(str(extracted), str(target))
             if verify_one(target, sha):
-                print(f"    OK sha256 verified")
+                print("    OK sha256 verified")
             else:
                 got = sha256_of(target) if target.is_file() else "<missing>"
                 print(f"    !! SHA256 MISMATCH\n       expected {sha}\n"

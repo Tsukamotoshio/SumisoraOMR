@@ -835,7 +835,6 @@ def strip_slurs_ties_from_mxl(mxl_path: Path, backup: bool = True) -> Path:
     修改后的 mxl_path（Path）
     """
     import zipfile
-    import io
 
     if not mxl_path.exists():
         return mxl_path

@@ -946,7 +946,8 @@ def _patch_exe_resources(
     major: int, minor: int, patch_: int, build: int,
 ) -> bool:
     """Replace icon (RT_ICON/RT_GROUP_ICON) and VERSIONINFO in a PE exe."""
-    import struct as _s, ctypes as _ct
+    import struct as _s
+    import ctypes as _ct
     from ctypes import wintypes as _wt
 
     if not os.path.isfile(ico_path):

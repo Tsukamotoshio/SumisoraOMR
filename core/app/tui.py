@@ -274,7 +274,7 @@ class TUI:
 
     def _screen_convert(self) -> None:
         import dataclasses
-        from ..config import AppConfig, OMREngine
+        from ..config import OMREngine
         from ..omr.homr_runner import _homr_gpu_available
 
         from .pipeline import process_bulk_input_to_jianpu
@@ -571,10 +571,10 @@ class TUI:
                 safe_remove_file(clean_txt_path)
             safe_remove_file(ly_path)
 
-        self._header(f'简谱编辑器 — 生成结果')
+        self._header('简谱编辑器 — 生成结果')
         self.console.print()
         if success and out_pdf is not None:
-            self.console.print(f'  [bold green]✓ 简谱 PDF 已生成：[/bold green]')
+            self.console.print('  [bold green]✓ 简谱 PDF 已生成：[/bold green]')
             self.console.print(f'    [dim]{out_pdf}[/dim]')
             try:
                 _open_file_default(out_pdf)

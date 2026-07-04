@@ -16,7 +16,7 @@ from core.app.backend import app_base_dir, output_dir, open_directory
 from ..components.file_sidebar import FileSidebar
 from ..components.pdf_viewer import PdfViewer
 from ..components.progress_overlay import ProgressOverlay
-from ..theme import Palette, with_alpha, section_title, FONT_EMPHASIS
+from ..theme import Palette, section_title, FONT_EMPHASIS
 from ..strings import t
 
 

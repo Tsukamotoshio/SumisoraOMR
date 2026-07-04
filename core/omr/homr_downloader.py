@@ -383,7 +383,8 @@ def download_all_weights(
         bytes_so_far_holder = {'v': 0}
 
         def _per_chunk_cb(bytes_so_far: int,
-                          fname=fname, idx=idx, file_total=file_total):
+                          fname=fname, idx=idx, file_total=file_total,
+                          bytes_so_far_holder=bytes_so_far_holder, overall_done=overall_done):
             bytes_so_far_holder['v'] = bytes_so_far
             on_progress(idx, fname, bytes_so_far, file_total,
                         overall_done + bytes_so_far, overall_total, len(todo))

@@ -1,7 +1,6 @@
 # core/render/renderer.py — Score rendering: LilyPond PDF, MIDI, and direct PDF output.
 # Split from convert.py.
 import logging
-import os
 import re
 import shutil
 import textwrap
@@ -14,18 +13,13 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from ..config import (
-    LOGGER,
     JianpuNote,
 )
 from ..notation.jianpu import (
     build_jianpu_ly_text,
-    build_jianpu_ly_text_from_measures,
     choose_measures_per_line,
-    extract_jianpu_measures,
     format_jianpu_note_text,
     get_duration_render,
-    jianpu_note_token,
-    parse_score_to_jianpu,
 )
 from .lilypond_runner import (
     _fix_adjacent_backward_repeats_in_mxl,
@@ -38,7 +32,6 @@ from .jianpu_runner import (
     render_jianpu_ly,
 )
 from ..utils import (
-    collect_preserved_lyrics_lines,
     log_message,
     register_pdf_font,
     resolve_lilypond_font_name,
@@ -164,7 +157,7 @@ def draw_jianpu_measure(c: canvas.Canvas, x: float, y: float, notes: list[Jianpu
     right_step = max(4.0, min(7.0, cell_width * 0.24))
     dash_len = max(4.0, min(7.0, cell_width * 0.28))
     dot_radius = max(1.0, min(1.8, font_size * 0.09))
-    upper_start = note_y_offset = font_size * 0.95
+    upper_start = font_size * 0.95
 
     for idx, note in enumerate(notes):
         cx = x + idx * cell_width + cell_width / 2
@@ -496,7 +489,7 @@ def sanitize_generated_lilypond_file(
                 preamble
                 + '\n\\score {\n<<\n'
                 + jianpu_section
-                + f'\n>>\n\\header{{\n  title=""\n  composer=""\n  instrument=""\n  tagline=##f\n}}\n\\layout{{}}\n}}\n'
+                + '\n>>\n\\header{\n  title=""\n  composer=""\n  instrument=""\n  tagline=##f\n}\n\\layout{}\n}\n'
             )
             extra_markup = title_markup + lyrics_markup
             if extra_markup and '\\score {' in rebuilt and '\\fill-line { \\fontsize #3 \\bold' not in rebuilt.split('\\score {', 1)[0]:

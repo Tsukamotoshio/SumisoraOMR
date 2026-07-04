@@ -5,10 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import threading
 import flet as ft
 from pathlib import Path
-from typing import Optional
 
 from ..app_state import AppState, Event
 from core.app.backend import app_base_dir

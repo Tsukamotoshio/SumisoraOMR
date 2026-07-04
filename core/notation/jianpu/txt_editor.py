@@ -38,7 +38,6 @@
 from __future__ import annotations
 
 import re
-import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -268,7 +267,7 @@ def parse_txt(text: str) -> JianpuTxtScore:
                 try:
                     score.meta.tempo = int(value)
                 except ValueError:
-                    raise ParseError(f'tempo 必须为整数，得到：{value!r}', lineno)
+                    raise ParseError(f'tempo 必须为整数，得到：{value!r}', lineno) from None
             # 未知字段静默忽略（向前兼容）
 
         elif section == 'score':

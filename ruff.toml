@@ -1,0 +1,27 @@
+# ruff.toml — lint config (P2-1). 只检查项目自有代码。
+line-length = 120
+
+# 子模块 / vendored / 捆绑运行时 / 生成目录不检查
+exclude = [
+    ".venv",
+    "omr_engine",
+    "upscaling_engine",
+    "lilypond-2.24.4",
+    "package-assets",
+    "build",
+    "dist",
+    "scripts/jianpu-ly.py",
+    ".pytest_cache",
+]
+
+[lint]
+select = ["F", "E", "B", "W"]
+# E501（长行）暂不强制：存量长行逐步压缩，不阻塞检查。
+# E402（导入不在文件顶部）为项目故意结构：app.py/convert.py 的 venv bootstrap 必须
+# 先于依赖导入执行；多个模块需在 import 前设置环境变量/模块常量；lilypond_runner
+# 尾部为向后兼容 re-export。
+ignore = ["E501", "E402"]
+
+[lint.per-file-ignores]
+# __init__.py 的 re-export 属 API 设计，不按未使用 import 处理
+"**/__init__.py" = ["F401"]

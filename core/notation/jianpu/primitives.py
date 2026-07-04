@@ -1,5 +1,4 @@
 # core/notation/jianpu/primitives.py — Note/duration primitives for Jianpu conversion.
-from typing import Optional
 
 from music21 import chord as m21chord, note as m21note
 

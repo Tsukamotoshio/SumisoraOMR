@@ -7,10 +7,6 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from ..config import (
-    LOGGER,
-    MAX_AUDIVERIS_SECONDS,
-)
 from ..image.image_preprocess import (
     HAS_PILLOW,
     _measure_laplacian_stddev,

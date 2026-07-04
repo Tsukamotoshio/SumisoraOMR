@@ -2,7 +2,6 @@
 # Supports image input and multi-page PDF input.
 
 import logging
-import io
 import os
 import shutil
 import sys
@@ -13,7 +12,6 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import HOMR_SOURCE_DIR_NAME, MAX_HOMR_SECONDS, OMR_ENGINE_DIR_NAME
-from ..image.image_preprocess import preprocess_image_for_omr
 from ..utils import find_first_musicxml_file, get_app_base_dir, log_message, safe_remove_file
 
 _PATH_LOCK = threading.Lock()
@@ -324,7 +322,8 @@ def _apply_ort_thread_override() -> None:
 
 def _cuda_dlls_available() -> bool:
     """Check for CUDA and cuDNN core DLLs via file-system inspection (does not call LoadLibrary)."""
-    import site, shutil
+    import site
+    import shutil
     # 检查 nvidia pip 包路径
     for sp in site.getsitepackages():
         cuda_rt = Path(sp) / 'nvidia' / 'cuda_runtime' / 'bin' / 'cudart64_12.dll'
@@ -365,11 +364,10 @@ def _preprocess_for_homr(image_path: Path, work_dir: Path) -> Optional[Path]:
 
     步骤：白边裁剪 → 旋转校正 → 梯度修正 → 超分辨率（如需）→ 降采样（如需）
     """
-    from pathlib import Path
     from ..image.image_preprocess import (
         crop_white_border, detect_and_correct_rotation, correct_gradient,
         fit_image_within_pixel_limit,
-        LOW_RES_PIXEL_THRESHOLD, AUDIVERIS_MAX_PIXELS, _measure_laplacian_stddev,
+        LOW_RES_PIXEL_THRESHOLD, AUDIVERIS_MAX_PIXELS,
     )
     from ..image.sr_upscale import upscale_image
     from PIL import Image
@@ -584,7 +582,7 @@ def _run_homr_multipage_pdf(
             try:
                 _cfg = _make_config(_gpu_mode)
                 _run_with_heartbeat(
-                    lambda p=_captured_image_path, c=_cfg: homr_main.process_image(str(p), c, xml_args),
+                    lambda p=_captured_image_path, c=_cfg, x=xml_args: homr_main.process_image(str(p), c, x),
                     label=f'[homr] 第 {page_num}/{total_pages} 页 ',
                     on_heartbeat=_heartbeat_fn,
                 )
@@ -604,7 +602,7 @@ def _run_homr_multipage_pdf(
                     try:
                         _cpu_cfg = _make_config(False)
                         _run_with_heartbeat(
-                            lambda p=_captured_image_path, c=_cpu_cfg: homr_main.process_image(str(p), c, xml_args),
+                            lambda p=_captured_image_path, c=_cpu_cfg, x=xml_args: homr_main.process_image(str(p), c, x),
                             label=f'[homr] 第 {page_num}/{total_pages} 页(CPU) ',
                             on_heartbeat=_heartbeat_fn,
                         )
@@ -813,7 +811,7 @@ def run_homr_batch(
 
     mxl = find_first_musicxml_file(output_dir, image_path.stem)
     if mxl is None:
-        log_message(f'[homr] 未找到输出 MusicXML，可能识别失败。', )
+        log_message('[homr] 未找到输出 MusicXML，可能识别失败。', )
         return None
 
     return output_dir

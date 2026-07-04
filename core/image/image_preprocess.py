@@ -576,7 +576,7 @@ def create_display_reference(
 
         ref_path = work_dir / f'display_ref_{image_path.stem}.png'
         working.save(ref_path)
-        log_message(f'  [显示参考] 已生成编辑器参考图像（白边裁剪 + 旋转校正 + 对比度增强）。')
+        log_message('  [显示参考] 已生成编辑器参考图像（白边裁剪 + 旋转校正 + 对比度增强）。')
         return ref_path
 
     except Exception as exc:

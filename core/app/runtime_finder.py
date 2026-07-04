@@ -1,6 +1,5 @@
 # core/app/runtime_finder.py — External tool discovery and subprocess invocation.
 # Split from convert.py.
-import importlib.util
 import logging
 import os
 import re
@@ -9,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -92,7 +90,6 @@ from ..config import (
     AUDIVERIS_RUNTIME_DIR_NAME,
     AUDIVERIS_SOURCE_DIR_NAMES,
     DEFAULT_AUDIVERIS_MIN_JAVA_VERSION,
-    LOGGER,
     MAX_AUDIVERIS_SECONDS,
     OMR_ENGINE_DIR_NAME,
 )
@@ -417,7 +414,9 @@ def run_subprocess_with_spinner(
                     stderr_handle.seek(0)
                     stdout = stdout_handle.read()
                     stderr = stderr_handle.read()
-                    if sys.stdout: sys.stdout.write('\r'); sys.stdout.flush()
+                    if sys.stdout:
+                        sys.stdout.write('\r')
+                        sys.stdout.flush()
                     return -1, stdout or '', stderr or 'Process timed out.'
                 idx = int(elapsed) % len(spinner)
                 if sys.stdout:
@@ -430,7 +429,9 @@ def run_subprocess_with_spinner(
             stderr_handle.seek(0)
             stdout = stdout_handle.read()
             stderr = stderr_handle.read()
-            if sys.stdout: sys.stdout.write('\r'); sys.stdout.flush()
+            if sys.stdout:
+                sys.stdout.write('\r')
+                sys.stdout.flush()
             return return_code, stdout or '', stderr or ''
 
 

@@ -2,19 +2,15 @@
 # Split from convert.py.
 import hashlib
 import logging
-import os
 import shutil
 import sys
 from pathlib import Path
 from typing import Optional
 
-from ..omr.audiveris_runner import run_audiveris_batch, run_audiveris_sliced_batch
+from ..omr.audiveris_runner import run_audiveris_sliced_batch
 from ..config import (
-    APP_VERSION,
-    LOGGER,
     AppConfig,
     ConversionSummary,
-    MAX_AUDIVERIS_SECONDS,
     OMREngine,
 )
 from ..omr.homr_runner import check_homr_available, run_homr_batch
@@ -33,7 +29,6 @@ from ..utils import (
     print_conversion_summary,
     safe_remove_tree,
     save_conversion_history,
-    setup_logging,
     update_conversion_history,
 )
 
@@ -144,7 +139,8 @@ def _archive_mxl_to_xml_scores(
 
 def _quick_read_mxl_title(mxl_path: Path) -> str:
     """Quick regex read of <work-title> from an MXL/MusicXML file without music21 overhead."""
-    import re as _re, zipfile as _zf
+    import re as _re
+    import zipfile as _zf
     _GENERIC = {'', 'music21', 'untitled', 'title', 'score', 'new score', 'unknown'}
     try:
         if mxl_path.suffix.lower() == '.mxl':
@@ -292,11 +288,11 @@ def process_single_input_to_jianpu(
         # worker_main.py 的 GUI 结算页面把日志里的 ✗ 当作文件失败信号扫描，
         # 若这里用 ✗ 会导致回退成功的文件被误判为"失败"（同时又出现在成功列表里）。
         if omr_out is None:
-            log_message(f'  [回退] Audiveris 处理失败，正在尝试 Homr 引擎作为回退...')
+            log_message('  [回退] Audiveris 处理失败，正在尝试 Homr 引擎作为回退...')
             omr_out = _try_run_homr()
             if omr_out is not None:
                 engine_label = 'Homr'
-                log_message(f'  ✓ Homr 回退成功。')
+                log_message('  ✓ Homr 回退成功。')
             else:
                 log_message(f'  ✗ Audiveris 和 Homr 均处理失败，跳过 {source_file.name}。', logging.WARNING)
                 return False
@@ -407,7 +403,7 @@ def _prompt(question: str, *, valid_yes: tuple[str, ...] = ('Y',),
         if raw in ('H', '?', 'HELP'):
             _print_help()
             continue
-        log_message(f'  → 请输入 Y 或 N（输入 H 查看帮助，输入 Q 退出）。')
+        log_message('  → 请输入 Y 或 N（输入 H 查看帮助，输入 Q 退出）。')
 
 
 def _print_help() -> None:

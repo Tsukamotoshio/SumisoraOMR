@@ -38,7 +38,6 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from ..config import LOGGER
 from ..utils import get_app_base_dir, log_message
 
 try:

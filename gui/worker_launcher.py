@@ -173,7 +173,7 @@ class ConversionRunner:
                 err_lines: list[str] = []
                 _current_processing_file: Optional[str] = None
 
-                def _read_stderr() -> None:
+                def _read_stderr(proc=proc, err_lines=err_lines) -> None:
                     try:
                         for raw_line in proc.stderr:  # type: ignore[union-attr]
                             if not self._state.is_processing:

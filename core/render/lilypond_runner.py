@@ -1,12 +1,10 @@
 # core/render/lilypond_runner.py — LilyPond / jianpu-ly tool discovery and rendering.
 # Split from runtime_finder.py.
-import importlib.util
 import logging
 import os
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +19,6 @@ from ..config import (
 from ..utils import (
     find_packaged_runtime_dir,
     get_app_base_dir,
-    get_runtime_search_roots,
     log_message,
     resolve_font_path,
 )
@@ -387,7 +384,7 @@ def _fix_omr_artifacts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = None) ->
                 key = ((s_el.text or '1') if s_el is not None else '1', v_el.text)
                 voice_notes.setdefault(key, []).append(child)
 
-            for key, notes in voice_notes.items():
+            for _key, notes in voice_notes.items():
                 total = sum(
                     int(n.find('duration').text)
                     for n in notes
