@@ -284,6 +284,82 @@ def _check_homr_models(state: AppState) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Global exception handlers (P1-1): uncaught exception = log + tell the user
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _log_uncaught_exception(prefix: str, exc_type, exc_value, exc_tb):
+    """Write an uncaught exception with full traceback to the app log.
+
+    Returns the log file path (or None). Goes through the core.utils module
+    attribute so it picks up the GUI's log redirect once installed, and
+    initialises the log file lazily on first use.
+    """
+    import traceback as _traceback
+    import logging as _logging
+    try:
+        import core.utils as _cu
+        text = prefix
+        if exc_type is not None:
+            text += '\n' + ''.join(
+                _traceback.format_exception(exc_type, exc_value, exc_tb)
+            ).rstrip()
+        _cu.log_message(text, _logging.ERROR)
+        return getattr(_cu, 'LOG_FILE_PATH', None)
+    except Exception:
+        return None
+
+
+def _install_global_exception_handlers() -> None:
+    """Install sys/threading exception hooks for the GUI process.
+
+    未捕获异常此前是静默陷阱：主线程崩溃只在（通常不可见的）stderr 打印，
+    后台线程崩溃连打印都没人看。现在统一写入 logs/ 日志；主线程致命崩溃
+    额外用原生 MessageBox 告知用户日志路径（此时 Flet UI 可能已死，不能
+    依赖页内对话框）。后台线程只记日志不弹窗——应用往往仍在运行，且可能
+    连续触发，弹窗会形成轰炸。asyncio 循环的处理器在 main() 里另行安装。
+    设 SUMISORA_NO_CRASH_DIALOG=1 可抑制弹窗（自动化测试/CI 用）。
+    """
+    import threading as _threading
+
+    _orig_excepthook = sys.excepthook
+
+    def _gui_excepthook(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            _orig_excepthook(exc_type, exc_value, exc_tb)
+            return
+        log_path = _log_uncaught_exception(
+            '未捕获异常（主线程），程序即将退出：', exc_type, exc_value, exc_tb
+        )
+        _orig_excepthook(exc_type, exc_value, exc_tb)
+        if sys.platform == 'win32' and os.environ.get('SUMISORA_NO_CRASH_DIALOG') != '1':
+            try:
+                import ctypes as _ct
+                _ct.windll.user32.MessageBoxW(
+                    0,
+                    t('app.crash_dialog_body', path=str(log_path or '?')),
+                    t('app.crash_dialog_title'),
+                    0x10,  # MB_ICONERROR | MB_OK
+                )
+            except Exception:
+                pass
+
+    sys.excepthook = _gui_excepthook
+
+    _orig_threading_hook = _threading.excepthook
+
+    def _thread_excepthook(args):
+        if args.exc_type is SystemExit:
+            return
+        _log_uncaught_exception(
+            f'未捕获异常（后台线程 {args.thread.name if args.thread else "?"}）：',
+            args.exc_type, args.exc_value, args.exc_traceback,
+        )
+        _orig_threading_hook(args)
+
+    _threading.excepthook = _thread_excepthook
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main application
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -318,6 +394,34 @@ async def main(page: ft.Page) -> None:
     # ── Global state ──────────────────────────────────────────────────────────
     state = AppState()
     _check_homr_models(state)
+
+    # ── asyncio 未捕获异常 → 日志 + GUI 日志面板（P1-1）─────────────────────────
+    # Flet 事件循环里未被 await 的任务异常此前会被静默吞掉；记录到日志文件，
+    # 并回显到应用内日志面板。保留默认处理器的 stderr 输出便于开发期观察。
+    try:
+        import asyncio as _asyncio
+        _loop = _asyncio.get_running_loop()
+
+        def _on_loop_exception(loop, context):
+            exc = context.get('exception')
+            if exc is not None:
+                _log_uncaught_exception(
+                    f'未捕获异常（asyncio 事件循环）：{context.get("message", "")}',
+                    type(exc), exc, exc.__traceback__,
+                )
+            else:
+                _log_uncaught_exception(
+                    f'asyncio 事件循环错误：{context.get("message", "")}',
+                    None, None, None,
+                )
+            try:
+                loop.default_exception_handler(context)
+            except Exception:
+                pass
+
+        _loop.set_exception_handler(_on_loop_exception)
+    except Exception:
+        pass
 
     # 应用上次保存的界面语言（必须在构建任何页面/控件之前，因为各控件在构造时
     # 即调用 t() 取当前语言的文案）。
@@ -1036,6 +1140,10 @@ def _setup_flet_view_name() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    # 尽早安装全局异常钩子：任何后续启动步骤（互斥量、EXE 修补、ft.run）崩溃
+    # 都能落日志并弹窗告知，而不是静默消失。
+    _install_global_exception_handlers()
+
     if sys.platform == 'win32' and '--worker' not in sys.argv:
         import ctypes as _ctypes
         _ctypes.windll.kernel32.CreateMutexW(None, False, 'SumisoraOMR_RunningMutex')

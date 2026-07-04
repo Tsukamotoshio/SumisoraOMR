@@ -61,6 +61,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "app.snack_done_default": {"zh": "完成", "en": "Done"},
     "app.single_instance_title": {"zh": "Sumisora OMR", "en": "Sumisora OMR"},
     "app.single_instance_body": {"zh": "Sumisora OMR 已在运行中。\n\n请查看任务栏。", "en": "Sumisora OMR is already running.\n\nCheck the taskbar."},
+    "app.crash_dialog_title": {"zh": "Sumisora OMR — 程序发生错误", "en": "Sumisora OMR — Application Error"},
+    "app.crash_dialog_body": {"zh": "发生未预期的错误，程序即将退出。\n\n错误详情已写入日志：\n{path}\n\n反馈问题时请附上该日志文件。", "en": "An unexpected error occurred and the application will close.\n\nDetails were written to the log:\n{path}\n\nPlease attach this log file when reporting the issue."},
 
     # ── gui/pages/about_page.py ─────────────────────────────────────────────
     "about.subtitle": {"zh": "五线谱识别与简谱生成工具", "en": "Staff Notation Recognition & Jianpu Generation Tool"},
