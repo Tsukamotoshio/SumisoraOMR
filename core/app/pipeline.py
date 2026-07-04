@@ -454,6 +454,10 @@ def process_bulk_input_to_jianpu(
     summary = ConversionSummary()
 
     cleanup_old_temporary_paths([script_dir / 'build', temp_dir], max_age_days=7)
+    # 日志目录保留 30 天：此前每次启动新建时间戳日志、从不清理，无限累积。
+    # frozen 版日志在 %LOCALAPPDATA%\SumisoraOMR\logs，必须经 _get_logs_dir 解析。
+    from ..utils import _get_logs_dir
+    cleanup_old_temporary_paths([_get_logs_dir(script_dir)], max_age_days=30)
 
     if not input_dir.exists() or not input_dir.is_dir():
         input_dir.mkdir(parents=True, exist_ok=True)
