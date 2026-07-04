@@ -364,7 +364,13 @@ def clone_jianpu_note(note: JianpuNote, duration: float) -> JianpuNote:
 
 
 def split_duration_chunks(duration: float) -> list[float]:
-    """Split a remaining duration into allowed jianpu chunks (greedy, largest first)."""
+    """Split a remaining duration into allowed jianpu chunks (greedy, largest first).
+
+    Returns [] for duration <= tol: 旧实现兜底返回 [0.125]，会凭空造出不存在的
+    时值——调用方拿它填 gap 时全部有 > tol 守卫，从不依赖该兜底；而病态路径
+    （capacity≤0 的 append_element_chunks 循环）恰恰靠这个假音符"推进"位置，
+    生成整片垃圾。空列表让调用方显式面对"无可分配时值"。
+    """
     remaining = max(float(duration), 0.0)
     chunks: list[float] = []
     tol = 0.01
@@ -375,7 +381,7 @@ def split_duration_chunks(duration: float) -> list[float]:
             piece = min(0.125, remaining)
         chunks.append(piece)
         remaining -= piece
-    return chunks or [0.125]
+    return chunks
 
 
 # ── Integer 64th-note unit validation (matches jianpu-ly.py's barLength arithmetic) ──────────

@@ -22,6 +22,18 @@ from .measure import (
 )
 
 
+def _canonical_offset(seen: dict[int, float], offset: float) -> float:
+    """Collapse float-epsilon variants of one musical onset onto a single dict key.
+
+    by_offset 用 float 直接做字典键时，三连音类 offset（1/3 等无限小数）经不同
+    计算路径产生的浮点误差变体会把"同一位置"分裂成两个键，绕过所有 tol 容差。
+    这里按 1/64 音符网格（QL×16 取整）判定身份，返回该网格首次出现的**原始**
+    offset——量化只用于去重，不用于时值运算：三连音 1/3 若被吸附到 5/16，
+    下游 `next_offset - offset` 会把时值改写成附点十六分，musically 错误。
+    """
+    return seen.setdefault(round(offset * 16), offset)
+
+
 def _get_voice_ids_in_part(part) -> list[str]:
     """Return sorted voice IDs that contain significant non-rest content.
 
@@ -229,6 +241,7 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
         else:
             measure_length = nominal_measure_length or float(getattr(measure.barDuration, 'quarterLength', 4.0) or 4.0)
         by_offset: dict[float, list[object]] = {}
+        _offset_seen: dict[int, float] = {}  # 1/64 网格 → 首见原始 offset（P1-4 去重）
 
         # 合并同小节延音线（cross-measure tie-stop 音符在本小节内无对应 start，
         # stripTies 会保留其时值不变；仅合并同小节内的 start→stop 对）
@@ -282,7 +295,7 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                 _flat_all = list(measure_src.flatten().notesAndRests)
 
         for element in _flat_all:
-            offset = float(element.offset)
+            offset = _canonical_offset(_offset_seen, float(element.offset))
             if offset >= measure_length - tol:
                 continue
             # 跨小节 tie-stop/continue：上一小节 tie-start 音符在本小节内的延续。
@@ -418,8 +431,9 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0,
             _trailing_rest_pickup = True
 
     by_offset: dict[float, object] = {}
+    _offset_seen: dict[int, float] = {}  # 1/64 网格 → 首见原始 offset（P1-4 去重）
     for element in part.flatten().notesAndRests:
-        offset = float(element.offset)
+        offset = _canonical_offset(_offset_seen, float(element.offset))
         if offset < 0 or offset >= max_score_offset:
             continue
         candidate = clone_monophonic_element(element, float(element.duration.quarterLength or 0.25))
@@ -483,6 +497,17 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0,
                 pos_in_bar = current_pos % bar_length
                 capacity = bar_length - pos_in_bar if pos_in_bar > tol else bar_length
             piece_total = min(remaining, max(capacity, 0.0))
+            if piece_total <= tol:
+                # 容量耗尽但仍有剩余（理论上仅弱起边界浮点漂移时出现）。
+                # 旧行为靠 split_duration_chunks(0)→[0.125] 的假音符推进位置，
+                # 生成整片垃圾直到 MAX_SANE_BARS；split 改返回 [] 后若不显式
+                # 退出，remaining 永不减少会原地死循环。丢弃该元素剩余时值。
+                log_message(
+                    f'[jianpu] append_element_chunks: 小节容量耗尽仍剩 {remaining:.3f} 拍，'
+                    '已丢弃该元素剩余时值（疑似弱起边界异常）。',
+                    _logging.WARNING,
+                )
+                return
             for piece in split_duration_chunks(piece_total):
                 element_piece = clone_monophonic_element(element_template, piece)
                 current_measure.append(note_to_jianpu(element_piece, key_tonic_semitone))

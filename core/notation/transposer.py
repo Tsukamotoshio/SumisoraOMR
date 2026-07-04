@@ -263,17 +263,15 @@ def _parse_musicxml_key_signature(mxl_path: Path) -> Optional[str]:
         if key_elem is None:
             return None
         fifths_elem = key_elem.find(f'{ns}fifths')
-        mode_elem = key_elem.find(f'{ns}mode')
         if fifths_elem is None or fifths_elem.text is None:
             return None
         fifths = int(fifths_elem.text.strip())
-        if mode_elem is None or not mode_elem.text:
-            return _major_key_from_fifths(fifths)
-        mode = mode_elem.text.strip().lower()
-        if mode == 'major':
-            return _major_key_from_fifths(fifths)
-        if mode == 'minor':
-            return _major_key_from_fifths(fifths)
+        # <mode>（大调/小调）在此有意忽略——不是漏写小调逻辑：本函数唯一
+        # 消费方是移调页的"自动检测原调"，而 XML 级移调只做半音平移（改
+        # <pitch> 与 <fifths>），mode 不参与音程计算。a 小调按其关系大调 C
+        # 报告，from→to 半音差与按真实小调主音计算完全一致，仅显示名不同。
+        # jianpu 提取侧需要 mode 的地方由 primitives._get_score_key_tonic
+        # 单独正确处理（小调输出 '6=X' 头）。
         return _major_key_from_fifths(fifths)
     except Exception:
         return None
