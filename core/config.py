@@ -70,11 +70,12 @@ class SREngine(Enum):
 class OMREngine(Enum):
     """Available optical music recognition engines.
 
-    AUTO:      Auto-select by input format (recommended). Currently always Audiveris.
+    AUTO:      Auto-select by input (recommended): images → Homr; vector PDF →
+               Audiveris; bitmap (scanned) PDF → Homr. See pipeline.py routing.
     AUDIVERIS: Java-based traditional OMR; accepts PDF/image; outputs MusicXML (.mxl).
                Requires a local JDK + Audiveris installation.
-    HOMR:      End-to-end DL OMR via homr; accepts images and the first page of PDFs;
-               outputs .musicxml. Uses omr_engine/homr repo directly.
+    HOMR:      End-to-end DL OMR via homr; accepts images and PDFs (multi-page
+               supported, pages converted to PNG); outputs .musicxml.
     """
     AUTO = 'auto'
     AUDIVERIS = 'audiveris'

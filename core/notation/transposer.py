@@ -794,6 +794,10 @@ def strip_slurs_ties_from_xml(xml_path: Path, backup: bool = True) -> Path:
         ns_prefix = ''
         if root.tag.startswith('{'):
             ns_prefix = root.tag.split('}')[0] + '}'
+            # 反向注册为默认命名空间：序列化时保持 <pitch> 原样输出，而不是
+            # 全篇加 ns0: 前缀（tie_reconstruction.py 同款处理）——下游按字面
+            # 标签名做正则/文本匹配的逻辑依赖这一点。
+            ET.register_namespace('', ns_prefix[1:-1])
 
         removed = 0
         for parent in root.iter():
@@ -841,8 +845,8 @@ def strip_slurs_ties_from_mxl(mxl_path: Path, backup: bool = True) -> Path:
         # 直接处理 .musicxml
         return strip_slurs_ties_from_xml(mxl_path, backup=backup)
 
+    tmp_dir = mxl_path.parent / f'_mxl_tmp_{mxl_path.stem}'
     try:
-        tmp_dir = mxl_path.parent / f'_mxl_tmp_{mxl_path.stem}'
         tmp_dir.mkdir(exist_ok=True)
 
         with zipfile.ZipFile(mxl_path, 'r') as zin:
@@ -854,15 +858,27 @@ def strip_slurs_ties_from_mxl(mxl_path: Path, backup: bool = True) -> Path:
         if backup:
             shutil.copy2(mxl_path, mxl_path.with_suffix('.mxl.bak'))
 
-        # 重新打包
+        # 重新打包。MXL 规范要求 mimetype 是 ZIP 内首个条目且不压缩
+        # （ZIP_STORED），消费方靠文件头几个字节嗅探容器类型；源包缺失时补一个。
+        mimetype_file = tmp_dir / 'mimetype'
         with zipfile.ZipFile(mxl_path, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
+            if mimetype_file.is_file():
+                zout.write(mimetype_file, 'mimetype', compress_type=zipfile.ZIP_STORED)
+            else:
+                zout.writestr(
+                    zipfile.ZipInfo('mimetype'),
+                    'application/vnd.recordare.musicxml',
+                    compress_type=zipfile.ZIP_STORED,
+                )
             for f in tmp_dir.rglob('*'):
-                if f.is_file():
+                if f.is_file() and f != mimetype_file:
                     zout.write(f, f.relative_to(tmp_dir))
 
-        shutil.rmtree(tmp_dir, ignore_errors=True)
         LOGGER.info('strip_slurs_ties_from_mxl: 已重新打包 %s', mxl_path.name)
     except Exception as exc:
         LOGGER.warning('strip_slurs_ties_from_mxl 失败: %s', exc)
+    finally:
+        # 异常路径此前会把 _mxl_tmp_* 目录留在原地（rmtree 在 try 内），累积泄漏
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return mxl_path

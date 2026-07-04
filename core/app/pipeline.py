@@ -492,7 +492,7 @@ def process_bulk_input_to_jianpu(
 
     engine = config.omr_engine
     if engine is OMREngine.AUTO:
-        log_message('[引擎选择] 自动模式（PDF + 图片 → Audiveris）。')
+        log_message('[引擎选择] 自动模式（图片/位图 PDF → Homr，矢量 PDF → Audiveris）。')
     else:
         log_message(f'[引擎选择] 使用 {engine.value.capitalize()} 引擎。')
 
