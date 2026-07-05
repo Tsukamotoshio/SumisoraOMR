@@ -68,6 +68,11 @@ STRINGS: dict[str, dict[str, str]] = {
     "about.subtitle": {"zh": "五线谱识别与简谱生成工具", "en": "Staff Notation Recognition & Jianpu Generation Tool"},
     "about.author_label": {"zh": "作者", "en": "Author"},
     "about.homepage_label": {"zh": "项目主页", "en": "Project Homepage"},
+    "about.diagnostics_label": {"zh": "诊断信息", "en": "Diagnostics"},
+    "about.diagnostics_hint": {"zh": "报告问题时，请点击下方按钮复制环境信息一并附上。", "en": "When reporting an issue, click below to copy your environment info and include it."},
+    "about.copy_diagnostics_button": {"zh": "复制诊断信息", "en": "Copy Diagnostics"},
+    "about.diagnostics_copied": {"zh": "诊断信息已复制到剪贴板", "en": "Diagnostics copied to clipboard"},
+    "about.diagnostics_failed": {"zh": "复制失败：{exc}", "en": "Copy failed: {exc}"},
     "about.license_label": {"zh": "开源许可证 (AGPL-3.0)", "en": "Open Source License (AGPL-3.0)"},
     "about.license_text": {
         "zh": (

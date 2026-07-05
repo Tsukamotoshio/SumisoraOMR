@@ -53,6 +53,37 @@ class AboutPage(ft.Column):
         finally:
             self._opening = False
 
+    def _copy_diagnostics(self, _e=None) -> None:
+        """收集环境诊断信息并复制到剪贴板（后台线程；收集可能触发 onnxruntime 导入）。"""
+        page = self.page
+
+        def _work() -> None:
+            try:
+                from core.app.diagnostics import collect_diagnostics
+                report = collect_diagnostics()
+                if page is not None:
+                    # set_clipboard 须在事件循环线程调用
+                    page.run_task(self._set_clipboard_async, report)
+            except Exception as exc:
+                if page is not None:
+                    page.run_task(self._snack_async, t('about.diagnostics_failed', exc=exc))
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    async def _set_clipboard_async(self, text: str) -> None:
+        try:
+            await self.page.clipboard.set(text)  # Flet 0.85: page.clipboard.set 是协程
+            await self._snack_async(t('about.diagnostics_copied'))
+        except Exception as exc:
+            await self._snack_async(t('about.diagnostics_failed', exc=exc))
+
+    async def _snack_async(self, msg: str) -> None:
+        # 本 Flet 版本 page.open 不存在（会静默抛错），SnackBar 须走 show_dialog。
+        try:
+            self.page.show_dialog(ft.SnackBar(content=ft.Text(msg, size=14), duration=3000))
+        except Exception:
+            pass
+
     def _build_ui(self) -> None:
 
         def _card(content: ft.Control) -> ft.Container:
@@ -131,6 +162,26 @@ class AboutPage(ft.Column):
             )
         )
 
+        # Diagnostics (P3-2): one-click copy of environment info for bug reports
+        diagnostics_card = _card(
+            ft.Column(
+                [
+                    ft.Text(t('about.diagnostics_label'), size=14, font_family=FONT_EMPHASIS,
+                            color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(t('about.diagnostics_hint'), size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.OutlinedButton(
+                        content=ft.Row(
+                            [ft.Icon(ft.Icons.CONTENT_COPY_ROUNDED, size=16),
+                             ft.Text(t('about.copy_diagnostics_button'))],
+                            tight=True, spacing=6,
+                        ),
+                        on_click=self._copy_diagnostics,
+                    ),
+                ],
+                spacing=10,
+            )
+        )
+
         # License
         license_card = _card(
             ft.Column(
@@ -159,6 +210,8 @@ class AboutPage(ft.Column):
             logo_card,
             ft.Container(height=16),
             author_card,
+            ft.Container(height=16),
+            diagnostics_card,
             ft.Container(height=16),
             license_card,
             ft.Container(height=32),
