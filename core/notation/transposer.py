@@ -1,4 +1,4 @@
-# core/music/transposer.py — MusicXML transposition algorithm module.
+# core/notation/transposer.py — MusicXML transposition algorithm module.
 # Standalone XML / audio transposition using music21 for accidental compensation.
 # No GUI dependency; may be imported from any caller.
 #

@@ -1,4 +1,4 @@
-# core/tie_reconstruction.py — 延音线（tie）后处理重建
+# core/notation/tie_reconstruction.py — 延音线（tie）后处理重建
 """针对 homr 等不输出 tie 符号的 OMR 引擎，在 MusicXML 后处理阶段重建延音线。
 
 算法分两层：
@@ -7,7 +7,7 @@
      B. 不同声部               → 必然非延音
      C. 断音装饰（staccato/accent 在第二音符上）→ 必然非延音
      D. 歌词对齐（第二音符带歌词）→ 必然非延音
-     E. slur 存在但无 tie 符号  → 计入启发式 -2，不作为硬规则
+     E. slur 存在但无 tie 符号  → 计入启发式（权重 0，同音高对不构成证据），不作为硬规则
 
   2. 启发式加权评分（剩余对）
      跨小节:              +3
@@ -15,7 +15,7 @@
      同声部无装饰:         +1
      第二音符有装饰/动态:   -3
      beam 组边界:         -2
-     slur 存在:           -2
+     slur 存在:            0（_W_SLUR_PRESENT；同音高对场景下不构成证据）
      阈值: score>=2 → tie; score<=-2 → no_tie; else → ambiguous（保守不写）
 
 公开 API

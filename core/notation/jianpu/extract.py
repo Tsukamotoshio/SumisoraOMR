@@ -344,7 +344,6 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                 break
             if offset > current_offset + tol:
                 gap = min(offset - current_offset, measure_length - current_offset)
-                rest = m21note.Rest()
                 for piece in split_duration_chunks(gap):
                     rest_piece = m21note.Rest()
                     rest_piece.duration.quarterLength = piece

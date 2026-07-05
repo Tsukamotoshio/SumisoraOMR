@@ -16,14 +16,14 @@ JIANPU_MAP = {
 }
 
 CJK_FONT_CANDIDATES = [
-    ('Meiryo', r'%SystemRoot%\\Fonts\\meiryo.ttc'),
-    ('Yu Gothic', r'%SystemRoot%\\Fonts\\YuGothM.ttc'),
-    ('MS Gothic', r'%SystemRoot%\\Fonts\\msgothic.ttc'),
-    ('Microsoft YaHei', r'%SystemRoot%\\Fonts\\msyh.ttc'),
-    ('Microsoft JhengHei', r'%SystemRoot%\\Fonts\\msjh.ttc'),
-    ('SimSun', r'%SystemRoot%\\Fonts\\simsun.ttc'),
-    ('SimHei', r'%SystemRoot%\\Fonts\\simhei.ttf'),
-    ('Microsoft YaHei Bold', r'%SystemRoot%\\Fonts\\msyhbd.ttc'),
+    ('Meiryo', r'%SystemRoot%\Fonts\meiryo.ttc'),
+    ('Yu Gothic', r'%SystemRoot%\Fonts\YuGothM.ttc'),
+    ('MS Gothic', r'%SystemRoot%\Fonts\msgothic.ttc'),
+    ('Microsoft YaHei', r'%SystemRoot%\Fonts\msyh.ttc'),
+    ('Microsoft JhengHei', r'%SystemRoot%\Fonts\msjh.ttc'),
+    ('SimSun', r'%SystemRoot%\Fonts\simsun.ttc'),
+    ('SimHei', r'%SystemRoot%\Fonts\simhei.ttf'),
+    ('Microsoft YaHei Bold', r'%SystemRoot%\Fonts\msyhbd.ttc'),
 ]
 
 ALLOWED_JIANPU_DURATIONS = [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125]

@@ -28,7 +28,7 @@
     X-         时值延长一拍（每个 - 延长一拍）
     X_         时值缩短一半（每个 _ 缩短一半；_ = 八分，__ = 十六分）
     X.         附点（在 - 或 _ 后写 .）
-    |  或  --- 小节线（仅起可读性分隔作用，不产生音符）
+    |  或  --（两个及以上连续 -）小节线（仅作可读性分隔，不产生音符；- 不可独立成 token）
 
   示例行：
     1 2 3 4 | 5 6 7 1'
@@ -306,12 +306,6 @@ def parse_file(path: str | Path) -> JianpuTxtScore:
 # 序列化器
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _format_measure(measure: JianpuTxtMeasure, notes_per_line: int = 8) -> str:
-    """将一个小节格式化为文本片段（含尾部小节线）。"""
-    tokens = [n.to_token() for n in measure.notes]
-    return ' '.join(tokens)
-
-
 def serialize_txt(score: JianpuTxtScore, *, notes_per_line: int = 8) -> str:
     """将 JianpuTxtScore 序列化为 .jianpu.txt 格式的字符串。
 
@@ -338,9 +332,6 @@ def serialize_txt(score: JianpuTxtScore, *, notes_per_line: int = 8) -> str:
 
     # [score] 区块
     lines.append('[score]')
-    measure_parts: list[str] = []
-    for measure in score.measures:
-        measure_parts.append(_format_measure(measure))
 
     # 将小节以 | 拼接，每 notes_per_line 个音符换行以保持可读性
     all_tokens: list[str] = []
