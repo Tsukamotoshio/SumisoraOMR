@@ -51,6 +51,55 @@ def _homr_models_state() -> str:
         return f'unavailable ({exc.__class__.__name__})'
 
 
+def copy_to_clipboard(text: str) -> bool:
+    """Put *text* on the OS clipboard. Windows via the native Win32 API; True on success.
+
+    Flet 0.85's page.clipboard is a deprecated service that must be mounted before
+    use (an unmounted one errors with "inexistent control"), so we set the OS
+    clipboard directly instead — self-contained, no service-lifecycle timing.
+    ctypes argtypes are declared explicitly for 64-bit / Python 3.14 pointer safety.
+    Returns False on non-Windows or any failure (caller shows a copy-failed toast).
+    """
+    if sys.platform != 'win32':
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+    u = ctypes.windll.user32
+    k = ctypes.windll.kernel32
+    k.GlobalAlloc.restype = wintypes.HGLOBAL
+    k.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    k.GlobalLock.restype = ctypes.c_void_p
+    k.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    k.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    u.OpenClipboard.argtypes = [wintypes.HWND]
+    u.SetClipboardData.restype = wintypes.HANDLE
+    u.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+
+    try:
+        if not u.OpenClipboard(None):
+            return False
+        try:
+            u.EmptyClipboard()
+            data = text.encode('utf-16-le') + b'\x00\x00'
+            handle = k.GlobalAlloc(GMEM_MOVEABLE, len(data))
+            if not handle:
+                return False
+            ptr = k.GlobalLock(handle)
+            if not ptr:
+                return False
+            ctypes.memmove(ptr, data, len(data))
+            k.GlobalUnlock(handle)
+            # SetClipboardData 成功后由系统接管 handle，不再由本进程释放
+            return bool(u.SetClipboardData(CF_UNICODETEXT, handle))
+        finally:
+            u.CloseClipboard()
+    except Exception:
+        return False
+
+
 def collect_diagnostics() -> str:
     """Return a plaintext environment report for pasting into a bug report.
 

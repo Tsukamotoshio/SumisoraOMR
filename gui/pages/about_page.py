@@ -54,28 +54,21 @@ class AboutPage(ft.Column):
             self._opening = False
 
     def _copy_diagnostics(self, _e=None) -> None:
-        """收集环境诊断信息并复制到剪贴板（后台线程；收集可能触发 onnxruntime 导入）。"""
+        """收集环境诊断信息并复制到系统剪贴板（后台线程；收集可能触发 onnxruntime 导入）。"""
         page = self.page
 
         def _work() -> None:
             try:
-                from core.app.diagnostics import collect_diagnostics
+                from core.app.diagnostics import collect_diagnostics, copy_to_clipboard
                 report = collect_diagnostics()
-                if page is not None:
-                    # set_clipboard 须在事件循环线程调用
-                    page.run_task(self._set_clipboard_async, report)
+                ok = copy_to_clipboard(report)
+                msg = t('about.diagnostics_copied') if ok else t('about.diagnostics_failed', exc='clipboard')
             except Exception as exc:
-                if page is not None:
-                    page.run_task(self._snack_async, t('about.diagnostics_failed', exc=exc))
+                msg = t('about.diagnostics_failed', exc=exc)
+            if page is not None:
+                page.run_task(self._snack_async, msg)
 
         threading.Thread(target=_work, daemon=True).start()
-
-    async def _set_clipboard_async(self, text: str) -> None:
-        try:
-            await self.page.clipboard.set(text)  # Flet 0.85: page.clipboard.set 是协程
-            await self._snack_async(t('about.diagnostics_copied'))
-        except Exception as exc:
-            await self._snack_async(t('about.diagnostics_failed', exc=exc))
 
     async def _snack_async(self, msg: str) -> None:
         # 本 Flet 版本 page.open 不存在（会静默抛错），SnackBar 须走 show_dialog。
