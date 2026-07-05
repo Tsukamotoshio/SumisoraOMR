@@ -1,0 +1,13 @@
+# requirements-ci.txt — minimal pinned deps for the CI test job (P2-3).
+#
+# The notation golden/edge tests import only core.notation.jianpu, whose chain
+# pulls music21 + reportlab + PyMuPDF (via core.utils/core.config) — NOT
+# onnxruntime, flet, or any git submodule. Installing this tiny set keeps CI
+# fast and avoids the heavy/GPU/desktop wheels in requirements.lock.txt that may
+# lack wheels on the runner's Python. Versions are pinned to requirements.lock.txt.
+#
+# If a test starts needing another package, add it here (and to the lock).
+music21==10.5.0
+PyMuPDF==1.27.2.3
+reportlab==5.0.0
+pytest==9.1.1

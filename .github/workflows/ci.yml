@@ -1,0 +1,55 @@
+# CI — lint + notation regression tests on every push/PR to main (P2-3).
+#
+# Deliberately scoped to the two green gates this project already has:
+#   - ruff (config in ruff.toml; excludes submodules/vendored/runtimes by path,
+#     so no submodule checkout is needed — it never descends into empty dirs)
+#   - pytest over tests/ (pure-Python notation logic; music21-only deps via
+#     requirements-ci.txt, no onnxruntime/flet/submodules)
+#
+# Not covered here (by design): PyInstaller packaging (Windows-only, needs JDK +
+# Inno Setup + submodules) and pyright (not yet clean). Add as separate jobs once
+# they can pass reliably.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 新 push 取消同一分支上仍在跑的旧 run，节省额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # 无需 submodules：ruff.toml 按路径排除子模块目录
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install ruff
+        run: python -m pip install ruff==0.15.20
+      - name: Ruff check
+        run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: '1'  # 语料含中文文件名，强制 UTF-8 避免 runner locale 差异
+    steps:
+      - uses: actions/checkout@v4
+        # 无需 submodules：notation 测试仅依赖 music21，不 import homr/onnxruntime
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install test deps
+        run: python -m pip install -r requirements-ci.txt
+      - name: Run tests
+        run: python -m pytest tests/ -q
