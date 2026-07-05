@@ -311,12 +311,13 @@ def register_pdf_font() -> str:
             else:
                 pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
             return font_name
-        except Exception:
-            pass
+        except Exception as exc:
+            LOGGER.debug('register_pdf_font: 注册 CJK 字体 %s 失败，尝试 CID 回退: %s', font_path.name, exc)
     try:
         pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
         return 'STSong-Light'
-    except Exception:
+    except Exception as exc:
+        LOGGER.debug('register_pdf_font: CID 字体回退失败，使用 Helvetica: %s', exc)
         return 'Helvetica'
 
 
@@ -405,7 +406,8 @@ def count_musicxml_notes(mxl_path: Path) -> tuple[int, int, int]:
         total = len(notes)
         measures = len(list(score.recurse().getElementsByClass('Measure')))
         return non_rest, total, measures
-    except Exception:
+    except Exception as exc:
+        LOGGER.debug('count_musicxml_notes(%s) 解析失败，返回 (0,0,0): %s', mxl_path.name, exc)
         return 0, 0, 0
 
 

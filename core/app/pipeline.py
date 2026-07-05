@@ -9,6 +9,7 @@ from typing import Optional
 
 from ..omr.audiveris_runner import run_audiveris_sliced_batch
 from ..config import (
+    LOGGER,
     AppConfig,
     ConversionSummary,
     OMREngine,
@@ -153,8 +154,8 @@ def _quick_read_mxl_title(mxl_path: Path) -> str:
             m = _re.search(pattern, raw)
             if m and m.group(1).strip().lower() not in _GENERIC:
                 return m.group(1).strip()
-    except Exception:
-        pass
+    except Exception as exc:
+        LOGGER.debug('_quick_read_mxl_title(%s) 读取失败，返回空标题: %s', mxl_path.name, exc)
     return ''
 
 
