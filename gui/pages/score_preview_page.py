@@ -642,7 +642,7 @@ class ScorePreviewPage(ft.Row):
 
     def _snack(self, msg: str) -> None:
         try:
-            self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+            self.page.show_dialog(ft.SnackBar(  # type: ignore[attr-defined]
                 content=ft.Text(msg, size=14), duration=3000,
             ))
         except Exception:

@@ -525,7 +525,7 @@ class JianpuPreviewPage(ft.Row):
                 os.startfile(str(midi_path))
             except Exception as exc:
                 try:
-                    self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                    self.page.show_dialog(ft.SnackBar(  # type: ignore[attr-defined]
                         content=ft.Text(t('common.midi_open_failed', exc=exc), size=14),
                         duration=3000,
                     ))
@@ -533,7 +533,7 @@ class JianpuPreviewPage(ft.Row):
                     pass
         else:
             try:
-                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                self.page.show_dialog(ft.SnackBar(  # type: ignore[attr-defined]
                     content=ft.Text(t('common.midi_not_found', name=midi_path.name), size=14),
                     duration=3000,
                 ))
@@ -545,7 +545,7 @@ class JianpuPreviewPage(ft.Row):
     def _on_regenerate_click(self, _e) -> None:
         if self._current_path is None:
             try:
-                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                self.page.show_dialog(ft.SnackBar(  # type: ignore[attr-defined]
                     content=ft.Text(t('jianpu_preview.error_select_for_render'), size=14),
                     duration=2000,
                 ))
@@ -558,7 +558,7 @@ class JianpuPreviewPage(ft.Row):
         txt_path = editor_workspace_dir() / f'{txt_stem}.jianpu.txt'
         if not txt_path.exists():
             try:
-                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                self.page.show_dialog(ft.SnackBar(  # type: ignore[attr-defined]
                     content=ft.Text(t('jianpu_preview.error_txt_not_found', name=txt_path.name), size=14),
                     duration=3000,
                 ))
@@ -662,7 +662,7 @@ class JianpuPreviewPage(ft.Row):
     def _on_export_single_click(self, _e) -> None:
         if self._current_path is None:
             try:
-                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                self.page.show_dialog(ft.SnackBar(  # type: ignore[attr-defined]
                     content=ft.Text(t('jianpu_preview.error_select_for_export'), size=14),
                     duration=2000,
                 ))
@@ -694,7 +694,7 @@ class JianpuPreviewPage(ft.Row):
     def _on_export_click(self, _e) -> None:
         if not self._checked:
             try:
-                self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                self.page.show_dialog(ft.SnackBar(  # type: ignore[attr-defined]
                     content=ft.Text(t('jianpu_preview.error_checked_for_export'), size=14),
                     duration=2000,
                 ))
