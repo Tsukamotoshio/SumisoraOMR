@@ -109,3 +109,6 @@ Project_Convert.code-workspace
 /Plans.md
 /harness.toml
 /.claude-plugin/
+
+# 测试金样不受上方 *_test*.txt 全局模式影响（tests/fixtures 全部入库）
+!tests/fixtures/golden/*.txt

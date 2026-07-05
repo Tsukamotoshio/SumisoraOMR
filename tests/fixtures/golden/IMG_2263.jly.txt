@@ -1,0 +1,17 @@
+% jianpu-ly.py
+title=IMG_2263
+1=C
+5/8
+
+s0 d0 s1' d0 s2' d0 q3' q1' s6. | 5. d0 d0 s3 d0 d- d0 d0 | 5. d0 d0 s2 d0 d- d0 d0 | 3 - q- |
+s0 d0 s1' d0 s1' d0 q1' q7 s1'. | 2'. q0 q6 | s0 d0 q- s2' d0 s2' d0 s2' d0 d- d0 s1' | 3'. 0 |
+s0 d0 s6 d0 s7 d0 q1' q2' s3'. | #4'. #4' | 2'. q0 q6 | s0 d0 q- s6 d0 s5 d0 s4 d0 d- d0 s0 |
+q7 d0 d0 s2' d0 q3' q1' s6. | 5. q0 q3 | 5. q0 q2 | 3 - q- |
+s0 d0 s1' d0 s0 d0 d0 d0 s1' d0 q1' s7 | 2'. 0 | q0 q2' q2' q2' q1' | 3'. 0 |
+NextPart
+5/8
+0 - q0 | s1, d0 s3, d0 s5, d0 s5,, d0 s3, d0 s0 d0 d0 d0 | s7,, d0 s4, d0 s5, d0 s5,, d0 s4, d0 s0 d0 d0 d0 | s1, d0 s3, d0 s5, d0 q1 q5, s3,. |
+0 - q0 | #4, q6, q1 q2 | 0 - q0 | s#5, d0 s7, d0 s2 d0 q3 q2 s7,. |
+s6, d0 s1 d0 s3 d0 q6, q1 s3. | q2, q6, q1 q2 q1 | 2, q#4, q6, q1 | 5,. s2 d0 q0 d7, |
+s5, d0 d- d0 q0 d0 d0 s0 d0 q0 d0 d0 | s1, d0 s3, d0 s5, d0 q5,, q3, s5,. | s7,, d0 s4, d0 s5, d0 q5,, q4, s5,. | s1, d0 s3, d0 s5, d0 q1 q5, s3,. |
+0 - q0 | s#4, d0 s6, d0 s1 d0 q2 q1 s6,. | q#4, q0 q0 0 | s3, d0 s#5, d0 s7, d0 q3 q7, s#5,. |

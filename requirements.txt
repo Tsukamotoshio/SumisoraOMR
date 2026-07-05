@@ -1,3 +1,6 @@
+# 本文件表达依赖意图（宽松约束）。可复现安装请用锁定文件：
+#   pip install -r requirements.lock.txt
+# 打包与 CI 只用锁定文件；升级依赖后按 requirements.lock.txt 头部流程再生成。
 flet[desktop]>=0.85.0
 music21>=10.5.0
 pillow>=12.2.0
