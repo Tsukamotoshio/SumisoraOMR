@@ -128,6 +128,18 @@ from core.app.win_exe_patch import patch_exe_resources
 from core.config import APP_VERSION
 
 
+def _app_version_tuple() -> tuple[int, int, int, int]:
+    """(major, minor, patch, build) derived from APP_VERSION for the exe VERSIONINFO.
+
+    Single source of truth: core.config.APP_VERSION. Prevents the stale hardcoded
+    version this call site used to carry drifting from the real app version.
+    """
+    parts = [int(x) for x in APP_VERSION.split('.')[:3] if x.isdigit()]
+    while len(parts) < 3:
+        parts.append(0)
+    return parts[0], parts[1], parts[2], 0
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Navigation destinations
 # ─────────────────────────────────────────────────────────────────────────────
@@ -916,7 +928,7 @@ def _setup_flet_view_name() -> None:
                 str(_exe), str(_ico),
                 'SumisoraOMR', 'SumisoraOMR',
                 'Tsukamotoshio', 'Copyright (C) 2026 Tsukamotoshio',
-                0, 3, 3, 0,
+                *_app_version_tuple(),
             )
             # Only mark "patched" on success — otherwise leave the stamp absent
             # so the next launch can retry (e.g. after a code fix).
