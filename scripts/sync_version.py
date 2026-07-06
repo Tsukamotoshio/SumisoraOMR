@@ -59,11 +59,40 @@ def _sync_readme(v: str, changed: list[str]) -> None:
         changed.append(f'README.md badge -> v{v}')
 
 
+def _sync_iss(v: str, changed: list[str]) -> None:
+    # convert_setup.iss is a private (gitignored) Inno Setup script; update it in
+    # place when present so a local installer build stays in sync.
+    p = ROOT / 'convert_setup.iss'
+    if not p.is_file():
+        return
+    ma, mi, pa = _version_parts(v)
+    s = p.read_text(encoding='utf-8')
+    s2 = re.sub(r'(#define\s+MyAppVersion\s+")[^"]+(")', rf'\g<1>{v}\g<2>', s)
+    s2 = re.sub(r'(#define\s+MyAppVersionNumeric\s+")[^"]+(")', rf'\g<1>{ma}.{mi}.{pa}.0\g<2>', s2)
+    if s2 != s:
+        p.write_text(s2, encoding='utf-8')
+        changed.append(f'convert_setup.iss -> {v}')
+
+
+def _sync_build_zip(v: str, changed: list[str]) -> None:
+    # scripts/build_zip.bat is a private (gitignored) packaging script.
+    p = ROOT / 'scripts' / 'build_zip.bat'
+    if not p.is_file():
+        return
+    s = p.read_text(encoding='utf-8')
+    s2 = re.sub(r'(?mi)^(set VERSION=).*$', rf'\g<1>{v}', s)
+    if s2 != s:
+        p.write_text(s2, encoding='utf-8')
+        changed.append(f'build_zip.bat -> {v}')
+
+
 def main() -> None:
     v = _read_app_version()
     changed: list[str] = []
     _sync_version_info(v, changed)
     _sync_readme(v, changed)
+    _sync_iss(v, changed)
+    _sync_build_zip(v, changed)
     print(f'APP_VERSION = {v}')
     if changed:
         for c in changed:
