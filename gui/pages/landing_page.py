@@ -85,10 +85,10 @@ class LandingPage(ft.Row):
             tooltip=t("landing.tooltip_sr_engine"),
         )
 
-        # 并发处理数（高端机加速；默认 1 = 顺序，低配安全）
+        # 并发处理数（高端机加速；默认 auto = 按核数自动选择）
         self._parallel_dd = ft.Dropdown(
             label=t("landing.label_concurrency"),
-            value='1',
+            value='auto',
             options=[
                 ft.dropdown.Option('1',    t("landing.option_concurrency_1")),
                 ft.dropdown.Option('2',    t("landing.option_concurrency_2")),
@@ -689,7 +689,7 @@ class LandingPage(ft.Row):
     # ── Worker 辅助 ────────────────────────────────────────────────────────────
 
     def _resolve_parallel(self, n_files: int) -> int:
-        val = (self._parallel_dd.value or '1').strip()
+        val = (self._parallel_dd.value or 'auto').strip()
         if val == 'auto':
             n = max(1, min(4, (os.cpu_count() or 2) // 2))
         else:
