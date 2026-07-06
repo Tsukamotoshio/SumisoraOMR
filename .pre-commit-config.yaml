@@ -1,0 +1,18 @@
+# .pre-commit-config.yaml — local pre-commit gate (P2-4).
+#
+# Deliberately minimal: just `ruff check`, mirroring the CI lint job so lint
+# errors are caught before push rather than after. Intentionally NOT included:
+#   - ruff format  — the project is not ruff-formatted; enabling it would rewrite
+#                    the whole tree in one massive diff.
+#   - trailing-whitespace / end-of-file / BOM hooks — app.py ships a deliberate
+#                    UTF-8 BOM (VERSIONINFO tooling), and a blanket whitespace fix
+#                    would touch many files unexpectedly.
+#
+# Setup:  pip install pre-commit  &&  pre-commit install
+# Run manually across the repo:  pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20  # keep in sync with requirements.lock.txt / CI
+    hooks:
+      - id: ruff
+        name: ruff check
