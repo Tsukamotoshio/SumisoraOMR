@@ -195,7 +195,7 @@ def process_single_input_to_jianpu(
     if engine is None:
         engine = OMREngine.AUTO
 
-    _IS_IMAGE = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
+    is_image = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO
 
     # ── 路由：AUTO 智能选择 ────────────────────────────────────────────────
@@ -203,7 +203,7 @@ def process_single_input_to_jianpu(
     # PDF + 矢量图 → Audiveris
     # PDF + 位图 → Homr
     if _is_auto:
-        if _IS_IMAGE:
+        if is_image:
             effective_engine = OMREngine.HOMR
             log_message(f'  [自动选择] {source_file.name} 为图片格式 → Homr 引擎。')
         elif source_file.suffix.lower() == '.pdf':
@@ -230,7 +230,7 @@ def process_single_input_to_jianpu(
     # preprocess_geometry_for_omr() is lightweight (no denoising/SR) and safe for
     # both Homr (which does its own ML preprocessing) and Audiveris.
     _omr_source = source_file
-    if _IS_IMAGE:
+    if is_image:
         try:
             from ..image.image_preprocess import preprocess_geometry_for_omr
             _preprocessed = preprocess_geometry_for_omr(source_file, file_temp_dir)
@@ -242,7 +242,7 @@ def process_single_input_to_jianpu(
     # ── Helper: try to run Homr (used for fallback) ─────────────────────────
     def _try_run_homr() -> Optional[Path]:
         """尝试运行 Homr，返回输出目录或 None 失败。"""
-        if not _IS_IMAGE and _omr_source.suffix.lower() != '.pdf':
+        if not is_image and _omr_source.suffix.lower() != '.pdf':
             return None
         if not check_homr_available():
             return None
@@ -263,7 +263,7 @@ def process_single_input_to_jianpu(
 
     # ── Homr (single-engine mode, with validation fallback) ─────────────────
     if effective_engine is OMREngine.HOMR:
-        if not _IS_IMAGE and source_file.suffix.lower() != '.pdf':
+        if not is_image and source_file.suffix.lower() != '.pdf':
             log_message(
                 f'  ✗ Homr 仅支持图片或 PDF 首页，跳过 {source_file.name}。',
                 logging.WARNING,
@@ -311,7 +311,7 @@ def process_single_input_to_jianpu(
         return False
 
     # 参考图（单引擎路径）
-    if _IS_IMAGE:
+    if is_image:
         omr_ref = file_temp_dir / '_omr_reference.png'
         if not omr_ref.exists():
             omr_ref = omr_out / '_omr_reference.png'

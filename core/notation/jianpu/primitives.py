@@ -48,6 +48,22 @@ def _format_key_header(tonic, mode: str) -> str:
     return f"{'6' if mode == 'minor' else '1'}={name}"
 
 
+def _first_part(score):
+    """Return the first part's stream, or the flattened score when there are no parts."""
+    return score.parts[0] if score.parts else score.flatten()
+
+
+def _tonic_result(tonic, mode: str) -> tuple[int, str]:
+    """Build (relative-major pitchClass, jianpu key header) from a tonic + mode.
+
+    note_to_jianpu's degree table is major-scale only, so a minor key is reduced
+    to its relative major for the pitchClass; the header still names the real tonic.
+    """
+    header = _format_key_header(tonic, mode)
+    ref_tonic = _relative_major_tonic(tonic) if mode == 'minor' else tonic
+    return ref_tonic.pitchClass, header
+
+
 def _get_score_key_tonic(score) -> tuple[int, str]:
     """Extract the tonic (main note) from the score's key signature.
 
@@ -73,14 +89,10 @@ def _get_score_key_tonic(score) -> tuple[int, str]:
     from music21 import key as m21key  # local import to avoid circular at module level
     try:
         # Priority 1: explicit Key element (has both fifths and mode)
-        part = score.parts[0] if score.parts else score.flatten()
-        key_sigs = part.flatten().getElementsByClass(m21key.Key)
+        key_sigs = _first_part(score).flatten().getElementsByClass(m21key.Key)
         if key_sigs:
             key = key_sigs[0]
-            tonic = key.tonic
-            header = _format_key_header(tonic, key.mode)
-            ref_tonic = _relative_major_tonic(tonic) if key.mode == 'minor' else tonic
-            return ref_tonic.pitchClass, header
+            return _tonic_result(key.tonic, key.mode)
     except Exception:
         pass
 
@@ -90,34 +102,25 @@ def _get_score_key_tonic(score) -> tuple[int, str]:
         # KeySignature, not Key.  We combine the explicit accidental count with
         # Krumhansl-Schmuckler analysis to determine major vs minor, then call
         # asKey(mode) to obtain the correct tonic.
-        part = score.parts[0] if score.parts else score.flatten()
-        ksigs = part.flatten().getElementsByClass(m21key.KeySignature)
+        ksigs = _first_part(score).flatten().getElementsByClass(m21key.KeySignature)
         if ksigs:
             ks = ksigs[0]
             analyzed = score.analyze('key')
             mode = analyzed.mode if analyzed else 'major'
-            resolved = ks.asKey(mode)
-            tonic = resolved.tonic
-            header = _format_key_header(tonic, mode)
-            ref_tonic = _relative_major_tonic(tonic) if mode == 'minor' else tonic
-            return ref_tonic.pitchClass, header
+            return _tonic_result(ks.asKey(mode).tonic, mode)
     except Exception:
         pass
 
     # Priority 3: pure statistical analysis (no key-signature element at all)
     try:
         analyzed = score.analyze('key')
-        tonic = analyzed.tonic
-        header = _format_key_header(tonic, analyzed.mode)
-        ref_tonic = _relative_major_tonic(tonic) if analyzed.mode == 'minor' else tonic
-        return ref_tonic.pitchClass, header
+        return _tonic_result(analyzed.tonic, analyzed.mode)
     except Exception:
         pass
 
     # Priority 4: first actual note — last resort (no mode info; treated as major)
     try:
-        part = score.parts[0] if score.parts else score.flatten()
-        for element in part.flatten().notesAndRests:
+        for element in _first_part(score).flatten().notesAndRests:
             if isinstance(element, m21note.Note) and element.pitch is not None:
                 name = element.pitch.name.replace('-', 'b')
                 return element.pitch.pitchClass, f'1={name}'

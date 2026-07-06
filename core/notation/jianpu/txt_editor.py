@@ -232,9 +232,9 @@ def parse_txt(text: str) -> JianpuTxtScore:
             continue
         if re.match(r'^\s*#(\s|$)', line):
             continue
-        comment_index = re.search(r'(?<!\S)#(?![0-7])', line)
-        if comment_index is not None:
-            line = line[:comment_index.start()].rstrip()
+        comment_match = re.search(r'(?<!\S)#(?![0-7])', line)
+        if comment_match is not None:
+            line = line[:comment_match.start()].rstrip()
             if not line:
                 continue
 
