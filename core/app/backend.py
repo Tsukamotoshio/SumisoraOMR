@@ -1,7 +1,6 @@
 from pathlib import Path
-import os
 
-from ..utils import get_app_base_dir
+from ..utils import get_app_base_dir, open_in_file_manager
 
 
 def app_base_dir() -> Path:
@@ -37,5 +36,4 @@ def ensure_dir(path: Path) -> Path:
 
 
 def open_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-    os.startfile(str(path))
+    open_in_file_manager(path)

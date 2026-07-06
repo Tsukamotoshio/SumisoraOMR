@@ -474,6 +474,25 @@ def cleanup_output_directory(output_dir: Path) -> None:
             safe_remove_file(path)
 
 
+def open_in_file_manager(path: Path) -> None:
+    """Open a directory in the OS file manager, creating it first (cross-platform).
+
+    os.startfile is Windows-only; this consolidates the platform branch so callers
+    (backend.open_directory, the batch-summary reveal) work on macOS/Linux too.
+    Best-effort: never raises.
+    """
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        if sys.platform == 'win32':
+            os.startfile(str(path))
+        else:
+            import subprocess
+            opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
+            subprocess.Popen([opener, str(path)])
+    except Exception:
+        pass
+
+
 def print_conversion_summary(summary: ConversionSummary, generate_midi: bool, output_dir: Path) -> None:
     """Print the batch conversion summary."""
     log_message('\n处理汇总:')
@@ -496,10 +515,7 @@ def print_conversion_summary(summary: ConversionSummary, generate_midi: bool, ou
             log_message('已完成。简谱 PDF 和 MIDI 文件已保存在 Output 文件夹。')
         else:
             log_message('已完成。简谱 PDF 文件已保存在 Output 文件夹，仅保留 PDF 文件。')
-        try:
-            os.startfile(str(output_dir))
-        except Exception:
-            pass
+        open_in_file_manager(output_dir)
 
 
 # ──────────────────────────────────────────────
