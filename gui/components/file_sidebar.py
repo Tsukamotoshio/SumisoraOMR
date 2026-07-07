@@ -23,13 +23,20 @@ class FileSidebar(ft.Column):
         page.add(sidebar)
     """
 
-    def __init__(self, state: AppState):
+    # Default accepted inputs: score images / PDF. The audio recognition page
+    # passes an audio suffix set so its picker/import accept audio instead.
+    _DEFAULT_SUFFIXES = {'.pdf', '.png', '.jpg', '.jpeg'}
+
+    def __init__(self, state: AppState, allowed_suffixes: set[str] | None = None):
         super().__init__(
             spacing=0,
             width=220,
             expand=False,
         )
         self._state = state
+        self._allowed_suffixes = {
+            s.lower() for s in (allowed_suffixes or self._DEFAULT_SUFFIXES)
+        }
         self._file_list_col: ft.Column = ft.Column(spacing=2, scroll=ft.ScrollMode.AUTO, expand=True)
         self._build_ui()
         state.on(Event.FILES_CHANGED,       self._on_files_changed)
@@ -181,7 +188,13 @@ class FileSidebar(ft.Column):
         is_selected = (path == self._state.current_file)
         is_checked  = path in self._state.checked_files
         bg = with_alpha(Palette.PRIMARY, '33') if is_selected else 'transparent'
-        icon = ft.Icons.PICTURE_AS_PDF if path.suffix.lower() == '.pdf' else ft.Icons.IMAGE_OUTLINED
+        _suffix = path.suffix.lower()
+        if _suffix == '.pdf':
+            icon = ft.Icons.PICTURE_AS_PDF
+        elif _suffix in {'.mp3', '.wav', '.flac', '.m4a', '.ogg'}:
+            icon = ft.Icons.AUDIOTRACK_ROUNDED
+        else:
+            icon = ft.Icons.IMAGE_OUTLINED
 
         def _on_click(_e, p=path):
             self._state.select_file(p)
@@ -266,9 +279,9 @@ class FileSidebar(ft.Column):
         )
 
     def _update_select_all_icon(self) -> None:
-        """根据勾选状态更新全选按钮图标。"""
-        n_pinned  = len(self._state.pinned_files)
-        n_checked = len(self._state.checked_files)
+        """根据勾选状态更新全选按钮图标（仅统计本页可见文件）。"""
+        n_pinned  = len(self._visible_pinned())
+        n_checked = len(self._visible_checked())
         if n_pinned == 0 or n_checked == 0:
             self._select_all_btn.icon       = ft.Icons.CHECK_BOX_OUTLINE_BLANK
             self._select_all_btn.icon_color = ft.Colors.OUTLINE
@@ -280,14 +293,15 @@ class FileSidebar(ft.Column):
             self._select_all_btn.icon_color = Palette.PRIMARY
 
     def _update_delete_btn(self) -> None:
-        self._delete_checked_btn.disabled = len(self._state.checked_files) == 0
+        self._delete_checked_btn.disabled = len(self._visible_checked()) == 0
         try:
             self._delete_checked_btn.update()
         except Exception:
             pass
 
     def _on_batch_delete_click(self, _e) -> None:
-        to_delete = list(self._state.checked_files)
+        # 只删除本页可见（已勾选）的文件，不波及另一页的勾选文件。
+        to_delete = self._visible_checked()
         if not to_delete:
             return
         input_dir = (app_base_dir() / 'Input').resolve()
@@ -350,7 +364,7 @@ class FileSidebar(ft.Column):
         init_dir = str(input_dir) if input_dir.exists() else None
         files = await self._file_picker.pick_files(
             dialog_title=t('file_sidebar.file_picker_select_score'),
-            allowed_extensions=['pdf', 'png', 'jpg', 'jpeg'],
+            allowed_extensions=sorted(s.lstrip('.') for s in self._allowed_suffixes),
             allow_multiple=True,
             initial_directory=init_dir,
         )
@@ -449,10 +463,9 @@ class FileSidebar(ft.Column):
         self.page.update()
         await asyncio.sleep(0)  # let the "整理中" state render
 
-        _supported = {'.pdf', '.png', '.jpg', '.jpeg'}
         for path in copied:
             resolved = path.resolve()
-            if resolved.suffix.lower() in _supported and resolved not in self._state.pinned_files:
+            if resolved.suffix.lower() in self._allowed_suffixes and resolved not in self._state.pinned_files:
                 self._state.pinned_files.append(resolved)
                 self._state.checked_files.add(resolved)
 
@@ -473,12 +486,14 @@ class FileSidebar(ft.Column):
         self._refresh_list()
 
     def _on_select_all_click(self, _e) -> None:
-        n_pinned  = len(self._state.pinned_files)
-        n_checked = len(self._state.checked_files)
-        if n_checked < n_pinned:
-            self._state.check_all()
+        # 全选/全不选仅作用于本页可见文件，不影响另一页（另一后缀集）的勾选状态。
+        visible = self._visible_pinned()
+        visible_checked = [f for f in visible if f in self._state.checked_files]
+        if len(visible_checked) < len(visible):
+            self._state.checked_files.update(visible)
         else:
-            self._state.uncheck_all()
+            self._state.checked_files.difference_update(visible)
+        self._state.emit(Event.FILES_CHECK_CHANGED, checked=set(self._state.checked_files))
 
     def retranslate(self) -> None:
         """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
@@ -498,9 +513,21 @@ class FileSidebar(ft.Column):
         # state 重建并保留勾选状态）。
         self._refresh_list()
 
+    # ── Visibility scoping ─────────────────────────────────────────────────────
+    # 该侧栏只显示/操作 allowed_suffixes 内的文件（乐谱识别页=图片/PDF，音频识别页=音频）。
+    # 底层 AppState.pinned_files/checked_files 是两页共享的单一托盘，因此显示、计数、
+    # 全选、批量删除都必须先过滤到本页可见的子集，避免误显示或误操作另一页的文件。
+
+    def _visible_pinned(self) -> list[Path]:
+        return [f for f in self._state.pinned_files
+                if f.suffix.lower() in self._allowed_suffixes]
+
+    def _visible_checked(self) -> list[Path]:
+        return [f for f in self._visible_pinned() if f in self._state.checked_files]
+
     def _refresh_list(self) -> None:
         # 在调用线程中先快照，避免竞态
-        pinned = list(self._state.pinned_files)
+        pinned = self._visible_pinned()
         p = self.page
         if p is not None:
             async def _do():

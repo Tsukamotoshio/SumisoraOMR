@@ -44,6 +44,7 @@ STRINGS: dict[str, dict[str, str]] = {
     # NOTE: nav-rail labels sit under an icon in a ~80px-wide column, so the
     # English text must stay short (single word) to avoid ugly wrapping.
     "app.nav_landing": {"zh": "乐谱识别", "en": "Recognize"},
+    "app.nav_audio": {"zh": "音频识别", "en": "Audio"},
     "app.nav_editor": {"zh": "简谱预览", "en": "Jianpu"},
     "app.nav_score_preview": {"zh": "五线谱预览", "en": "Staff"},
     "app.nav_about": {"zh": "关于", "en": "About"},
@@ -61,6 +62,34 @@ STRINGS: dict[str, dict[str, str]] = {
     "app.snack_done_default": {"zh": "完成", "en": "Done"},
     "app.single_instance_title": {"zh": "Sumisora OMR", "en": "Sumisora OMR"},
     "app.single_instance_body": {"zh": "Sumisora OMR 已在运行中。\n\n请查看任务栏。", "en": "Sumisora OMR is already running.\n\nCheck the taskbar."},
+
+    # ── audio recognition page ─────────────────────────────────────────────
+    "audio.center_title": {"zh": "音频识别", "en": "Audio Recognition"},
+    "audio.center_hint": {
+        "zh": "导入音频文件（mp3 / wav / flac / m4a / ogg），\n勾选后点击右侧「开始识别」转换为简谱与五线谱。",
+        "en": "Import audio (mp3 / wav / flac / m4a / ogg), check files,\nthen click “Start Recognition” to transcribe to jianpu & staff.",
+    },
+    "audio.selected_file": {"zh": "已选择音频：{name}", "en": "Selected audio: {name}"},
+    "audio.section_options": {"zh": "识别选项", "en": "Recognition Options"},
+    "audio.engine_note": {
+        "zh": "引擎：basic-pitch（音频转录 → MIDI → 乐谱）",
+        "en": "Engine: basic-pitch (audio → MIDI → score)",
+    },
+    "audio.button_start": {"zh": "开始识别", "en": "Start Recognition"},
+    "audio.tooltip_engine": {
+        "zh": "音频经 basic-pitch 转录为 MIDI，再转换为简谱 / 五线谱。",
+        "en": "Audio is transcribed to MIDI by basic-pitch, then converted to jianpu / staff.",
+    },
+    "audio.running": {"zh": "正在识别音频…", "en": "Transcribing audio…"},
+    "audio.error_no_audio": {
+        "zh": "请先勾选至少一个音频文件。",
+        "en": "Please check at least one audio file first.",
+    },
+    "audio.result_summary": {
+        "zh": "识别完成：成功 {ok}，失败 {fail}（共 {total}）",
+        "en": "Done: {ok} succeeded, {fail} failed (of {total})",
+    },
+    "audio.button_view_jianpu": {"zh": "查看简谱", "en": "View Jianpu"},
     "app.crash_dialog_title": {"zh": "Sumisora OMR — 程序发生错误", "en": "Sumisora OMR — Application Error"},
     "app.crash_dialog_body": {"zh": "发生未预期的错误，程序即将退出。\n\n错误详情已写入日志：\n{path}\n\n反馈问题时请附上该日志文件。", "en": "An unexpected error occurred and the application will close.\n\nDetails were written to the log:\n{path}\n\nPlease attach this log file when reporting the issue."},
 
