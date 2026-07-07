@@ -169,6 +169,7 @@ def process_single_input_to_jianpu(
     editor_workspace_dir: Optional[Path] = None,
     xml_scores_dir: Optional[Path] = None,
     use_gpu_inference: Optional[bool] = None,
+    melody_only: bool = False,
 ) -> bool:
     """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
 
@@ -209,6 +210,7 @@ def process_single_input_to_jianpu(
             source_file,
             file_temp_dir,
             use_gpu_inference=use_gpu_inference,
+            melody_only=melody_only,
             progress_fn=_report_subprogress,
         )
         if omr_out is None:

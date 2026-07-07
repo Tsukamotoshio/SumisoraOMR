@@ -119,6 +119,12 @@ class AudioPage(ft.Row):
             t('audio.engine_note'), size=12, color=ft.Colors.ON_SURFACE_VARIANT,
             expand=True, no_wrap=False,
         )
+        self._melody_only_cb = ft.Checkbox(
+            label=t('audio.melody_only'),
+            value=False,
+            active_color=Palette.PRIMARY,
+            tooltip=t('audio.tooltip_melody_only'),
+        )
         options_panel = ft.Container(
             content=ft.Column(
                 [
@@ -145,6 +151,7 @@ class AudioPage(ft.Row):
                                     tooltip=t('audio.tooltip_engine'),
                                     padding=ft.Padding.symmetric(vertical=2),
                                 ),
+                                self._melody_only_cb,
                                 ft.Container(height=4),
                                 self._convert_btn,
                                 open_output_btn,
@@ -178,6 +185,8 @@ class AudioPage(ft.Row):
         self._section_options.value = t('audio.section_options')
         self._engine_note.value = t('audio.engine_note')
         self._open_output_label.value = t('landing.button_open_output_dir')
+        self._melody_only_cb.label = t('audio.melody_only')
+        self._melody_only_cb.tooltip = t('audio.tooltip_melody_only')
         self._selected_text.value = (
             t('audio.selected_file', name=self._selected_name) if self._selected_name else ''
         )
@@ -239,7 +248,10 @@ class AudioPage(ft.Row):
     def _run_conversion(self) -> None:
         files = list(self._conversion_files)
         # engine='auto' — pipeline auto-routes audio to basic-pitch regardless.
-        opts = ConversionOptions(engine='auto', gen_midi=True)
+        opts = ConversionOptions(
+            engine='auto', gen_midi=True,
+            melody_only=bool(self._melody_only_cb.value),
+        )
         # 单 worker 顺序处理（音频转录本身受 CPU/GPU 限制，串行足够且更稳）。
         self._runner.run(files, 1, opts)
 

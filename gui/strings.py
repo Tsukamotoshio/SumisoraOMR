@@ -76,6 +76,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Engine: basic-pitch (audio → MIDI → score)",
     },
     "audio.button_start": {"zh": "开始识别", "en": "Start Recognition"},
+    "audio.melody_only": {"zh": "仅主旋律", "en": "Melody only"},
+    "audio.tooltip_melody_only": {
+        "zh": "只保留主旋律（取每个时刻的最高音）。适合旋律在最高声部的钢琴/主奏；关闭则输出完整复调。",
+        "en": "Keep only the melody (highest note at each moment). Best when the melody is the top voice; off = full polyphony.",
+    },
     "audio.tooltip_engine": {
         "zh": "音频经 basic-pitch 转录为 MIDI，再转换为简谱 / 五线谱。",
         "en": "Audio is transcribed to MIDI by basic-pitch, then converted to jianpu / staff.",

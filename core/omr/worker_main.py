@@ -257,6 +257,7 @@ def run_worker() -> None:
                     editor_workspace_dir=base_dir / 'editor-workspace',
                     xml_scores_dir=base_dir / 'xml-scores',
                     use_gpu_inference=task.get('use_gpu') if isinstance(task.get('use_gpu'), bool) else None,
+                    melody_only=bool(task.get('melody_only', False)),
                 )
             except Exception as exc:
                 fail_count += 1

@@ -37,6 +37,10 @@ _MIN_NOTE_LENGTH_MS = 127.70
 # C2 (~65.4 Hz) drops these while keeping the normal melodic/bass range; tunable.
 _MIN_FREQUENCY_HZ = 65.4  # C2
 
+# Melody-only (skyline) reduction settings.
+_MELODY_FRAME_HZ = 100.0     # timeline resolution for the per-frame skyline sweep
+_MELODY_MIN_NOTE_MS = 80.0   # drop skyline fragments shorter than this
+
 
 def _build_gpu_model(model_path):
     """Build a basic-pitch Model backed by a GPU onnxruntime session, or None.
@@ -77,11 +81,62 @@ def _build_gpu_model(model_path):
         return None
 
 
+def _reduce_to_melody(note_events, tempo: float = 120.0):
+    """Skyline melody reduction of basic-pitch note events → a monophonic MIDI.
+
+    basic-pitch transcribes all voices; a single-line jianpu wants just the melody.
+    We assume the melody is the top voice (true for most piano/lead material): sweep
+    a fine timeline and keep the highest sounding pitch per frame (amplitude breaks
+    exact-pitch ties), then merge equal-pitch runs into notes and drop fragments
+    shorter than ``_MELODY_MIN_NOTE_MS``. Empirically this beat salience/Viterbi
+    tracking on real piano audio (correct key, coherent line); see the audio
+    transcription plan for the comparison. Returns a PrettyMIDI or None.
+    """
+    import pretty_midi
+
+    if not note_events:
+        return None
+    fps = _MELODY_FRAME_HZ
+    hop = 1.0 / fps
+    end_time = max(ev[1] for ev in note_events)
+    n_frames = int(round(end_time * fps)) + 1
+    top_pitch = [-1] * n_frames
+    top_amp = [0.0] * n_frames
+    for ev in note_events:
+        start, end, pitch, amp = ev[0], ev[1], ev[2], ev[3]
+        a = max(0, int(round(start * fps)))
+        b = min(n_frames, int(round(end * fps)))
+        for f in range(a, b):
+            if pitch > top_pitch[f] or (pitch == top_pitch[f] and amp > top_amp[f]):
+                top_pitch[f] = pitch
+                top_amp[f] = amp
+
+    min_frames = max(1, int(_MELODY_MIN_NOTE_MS / 1000.0 * fps))
+    pm = pretty_midi.PrettyMIDI(initial_tempo=tempo)
+    inst = pretty_midi.Instrument(program=0)
+    f = 0
+    while f < n_frames:
+        p = top_pitch[f]
+        if p < 0:
+            f += 1
+            continue
+        s = f
+        while f < n_frames and top_pitch[f] == p:
+            f += 1
+        if f - s >= min_frames:
+            inst.notes.append(
+                pretty_midi.Note(velocity=90, pitch=int(p), start=s * hop, end=f * hop)
+            )
+    pm.instruments.append(inst)
+    return pm
+
+
 def run_audio_transcription(
     source_file: Path,
     output_dir: Path,
     *,
     use_gpu_inference: Optional[bool] = None,
+    melody_only: bool = False,
     progress_fn: Optional[Callable[[float, str], None]] = None,
 ) -> Optional[Path]:
     """Transcribe an audio file to MusicXML via basic-pitch + music21.
@@ -92,6 +147,8 @@ def run_audio_transcription(
     output_dir:         Directory to write ``<stem>.mid`` and ``<stem>.musicxml``.
     use_gpu_inference:  True/False to force GPU/CPU; None to auto-detect a GPU
                         provider and use it when present.
+    melody_only:        When True, reduce the polyphonic transcription to a single
+                        melody line (skyline: highest sounding pitch per frame).
     progress_fn:        Optional ``(fraction, message)`` sub-progress callback.
 
     Returns
@@ -159,6 +216,18 @@ def run_audio_transcription(
             logging.WARNING,
         )
         return None
+
+    # 「仅主旋律」：将复调 note 事件按天际线（每帧最高音）约简为单声部旋律。
+    if melody_only:
+        melody_midi = _reduce_to_melody(note_events)
+        if melody_midi is not None and melody_midi.instruments and melody_midi.instruments[0].notes:
+            midi_data = melody_midi
+            log_message(
+                f'  ↳ 仅主旋律：{len(note_events)} 音符 → 约简为 '
+                f'{len(melody_midi.instruments[0].notes)} 音符（天际线）'
+            )
+        else:
+            log_message('  [仅主旋律] 约简结果为空，回退到完整转录。', logging.WARNING)
 
     midi_path = output_dir / f'{stem}.mid'
     try:
