@@ -16,6 +16,15 @@
 # 注意：本锁定含 onnxruntime-gpu（NVIDIA/开发/CI 目标）。DirectML 分发目标
 # 需要另一份锁定（onnxruntime-directml 替换 onnxruntime-gpu），在准备该
 # 分发渠道时按同样流程从对应验证环境生成。
+#
+# 已剔除交叉分支污染（发现于依赖漏洞扫描审计）：开发 venv 同时装过
+# exp/jianpu-vlm-ocr 分支手动安装的 llama-cpp-python（main 分支代码完全不
+# import 它），首次 freeze 把它和它的专属依赖一并冻了进来——包括无后缀的
+# CUDA 13 运行时包（llama-cpp-python 的 cu132 wheel 专用；main 分支的
+# onnxruntime-gpu 用的是 nvidia-*-cu12 这套，与之无关，予以保留）。
+# 已删除：llama_cpp_python, diskcache, Jinja2, MarkupSafe,
+#         nvidia-cublas（无后缀）, nvidia-cuda-nvrtc（无后缀）,
+#         nvidia-cuda-runtime（无后缀）。
 altgraph==0.17.5
 antlr4-python3-runtime==4.9.3
 anyio==4.13.0
@@ -26,7 +35,6 @@ colorama==0.4.6
 colorlog==6.10.1
 contourpy==1.3.3
 cycler==0.12.1
-diskcache==5.6.3
 flatbuffers==25.12.19
 flet-desktop==0.85.2
 flet==0.85.2
@@ -36,26 +44,20 @@ httpcore==1.0.9
 httpx==0.28.1
 idna==3.18
 iniconfig==2.3.0
-Jinja2==3.1.6
 joblib==1.5.3
 jsonpickle==4.1.2
 kiwisolver==1.5.0
-llama_cpp_python==0.3.31
 markdown-it-py==4.2.0
-MarkupSafe==3.0.3
 matplotlib==3.10.9
 mdurl==0.1.2
 more-itertools==11.1.0
-msgpack==1.1.2
+msgpack==1.2.1
 music21==10.5.0
 musicxml==1.4
 numpy==2.5.0
 nvidia-cublas-cu12==12.9.2.10
-nvidia-cublas==13.5.1.27
 nvidia-cuda-nvrtc-cu12==12.9.86
-nvidia-cuda-nvrtc==13.3.33
 nvidia-cuda-runtime-cu12==12.9.79
-nvidia-cuda-runtime==13.3.29
 oauthlib==3.3.1
 omegaconf==2.3.0
 onnxruntime-gpu==1.26.0
