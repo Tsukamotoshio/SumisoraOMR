@@ -115,6 +115,7 @@ class ConversionRunner:
                         ['taskkill', '/F', '/T', '/PID', str(p.pid)],
                         capture_output=True,
                         creationflags=subprocess.CREATE_NO_WINDOW,
+                        timeout=5,
                     )
                 except Exception:
                     pass
