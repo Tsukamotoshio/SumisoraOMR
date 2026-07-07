@@ -1,5 +1,13 @@
 CLAUDE.md
 
+# Test/lint tool caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+ruff_cache/
+.ruff_cache/
+
 # Runtime binaries / bundled runtimes
 .venv/
 .vscode/
