@@ -66,14 +66,14 @@ STRINGS: dict[str, dict[str, str]] = {
     # ── audio recognition page ─────────────────────────────────────────────
     "audio.center_title": {"zh": "音频识别", "en": "Audio Recognition"},
     "audio.center_hint": {
-        "zh": "导入音频文件（mp3 / wav / flac / m4a / ogg），\n勾选后点击右侧「开始识别」转换为简谱与五线谱。",
-        "en": "Import audio (mp3 / wav / flac / m4a / ogg), check files,\nthen click “Start Recognition” to transcribe to jianpu & staff.",
+        "zh": "导入钢琴音频（mp3 / wav / flac / m4a / ogg），\n勾选后点击右侧「开始识别」转换为简谱与五线谱。\n（识别引擎仅支持钢琴演奏）",
+        "en": "Import piano audio (mp3 / wav / flac / m4a / ogg), check files,\nthen click “Start Recognition” to transcribe to jianpu & staff.\n(The engine supports solo piano only.)",
     },
     "audio.selected_file": {"zh": "已选择音频：{name}", "en": "Selected audio: {name}"},
     "audio.section_options": {"zh": "识别选项", "en": "Recognition Options"},
     "audio.engine_note": {
-        "zh": "引擎：basic-pitch（音频转录 → MIDI → 乐谱）",
-        "en": "Engine: basic-pitch (audio → MIDI → score)",
+        "zh": "引擎：字节跳动钢琴转录（钢琴 → MIDI → 乐谱）",
+        "en": "Engine: ByteDance piano transcription (piano → MIDI → score)",
     },
     "audio.button_start": {"zh": "开始识别", "en": "Start Recognition"},
     "audio.melody_only": {"zh": "仅主旋律", "en": "Melody only"},
@@ -82,8 +82,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Keep only the melody (highest note at each moment). Best when the melody is the top voice; off = full polyphony.",
     },
     "audio.tooltip_engine": {
-        "zh": "音频经 basic-pitch 转录为 MIDI，再转换为简谱 / 五线谱。",
-        "en": "Audio is transcribed to MIDI by basic-pitch, then converted to jianpu / staff.",
+        "zh": "钢琴音频经字节跳动高精度钢琴转录模型识别为 MIDI，再转换为简谱 / 五线谱。首次使用会下载约 172 MB 模型。",
+        "en": "Piano audio is transcribed to MIDI by ByteDance's high-resolution piano model, then converted to jianpu / staff. A ~172 MB model downloads on first use.",
     },
     "audio.running": {"zh": "正在识别音频…", "en": "Transcribing audio…"},
     "audio.error_no_audio": {
