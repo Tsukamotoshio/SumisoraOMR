@@ -45,6 +45,14 @@ _PIANO_SAMPLE_RATE = 16000
 _MELODY_FRAME_HZ = 100.0     # timeline resolution for the per-frame skyline sweep
 _MELODY_MIN_NOTE_MS = 80.0   # drop skyline fragments shorter than this
 
+# Beat-grid quantization (noteDigger-style "align to measure lines" export).
+# 真实演奏有 rubato，直接把秒域 MIDI 丢给 music21 会切出破碎的节奏（满谱休止符/
+# 附点）。这里先用 librosa 检测拍点，把音符起止吸附到拍内细分网格，再以规整的
+# 恒定速度重建 MIDI —— music21 便能切出干净的小节。
+_QUANTIZE_TO_BEATS = True
+_QUANTIZE_DIVISIONS = 4      # subdivisions per beat (4 = sixteenth-note grid)
+_QUANTIZE_MIN_BEATS = 8      # skip quantization when beat tracking finds fewer beats
+
 
 def _piano_model_path() -> Path:
     """Managed on-demand location for the ByteDance checkpoint."""
@@ -177,6 +185,75 @@ def _reduce_to_melody(note_events, tempo: float = 120.0):
     return pm
 
 
+def _quantize_to_beat_grid(note_events, audio, sample_rate):
+    """Beat-align note events (noteDigger-style measure quantization).
+
+    真实录音的拍距不均匀（rubato），所以不能按固定 BPM 直接取整。做法与
+    noteDigger 导出 MIDI 的「对齐小节线」模式一致：
+      1. librosa 拍点跟踪得到逐拍时间点（非均匀网格）；
+      2. 每个音符起止在"拍序号域"内线性插值（拍外用中位拍距外推）；
+      3. 吸附到拍内 1/``_QUANTIZE_DIVISIONS`` 细分；
+      4. 以检测到的速度按恒定拍长重建秒域时间 —— 得到节拍完全规整的
+         事件序列，music21 便能切出干净的小节。
+
+    Returns ``(quantized_events, tempo_bpm)`` or None when beat tracking is
+    unreliable (too few beats). Each event is ``(start, end, pitch, amplitude)``.
+    """
+    import librosa
+    import numpy as np
+
+    tempo, beat_times = librosa.beat.beat_track(y=audio, sr=sample_rate, units='time')
+    tempo = float(np.atleast_1d(tempo)[0])
+    beat_times = np.asarray(beat_times, dtype=float)
+    if len(beat_times) < _QUANTIZE_MIN_BEATS or tempo <= 0:
+        return None
+    med_int = float(np.median(np.diff(beat_times)))
+    if med_int <= 0:
+        return None
+
+    beat_idx = np.arange(len(beat_times), dtype=float)
+
+    def to_beats(t: float) -> float:
+        # 拍点区间内线性插值；首拍前/末拍后用中位拍距线性外推
+        if t <= beat_times[0]:
+            return (t - beat_times[0]) / med_int
+        if t >= beat_times[-1]:
+            return beat_idx[-1] + (t - beat_times[-1]) / med_int
+        return float(np.interp(t, beat_times, beat_idx))
+
+    div = _QUANTIZE_DIVISIONS
+    quantized = []
+    for start, end, pitch, amp in note_events:
+        qs = round(to_beats(start) * div) / div
+        qe = round(to_beats(end) * div) / div
+        if qe <= qs:
+            qe = qs + 1.0 / div          # 至少保留一个细分时值
+        quantized.append((qs, qe, pitch, amp))
+
+    # 整体平移整数拍，使最早音符落在 0 拍附近（保持拍相位不变）
+    shift = float(np.floor(min(q[0] for q in quantized)))
+    tempo_out = float(round(tempo))
+    spb = 60.0 / tempo_out               # seconds per beat（重建后的恒定拍长）
+    result = [
+        ((qs - shift) * spb, (qe - shift) * spb, pitch, amp)
+        for qs, qe, pitch, amp in quantized
+    ]
+    return result, tempo_out
+
+
+def _events_to_midi(note_events, tempo: float):
+    """Build a single-track PrettyMIDI from ``(start, end, pitch, amplitude)`` events."""
+    import pretty_midi
+
+    pm = pretty_midi.PrettyMIDI(initial_tempo=tempo)
+    inst = pretty_midi.Instrument(program=0)
+    for start, end, pitch, amp in note_events:
+        vel = min(127, max(1, int(round(amp * 127))))
+        inst.notes.append(pretty_midi.Note(velocity=vel, pitch=int(pitch), start=start, end=end))
+    pm.instruments.append(inst)
+    return pm
+
+
 def run_audio_transcription(
     source_file: Path,
     output_dir: Path,
@@ -279,20 +356,42 @@ def run_audio_transcription(
         )
         return None
 
+    events = [
+        (n.start, n.end, n.pitch, n.velocity / 127.0)
+        for inst in pm.instruments for n in inst.notes
+    ]
+
     if melody_only:
-        events = [
-            (n.start, n.end, n.pitch, n.velocity / 127.0)
-            for inst in pm.instruments for n in inst.notes
-        ]
         melody_midi = _reduce_to_melody(events)
         if melody_midi is not None and melody_midi.instruments and melody_midi.instruments[0].notes:
-            melody_midi.write(str(midi_path))
-            log_message(
-                f'  ↳ 仅主旋律：{n_notes} 音符 → 约简为 '
-                f'{len(melody_midi.instruments[0].notes)} 音符（天际线）'
-            )
+            events = [
+                (n.start, n.end, n.pitch, n.velocity / 127.0)
+                for n in melody_midi.instruments[0].notes
+            ]
+            log_message(f'  ↳ 仅主旋律：{n_notes} 音符 → 约简为 {len(events)} 音符（天际线）')
         else:
             log_message('  [仅主旋律] 约简结果为空，回退到完整转录。', logging.WARNING)
+
+    # ── 3b) Beat-grid quantization（拍点对齐，节奏可读性的关键）────────────────
+    tempo_bpm = 120.0
+    if _QUANTIZE_TO_BEATS:
+        _report(0.55, '正在检测节拍并对齐小节网格…')
+        try:
+            q = _quantize_to_beat_grid(events, audio, _PIANO_SAMPLE_RATE)
+        except Exception as exc:
+            q = None
+            log_message(f'  [节拍量化] 检测异常，保留原始时间：{exc}', logging.WARNING)
+        if q is not None:
+            events, tempo_bpm = q
+            log_message(f'  ↳ 节拍量化：♩={tempo_bpm:.0f}，已对齐 1/{_QUANTIZE_DIVISIONS} 拍网格')
+        else:
+            log_message('  [节拍量化] 拍点不足，保留原始时间。', logging.WARNING)
+
+    try:
+        _events_to_midi(events, tempo_bpm).write(str(midi_path))
+    except Exception as exc:
+        log_message(f'  ✗ MIDI 重建失败：{exc}', logging.WARNING)
+        return None
 
     log_message(f'  ↳ 钢琴转录识别到 {n_notes} 个音符 → {midi_path.name}')
 
