@@ -27,7 +27,14 @@ class FileSidebar(ft.Column):
     # passes an audio suffix set so its picker/import accept audio instead.
     _DEFAULT_SUFFIXES = {'.pdf', '.png', '.jpg', '.jpeg'}
 
-    def __init__(self, state: AppState, allowed_suffixes: set[str] | None = None):
+    def __init__(
+        self,
+        state: AppState,
+        allowed_suffixes: set[str] | None = None,
+        section_title_key: str = 'file_sidebar.section_title',
+        empty_hint_key: str = 'file_sidebar.empty_hint',
+        empty_formats_key: str = 'file_sidebar.empty_supported_formats',
+    ):
         super().__init__(
             spacing=0,
             width=220,
@@ -37,6 +44,9 @@ class FileSidebar(ft.Column):
         self._allowed_suffixes = {
             s.lower() for s in (allowed_suffixes or self._DEFAULT_SUFFIXES)
         }
+        self._section_title_key = section_title_key
+        self._empty_hint_key = empty_hint_key
+        self._empty_formats_key = empty_formats_key
         self._file_list_col: ft.Column = ft.Column(spacing=2, scroll=ft.ScrollMode.AUTO, expand=True)
         self._build_ui()
         state.on(Event.FILES_CHANGED,       self._on_files_changed)
@@ -66,7 +76,7 @@ class FileSidebar(ft.Column):
             disabled=True,
         )
 
-        self._section_title = section_title(t('file_sidebar.section_title'), self._state.dark_mode)
+        self._section_title = section_title(t(self._section_title_key), self._state.dark_mode)
         self._add_folder_btn = ft.IconButton(
             icon=ft.Icons.CREATE_NEW_FOLDER_ROUNDED,
             icon_size=18,
@@ -108,14 +118,14 @@ class FileSidebar(ft.Column):
 
         # 空状态引导：首次打开时列表为空，给出明确的下一步操作入口
         self._empty_hint_text = ft.Text(
-            t('file_sidebar.empty_hint'),
+            t(self._empty_hint_key),
             size=13,
             color=ft.Colors.OUTLINE,
             text_align=ft.TextAlign.CENTER,
         )
         self._empty_add_label = ft.Text(t('file_sidebar.button_add_file'), size=13)
         self._empty_formats_text = ft.Text(
-            t('file_sidebar.empty_supported_formats'),
+            t(self._empty_formats_key),
             size=11,
             color=ft.Colors.OUTLINE,
             text_align=ft.TextAlign.CENTER,
@@ -499,12 +509,12 @@ class FileSidebar(ft.Column):
         """Re-apply UI text in the active language (called on Event.LANGUAGE_CHANGED)."""
         self._select_all_btn.tooltip = t('common.tooltip_toggle_select_all')
         self._delete_checked_btn.tooltip = t('file_sidebar.tooltip_delete_checked')
-        self._section_title.value = t('file_sidebar.section_title')
+        self._section_title.value = t(self._section_title_key)
         self._add_folder_btn.tooltip = t('file_sidebar.tooltip_add_folder')
         self._add_file_btn.tooltip = t('file_sidebar.tooltip_add_file')
-        self._empty_hint_text.value = t('file_sidebar.empty_hint')
+        self._empty_hint_text.value = t(self._empty_hint_key)
         self._empty_add_label.value = t('file_sidebar.button_add_file')
-        self._empty_formats_text.value = t('file_sidebar.empty_supported_formats')
+        self._empty_formats_text.value = t(self._empty_formats_key)
         try:
             self.update()
         except Exception:

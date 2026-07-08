@@ -81,7 +81,13 @@ class AudioPage(ft.Row):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self._sidebar = FileSidebar(self._state, allowed_suffixes=set(SUPPORTED_AUDIO_SUFFIXES))
+        self._sidebar = FileSidebar(
+            self._state,
+            allowed_suffixes=set(SUPPORTED_AUDIO_SUFFIXES),
+            section_title_key='audio.section_title',
+            empty_hint_key='audio.empty_hint',
+            empty_formats_key='audio.empty_supported_formats',
+        )
 
         # 中心区：音频无页面预览，展示图标 + 提示 + 当前选中文件名。
         self._selected_text = ft.Text(
@@ -256,6 +262,7 @@ class AudioPage(ft.Row):
 
     def retranslate(self) -> None:
         """Re-apply active-language text (called on Event.LANGUAGE_CHANGED)."""
+        self._sidebar.retranslate()
         self._convert_label.value = t('audio.button_start')
         self._center_title.value = t('audio.center_title')
         self._center_hint.value = t('audio.center_hint')
