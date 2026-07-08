@@ -32,12 +32,21 @@ from typing import Callable, Optional
 
 from ..utils import log_message
 
-# ByteDance piano transcription checkpoint (Zenodo record 4034264).
-_PIANO_MODEL_URL = (
-    'https://zenodo.org/record/4034264/files/'
-    'CRNN_note_F1%3D0.9677_pedal_F1%3D0.9186.pth?download=1'
-)
+# ByteDance piano transcription checkpoint. Two mirrors, tried in order:
+#   1. ModelScope — mirrors the HOMR weights' "Mirror invariant" pattern
+#      (see CLAUDE.md): mainland-China-reachable, and its resolve/ endpoint
+#      returns the file's SHA256 in the X-Linked-Etag header, confirmed to
+#      match _PIANO_MODEL_SHA256 below.
+#   2. Zenodo (the upstream package's own source; record 4034264) — fallback
+#      for whenever the ModelScope mirror is unavailable.
 _PIANO_MODEL_FILENAME = 'note_F1=0.9677_pedal_F1=0.9186.pth'
+_PIANO_MODEL_URLS = [
+    'https://modelscope.cn/models/Tsukamotoshio/piano-transcription/resolve/master/'
+    'note_F1=0.9677_pedal_F1=0.9186.pth',
+    'https://zenodo.org/record/4034264/files/'
+    'CRNN_note_F1%3D0.9677_pedal_F1%3D0.9186.pth?download=1',
+]
+_PIANO_MODEL_SHA256 = 'c3fa9730725bf4a762f1c14bc80cd5986eacda01b026f5a4a2525cd607876141'
 _PIANO_MODEL_MIN_BYTES = 150 * 1024 * 1024  # sanity floor (~172 MB expected)
 _PIANO_SAMPLE_RATE = 16000
 
@@ -112,13 +121,56 @@ def delete_piano_model() -> bool:
     return removed
 
 
+def _download_piano_model_from(url: str, dest: Path, tmp: Path,
+                                progress_fn=None, cancel_event=None) -> None:
+    """Stream *url* into *tmp*, verifying SHA256 against _PIANO_MODEL_SHA256.
+
+    Hashes incrementally during the single read pass (no second I/O pass over
+    the ~172 MB file). Raises on any failure (network error, short read, hash
+    mismatch) or ``PianoDownloadCancelled`` if *cancel_event* fires mid-transfer;
+    the caller is responsible for cleaning up *tmp*.
+    """
+    import hashlib
+
+    hasher = hashlib.sha256()
+    req = urllib.request.Request(url, headers={'User-Agent': 'SumisoraOMR'})
+    with urllib.request.urlopen(req, timeout=60) as resp, open(tmp, 'wb') as fh:
+        total = int(resp.headers.get('Content-Length', 0) or 0)
+        read = 0
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise PianoDownloadCancelled()
+            chunk = resp.read(1024 * 256)
+            if not chunk:
+                break
+            fh.write(chunk)
+            hasher.update(chunk)
+            read += len(chunk)
+            if progress_fn is not None and total:
+                try:
+                    progress_fn(0.05 + 0.20 * (read / total),
+                                f'[钢琴模型] 下载中 {read // (1024*1024)}/{total // (1024*1024)} MB')
+                except Exception:
+                    pass
+    if tmp.stat().st_size < _PIANO_MODEL_MIN_BYTES:
+        raise OSError(f'下载不完整（{tmp.stat().st_size} bytes）')
+    digest = hasher.hexdigest()
+    if digest != _PIANO_MODEL_SHA256:
+        raise ValueError(f'SHA256 校验失败（期望 {_PIANO_MODEL_SHA256[:12]}…，实际 {digest[:12]}…）')
+    tmp.replace(dest)
+
+
 def _ensure_piano_model(progress_fn=None, cancel_event=None) -> Optional[Path]:
     """Return the local checkpoint path, downloading it on first use.
 
     Falls back to the upstream package's default home-dir copy if present, so a
     model already fetched by ``piano_transcription_inference`` is reused instead of
-    re-downloaded. *cancel_event* (``threading.Event``) lets a caller (e.g. the GUI's
-    download dialog) abort mid-transfer; the partial ``.part`` file is cleaned up.
+    re-downloaded. Otherwise tries each mirror in ``_PIANO_MODEL_URLS`` in order
+    (ModelScope, then Zenodo — see the comment above that list), verifying SHA256
+    on each attempt; a hash mismatch or network failure on one mirror falls
+    through to the next rather than failing outright. *cancel_event*
+    (``threading.Event``) lets a caller (e.g. the GUI's download dialog) abort
+    mid-transfer — cancellation is not retried against remaining mirrors.
     Returns None on failure or cancellation.
     """
     cached = find_piano_model()
@@ -134,41 +186,32 @@ def _ensure_piano_model(progress_fn=None, cancel_event=None) -> Optional[Path]:
             progress_fn(0.05, '[钢琴模型] 正在下载模型（约 172 MB）…')
         except Exception:
             pass
-    try:
-        req = urllib.request.Request(_PIANO_MODEL_URL, headers={'User-Agent': 'SumisoraOMR'})
-        with urllib.request.urlopen(req, timeout=60) as resp, open(tmp, 'wb') as fh:
-            total = int(resp.headers.get('Content-Length', 0) or 0)
-            read = 0
-            while True:
-                if cancel_event is not None and cancel_event.is_set():
-                    raise PianoDownloadCancelled()
-                chunk = resp.read(1024 * 256)
-                if not chunk:
-                    break
-                fh.write(chunk)
-                read += len(chunk)
-                if progress_fn is not None and total:
-                    try:
-                        progress_fn(0.05 + 0.20 * (read / total),
-                                    f'[钢琴模型] 下载中 {read // (1024*1024)}/{total // (1024*1024)} MB')
-                    except Exception:
-                        pass
-        if tmp.stat().st_size < _PIANO_MODEL_MIN_BYTES:
-            raise OSError(f'下载不完整（{tmp.stat().st_size} bytes）')
-        tmp.replace(dest)
-        log_message(f'  [钢琴模型] 下载完成 → {dest}')
-        return dest
-    except PianoDownloadCancelled:
-        log_message('  [钢琴模型] 下载已取消。')
-        return None
-    except Exception as exc:
-        log_message(f'  ✗ 钢琴转录模型下载失败：{exc}', logging.WARNING)
-        return None
-    finally:
+
+    last_exc: Optional[Exception] = None
+    for i, url in enumerate(_PIANO_MODEL_URLS):
         try:
-            tmp.unlink(missing_ok=True)
-        except Exception:
-            pass
+            _download_piano_model_from(url, dest, tmp, progress_fn, cancel_event)
+            log_message(f'  [钢琴模型] 下载完成 → {dest}')
+            return dest
+        except PianoDownloadCancelled:
+            log_message('  [钢琴模型] 下载已取消。')
+            return None
+        except Exception as exc:
+            last_exc = exc
+            more = i + 1 < len(_PIANO_MODEL_URLS)
+            log_message(
+                f'  [钢琴模型] 源 {i + 1}/{len(_PIANO_MODEL_URLS)} 下载失败：{exc}'
+                + ('，尝试下一个源…' if more else ''),
+                logging.WARNING,
+            )
+        finally:
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    log_message(f'  ✗ 钢琴转录模型下载失败（全部来源均失败）：{last_exc}', logging.WARNING)
+    return None
 
 
 def _load_audio_16k(source_file: Path):
