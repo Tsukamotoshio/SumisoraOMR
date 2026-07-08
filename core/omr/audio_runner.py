@@ -54,6 +54,10 @@ _QUANTIZE_DIVISIONS = 4      # subdivisions per beat (4 = sixteenth-note grid)
 _QUANTIZE_MIN_BEATS = 8      # skip quantization when beat tracking finds fewer beats
 
 
+class PianoDownloadCancelled(Exception):
+    """Raised internally when the caller's cancel_event is set mid-transfer."""
+
+
 def _piano_model_path() -> Path:
     """Managed on-demand location for the ByteDance checkpoint."""
     from ..app.backend import app_base_dir
@@ -61,22 +65,67 @@ def _piano_model_path() -> Path:
     return app_base_dir() / 'models' / 'piano_transcription' / _PIANO_MODEL_FILENAME
 
 
-def _ensure_piano_model(progress_fn=None) -> Optional[Path]:
+def _piano_model_home_copy() -> Path:
+    """The upstream package's own default cache location, reused if present."""
+    return Path.home() / 'piano_transcription_inference_data' / _PIANO_MODEL_FILENAME
+
+
+def find_piano_model() -> Optional[Path]:
+    """Return the local checkpoint path if already present (no download), else None.
+
+    Checks the app-managed location first, then the upstream package's default
+    home-dir cache (so a model already fetched by ``piano_transcription_inference``
+    directly is recognised without re-downloading). Cheap — safe to call from the
+    GUI process for status display (no torch import).
+    """
+    for candidate in (_piano_model_path(), _piano_model_home_copy()):
+        if candidate.exists() and candidate.stat().st_size >= _PIANO_MODEL_MIN_BYTES:
+            return candidate
+    return None
+
+
+def piano_model_available() -> bool:
+    """True if the piano transcription checkpoint is already on disk."""
+    return find_piano_model() is not None
+
+
+def delete_piano_model() -> bool:
+    """Remove the checkpoint so ``piano_model_available()`` goes back to False.
+
+    Normal use always passes an explicit ``checkpoint_path`` to
+    ``PianoTranscription`` (see ``run_audio_transcription``), so the upstream
+    package's own auto-download-to-home-dir path is never triggered in this
+    app — but if a home-dir copy exists anyway (e.g. carried over from manual
+    testing, or from running the upstream package directly), leaving it behind
+    would make the "删除模型" button a no-op (``find_piano_model()`` would still
+    find it). Remove both locations. Returns True if anything was removed.
+    """
+    removed = False
+    for candidate in (_piano_model_path(), _piano_model_home_copy()):
+        if candidate.exists():
+            try:
+                candidate.unlink()
+                log_message(f'  [钢琴模型] 已删除 → {candidate}')
+                removed = True
+            except Exception as exc:
+                log_message(f'  ✗ 钢琴模型删除失败（{candidate}）：{exc}', logging.WARNING)
+    return removed
+
+
+def _ensure_piano_model(progress_fn=None, cancel_event=None) -> Optional[Path]:
     """Return the local checkpoint path, downloading it on first use.
 
     Falls back to the upstream package's default home-dir copy if present, so a
     model already fetched by ``piano_transcription_inference`` is reused instead of
-    re-downloaded. Returns None on failure.
+    re-downloaded. *cancel_event* (``threading.Event``) lets a caller (e.g. the GUI's
+    download dialog) abort mid-transfer; the partial ``.part`` file is cleaned up.
+    Returns None on failure or cancellation.
     """
+    cached = find_piano_model()
+    if cached is not None:
+        return cached
+
     dest = _piano_model_path()
-    if dest.exists() and dest.stat().st_size >= _PIANO_MODEL_MIN_BYTES:
-        return dest
-
-    # Reuse the package's default cache (~/piano_transcription_inference_data) if any.
-    home_copy = Path.home() / 'piano_transcription_inference_data' / _PIANO_MODEL_FILENAME
-    if home_copy.exists() and home_copy.stat().st_size >= _PIANO_MODEL_MIN_BYTES:
-        return home_copy
-
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + '.part')
     log_message('  [钢琴模型] 首次使用，正在下载模型（约 172 MB）…')
@@ -91,6 +140,8 @@ def _ensure_piano_model(progress_fn=None) -> Optional[Path]:
             total = int(resp.headers.get('Content-Length', 0) or 0)
             read = 0
             while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise PianoDownloadCancelled()
                 chunk = resp.read(1024 * 256)
                 if not chunk:
                     break
@@ -107,13 +158,17 @@ def _ensure_piano_model(progress_fn=None) -> Optional[Path]:
         tmp.replace(dest)
         log_message(f'  [钢琴模型] 下载完成 → {dest}')
         return dest
+    except PianoDownloadCancelled:
+        log_message('  [钢琴模型] 下载已取消。')
+        return None
     except Exception as exc:
         log_message(f'  ✗ 钢琴转录模型下载失败：{exc}', logging.WARNING)
+        return None
+    finally:
         try:
             tmp.unlink(missing_ok=True)
         except Exception:
             pass
-        return None
 
 
 def _load_audio_16k(source_file: Path):

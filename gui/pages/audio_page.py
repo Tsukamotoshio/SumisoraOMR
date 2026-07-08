@@ -21,7 +21,8 @@ from core.app.backend import app_base_dir, output_dir, open_directory
 from core.config import SUPPORTED_AUDIO_SUFFIXES
 from ..components.file_sidebar import FileSidebar
 from ..components.progress_overlay import ProgressOverlay
-from ..theme import Palette, FONT_EMPHASIS
+from ..components.piano_model_dialog import PianoModelDownloadDialog
+from ..theme import Palette, FONT_EMPHASIS, section_title
 from ..strings import t
 
 
@@ -40,6 +41,8 @@ class AudioPage(ft.Row):
         )
         self._build_ui()
         state.on(Event.FILE_SELECTED, self._on_file_selected)
+        state.on(Event.PIANO_MODEL_CHANGED, self._on_piano_model_changed)
+        self._refresh_piano_model_status()
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
 
     def did_mount(self) -> None:
@@ -158,6 +161,38 @@ class AudioPage(ft.Row):
             active_color=Palette.PRIMARY,
             tooltip=t('audio.tooltip_melody_only'),
         )
+
+        # 钢琴转录模型（ByteDance，~172 MB，按需下载）管理区，镜像乐谱识别页的
+        # 「HOMR 模型管理」小节：状态提示 + 下载/删除按钮。
+        self._section_piano_model = section_title(t('audio.section_piano_model'))
+        self._piano_model_label = ft.Text('', size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._download_model_label = ft.Text(t('audio.button_download_model'))
+        self._download_model_btn = ft.Button(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.DOWNLOAD_ROUNDED, size=16), self._download_model_label],
+                tight=True, spacing=6, alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            on_click=self._on_download_model_click,
+            style=ft.ButtonStyle(
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+        )
+        self._delete_model_label = ft.Text(t('audio.button_delete_model'))
+        self._delete_model_btn = ft.Button(
+            content=ft.Row(
+                [ft.Icon(ft.Icons.DELETE_OUTLINE_ROUNDED, size=16), self._delete_model_label],
+                tight=True, spacing=6, alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            on_click=self._on_delete_model_click,
+            style=ft.ButtonStyle(
+                color=ft.Colors.ON_SURFACE_VARIANT,
+                side={ft.ControlState.DEFAULT: ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)},
+                shape=ft.RoundedRectangleBorder(radius=8),
+            ),
+        )
+
         options_panel = ft.Container(
             content=ft.Column(
                 [
@@ -188,6 +223,15 @@ class AudioPage(ft.Row):
                                 ft.Container(height=4),
                                 self._convert_btn,
                                 open_output_btn,
+                                ft.Container(height=4),
+                                ft.Divider(height=1, thickness=1, color=ft.Colors.OUTLINE_VARIANT),
+                                self._section_piano_model,
+                                self._download_model_btn,
+                                self._delete_model_btn,
+                                ft.Container(
+                                    content=self._piano_model_label,
+                                    padding=ft.Padding.only(left=4),
+                                ),
                             ],
                             spacing=10,
                             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
@@ -220,6 +264,9 @@ class AudioPage(ft.Row):
         self._open_output_label.value = t('landing.button_open_output_dir')
         self._melody_only_cb.label = t('audio.melody_only')
         self._melody_only_cb.tooltip = t('audio.tooltip_melody_only')
+        self._section_piano_model.value = t('audio.section_piano_model')
+        self._download_model_label.value = t('audio.button_download_model')
+        self._delete_model_label.value = t('audio.button_delete_model')
         self._selected_text.value = (
             t('audio.selected_file', name=self._selected_name) if self._selected_name else ''
         )
@@ -227,6 +274,7 @@ class AudioPage(ft.Row):
             self.update()
         except Exception:
             pass
+        self._refresh_piano_model_status()
 
     # ── Event handlers ─────────────────────────────────────────────────────────
 
@@ -259,6 +307,86 @@ class AudioPage(ft.Row):
         except Exception as exc:
             self._show_snack(t('common.open_dir_failed', exc=exc), Palette.ERROR)
 
+    # ── Piano transcription model management ────────────────────────────────────
+    # 与乐谱识别页的 HOMR 模型管理是同一模式：状态提示 + 下载/删除按钮，均由
+    # AppState 里的可用性标志驱动，下载/删除后发事件刷新。
+
+    def _refresh_piano_model_status(self, **_kw) -> None:
+        present = self._state.piano_model_available
+        self._download_model_btn.disabled = present
+        self._delete_model_btn.disabled = not present
+        self._piano_model_label.value = t(
+            'audio.piano_model_ready' if present else 'audio.piano_model_missing'
+        )
+        try:
+            self._download_model_btn.update()
+            self._delete_model_btn.update()
+            self._piano_model_label.update()
+        except Exception:
+            pass
+
+    def _on_piano_model_changed(self, **_kw) -> None:
+        self._refresh_piano_model_status()
+
+    def _on_download_model_click(self, _e) -> None:
+        if self._state.piano_model_available or self.page is None:
+            return
+        PianoModelDownloadDialog(self.page, self._state).show()
+
+    def _on_delete_model_click(self, _e) -> None:
+        if not self._state.piano_model_available or self.page is None:
+            return
+
+        def _do_delete(_ev) -> None:
+            self.page.pop_dialog()
+            from core.omr.audio_runner import delete_piano_model
+            delete_piano_model()
+            self._state.piano_model_available = False
+            self._state.emit(Event.PIANO_MODEL_CHANGED)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(t('audio.delete_model_dialog_title'), size=15, font_family=FONT_EMPHASIS),
+            content=ft.Text(t('audio.delete_model_dialog_body'), size=13, color=ft.Colors.ON_SURFACE),
+            actions=[
+                ft.TextButton(t('common.cancel'), on_click=lambda _ev: self.page.pop_dialog()),
+                ft.FilledButton(t('common.delete'), on_click=_do_delete),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.show_dialog(dlg)
+
+    def _prompt_piano_model_download(self) -> None:
+        """转换前预检：模型缺失时先弹窗确认下载（镜像 landing 的 HOMR 预检）。
+
+        音频识别没有备用引擎，用户拒绝下载则直接中止（不像 HOMR 预检那样可以
+        回退到 Audiveris）。下载完成后自动重新发起本次转换请求。
+        """
+        if self.page is None:
+            return
+
+        def _on_yes(_ev) -> None:
+            self.page.pop_dialog()
+            PianoModelDownloadDialog(
+                self.page, self._state,
+                on_complete=lambda: self._on_convert(None),
+            ).show()
+
+        def _on_no(_ev) -> None:
+            self.page.pop_dialog()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(t('audio.download_prompt_title'), size=16, font_family=FONT_EMPHASIS),
+            content=ft.Text(t('audio.download_prompt_body'), size=13),
+            actions=[
+                ft.TextButton(t('common.cancel'), on_click=_on_no),
+                ft.ElevatedButton(t('audio.button_download_now'), on_click=_on_yes),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.show_dialog(dlg)
+
     # ── Conversion ─────────────────────────────────────────────────────────────
 
     def _on_convert(self, _e) -> None:
@@ -271,6 +399,12 @@ class AudioPage(ft.Row):
             self._show_snack(t('audio.error_no_audio'), Palette.WARNING)
             return
         if self._state.is_processing:
+            return
+
+        # 模型缺失守卫：与乐谱识别页的 HOMR 预检对应，转换前发现模型未下载，
+        # 弹窗确认后台下载（无备用引擎，拒绝则中止本次转换）。
+        if not self._state.piano_model_available:
+            self._prompt_piano_model_download()
             return
 
         # 重复文件检查：与「乐谱识别」页一致，命名约定（<stem>_jianpu.pdf）由

@@ -39,6 +39,13 @@ from ..utils import (
 # 在各主要流程节点处调用 _report_subprogress() 以向 GUI 报告文件内子步骤进度。
 _subprogress_fn: Optional[object] = None
 
+# 音频转录产物暂不归档到 xml-scores/（= 暂时关闭「五线谱预览」/「移调」对音频结果
+# 的可见性）：MIDI→music21 转出的 MusicXML 缺少 OMR 输出具备的声部/休止位移信息，
+# lilypond_runner 里大量的"OMR 伪影清洗"逻辑是针对 OMR 特征调的，套在音频产物上
+# 排版会很乱。简谱预览/编辑不受影响（走 editor_workspace_dir，与此无关）。
+# 待音频→MusicXML 的量化/结构质量进一步提升后再打开。
+_ARCHIVE_AUDIO_TO_XML_SCORES = False
+
 
 def _report_subprogress(value: float, message: str = '') -> None:
     """Report intra-file processing sub-step progress (0.0–1.0) to the GUI."""
@@ -227,7 +234,7 @@ def process_single_input_to_jianpu(
 
         _report_subprogress(0.70, '正在生成简谱 PDF…')
         preferred_title = source_file.stem
-        if xml_scores_dir is not None:
+        if xml_scores_dir is not None and _ARCHIVE_AUDIO_TO_XML_SCORES:
             _archive_mxl_to_xml_scores(
                 mxl_file, source_file.stem, xml_scores_dir, title=preferred_title,
             )

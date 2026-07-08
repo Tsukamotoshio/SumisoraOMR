@@ -298,6 +298,19 @@ def _check_homr_models(state: AppState) -> None:
         _prune_orphan_weights(target_dir, _WEIGHT_FILES)
 
 
+def _check_piano_model(state: AppState) -> None:
+    """Set state.piano_model_available from disk (no download, no torch import).
+
+    Mirrors _check_homr_models's "cheap presence check at startup" role for the
+    audio-recognition engine (core/omr/audio_runner.py's ByteDance checkpoint).
+    """
+    try:
+        from core.omr.audio_runner import piano_model_available
+        state.piano_model_available = piano_model_available()
+    except Exception:
+        state.piano_model_available = False
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Global exception handlers (P1-1): uncaught exception = log + tell the user
 # ─────────────────────────────────────────────────────────────────────────────
@@ -409,6 +422,7 @@ async def main(page: ft.Page) -> None:
     # ── Global state ──────────────────────────────────────────────────────────
     state = AppState()
     _check_homr_models(state)
+    _check_piano_model(state)
 
     # ── asyncio 未捕获异常 → 日志 + GUI 日志面板（P1-1）─────────────────────────
     # Flet 事件循环里未被 await 的任务异常此前会被静默吞掉；记录到日志文件，

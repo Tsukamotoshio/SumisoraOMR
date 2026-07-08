@@ -95,6 +95,25 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Done: {ok} succeeded, {fail} failed (of {total})",
     },
     "audio.button_view_jianpu": {"zh": "查看简谱", "en": "View Jianpu"},
+
+    # ── audio page: piano model management (mirrors landing.section_homr_models) ──
+    "audio.section_piano_model": {"zh": "钢琴转录模型", "en": "Piano Transcription Model"},
+    "audio.piano_model_ready": {"zh": "钢琴转录模型 · 已就绪", "en": "Piano Transcription Model · Ready"},
+    "audio.piano_model_missing": {"zh": "钢琴转录模型 · 未下载（约 172 MB）", "en": "Piano Transcription Model · Not downloaded (~172 MB)"},
+    "audio.button_download_model": {"zh": "下载模型", "en": "Download Model"},
+    "audio.button_delete_model": {"zh": "删除模型", "en": "Delete Model"},
+    "audio.delete_model_dialog_title": {"zh": "删除钢琴转录模型？", "en": "Delete Piano Transcription Model?"},
+    "audio.delete_model_dialog_body": {
+        "zh": "下次使用音频识别时需要重新下载（约 172 MB）。",
+        "en": "It will need to be downloaded again (~172 MB) the next time you use audio recognition.",
+    },
+    # 转换前预检：模型缺失时的下载确认弹窗（对应 landing 的 HOMR 预检）
+    "audio.download_prompt_title": {"zh": "需要下载钢琴转录模型", "en": "Piano Transcription Model Required"},
+    "audio.download_prompt_body": {
+        "zh": "首次使用音频识别需下载钢琴转录模型（约 172 MB）。是否现在下载？",
+        "en": "Audio recognition needs the piano transcription model (~172 MB) on first use. Download it now?",
+    },
+    "audio.button_download_now": {"zh": "现在下载", "en": "Download Now"},
     "app.crash_dialog_title": {"zh": "Sumisora OMR — 程序发生错误", "en": "Sumisora OMR — Application Error"},
     "app.crash_dialog_body": {"zh": "发生未预期的错误，程序即将退出。\n\n错误详情已写入日志：\n{path}\n\n反馈问题时请附上该日志文件。", "en": "An unexpected error occurred and the application will close.\n\nDetails were written to the log:\n{path}\n\nPlease attach this log file when reporting the issue."},
 
@@ -408,6 +427,17 @@ STRINGS: dict[str, dict[str, str]] = {
     "model_download.error_no_source": {"zh": "下载失败 — 请检查网络连接", "en": "Download failed — check your network connection"},
     "model_download.error_hash_mismatch": {"zh": "权重文件校验失败：{exc}", "en": "Weight file verification failed: {exc}"},
     "model_download.error_generic": {"zh": "下载失败：{exc}", "en": "Download failed: {exc}"},
+
+    # ── piano_model_dialog.py (ByteDance piano transcription checkpoint) ─────
+    "piano_download.dialog_title": {"zh": "钢琴转录模型", "en": "Piano Transcription Model"},
+    "piano_download.intro_text": {
+        "zh": "首次使用音频识别需下载钢琴转录模型（约 172 MB，来自 Zenodo），下载到 models/piano_transcription/ 目录。",
+        "en": "First use of audio recognition needs the piano transcription model (~172 MB, from Zenodo), saved to models/piano_transcription/.",
+    },
+    "piano_download.button_start_download": {"zh": "开始下载", "en": "Start Download"},
+    "piano_download.status_preparing": {"zh": "准备中…", "en": "Preparing…"},
+    "piano_download.downloading_dialog_title": {"zh": "正在下载钢琴转录模型", "en": "Downloading Piano Transcription Model"},
+    "piano_download.error_generic": {"zh": "下载失败 — 请检查网络连接", "en": "Download failed — check your network connection"},
 
     # ── gui/components/progress_overlay.py ──────────────────────────────────
     "progress_overlay.button_show_log": {"zh": "显示详细日志", "en": "Show Detailed Log"},
