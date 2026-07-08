@@ -41,5 +41,27 @@ requests>=2.32.5
 #   - 仅支持钢琴独奏转录（模型本身是钢琴专用的，非通用乐器/人声）。
 #   - ~172 MB 模型权重按需下载到 <app_base_dir>/models/piano_transcription/
 #     （首次转换时自动下载，或在「音频识别」页手动点击「下载模型」预先获取）。
-#   - PyInstaller 打包目前尚未声明 torch / piano_transcription_inference —
-#     SumisoraOMR.spec 需补充后音频识别功能才能在打包产物中工作（见开发计划）。
+#   - SumisoraOMR.spec 是 gitignored 的本地文件（见 aeb7778 "untrack packaging/
+#     workspace files"），不随仓库同步 —— 每台打包机器都需要手动在其本地 spec
+#     里补上音频依赖的收集声明，否则打包产物里 worker 子进程 import 会失败。
+#     实测（2026-07-08，PyInstaller 6.20.0 + pyinstaller-hooks-contrib 2026.5，
+#     已验证 EXE 构建成功）需要在 collect_all('cv2') 之后加：
+#
+#       hiddenimports += [
+#           'torch', 'librosa', 'soundfile', 'numba', 'llvmlite', 'resampy',
+#           'soxr', 'scipy', 'matplotlib',
+#       ]
+#       hiddenimports += collect_submodules('piano_transcription_inference')
+#       hiddenimports += collect_submodules('torchlibrosa')
+#       hiddenimports += collect_submodules('pretty_midi')
+#       hiddenimports += collect_submodules('mido')
+#
+#     原因：librosa 用 lazy_loader 延迟导入子依赖（numba/scipy/soundfile/soxr/
+#     resampy 只有真正跑一遍转录才会出现在 sys.modules，静态扫描看不到，必须
+#     显式列出才能触发 pyinstaller-hooks-contrib 里对应的 hook-*.py 收集 DLL/
+#     数据文件）；matplotlib 是 piano_transcription_inference 的顶层 import
+#     （非按需，已验证在 tkinter 被排除的环境下会正常回退到 Agg 后端，不崩溃）。
+#     torch/librosa/soundfile/numba/llvmlite/resampy 各自有 hooks-contrib 专用
+#     hook 负责收集 DLL/数据文件，无需额外 collect_all；scipy/matplotlib 由
+#     PyInstaller 内置 hook 覆盖；piano_transcription_inference/torchlibrosa/
+#     pretty_midi/mido 无专用 hook，用 collect_submodules 显式收集子模块。
