@@ -118,6 +118,7 @@ from gui.strings import t, set_language
 from gui.settings import get_saved_language, set_saved_language
 from gui.theme import Palette, with_alpha, make_dark_theme, make_light_theme, FONT_BODY, FONT_EMPHASIS
 from gui.pages.landing_page import LandingPage
+from gui.pages.audio_page import AudioPage
 from gui.pages.jianpu_preview_page import JianpuPreviewPage
 from gui.pages.editor_page import EditorPage
 from gui.pages.transposer_page import TransposerPage
@@ -146,6 +147,7 @@ def _app_version_tuple() -> tuple[int, int, int, int]:
 
 _NAV_ITEMS = [
     ('landing',       ft.Icons.DOCUMENT_SCANNER_ROUNDED,    ft.Icons.DOCUMENT_SCANNER_OUTLINED,    t('app.nav_landing')),
+    ('audio',         ft.Icons.GRAPHIC_EQ_ROUNDED,          ft.Icons.GRAPHIC_EQ_ROUNDED,           t('app.nav_audio')),
     ('editor',        ft.Icons.EDIT_NOTE_ROUNDED,           ft.Icons.EDIT_NOTE_OUTLINED,           t('app.nav_editor')),
     ('score_preview', ft.Icons.LIBRARY_MUSIC_ROUNDED,       ft.Icons.LIBRARY_MUSIC_OUTLINED,       t('app.nav_score_preview')),
     ('about',         ft.Icons.INFO_ROUNDED,                ft.Icons.INFO_OUTLINE_ROUNDED,         t('app.nav_about')),
@@ -296,6 +298,19 @@ def _check_homr_models(state: AppState) -> None:
         _prune_orphan_weights(target_dir, _WEIGHT_FILES)
 
 
+def _check_piano_model(state: AppState) -> None:
+    """Set state.piano_model_available from disk (no download, no torch import).
+
+    Mirrors _check_homr_models's "cheap presence check at startup" role for the
+    audio-recognition engine (core/omr/audio_runner.py's ByteDance checkpoint).
+    """
+    try:
+        from core.omr.audio_runner import piano_model_available
+        state.piano_model_available = piano_model_available()
+    except Exception:
+        state.piano_model_available = False
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Global exception handlers (P1-1): uncaught exception = log + tell the user
 # ─────────────────────────────────────────────────────────────────────────────
@@ -407,6 +422,7 @@ async def main(page: ft.Page) -> None:
     # ── Global state ──────────────────────────────────────────────────────────
     state = AppState()
     _check_homr_models(state)
+    _check_piano_model(state)
 
     # ── asyncio 未捕获异常 → 日志 + GUI 日志面板（P1-1）─────────────────────────
     # Flet 事件循环里未被 await 的任务异常此前会被静默吞掉；记录到日志文件，
@@ -459,6 +475,7 @@ async def main(page: ft.Page) -> None:
 
     # ── Pages ─────────────────────────────────────────────────────────────────
     landing_page         = LandingPage(state, overlay)
+    audio_page           = AudioPage(state, overlay)
     jianpu_preview_page  = JianpuPreviewPage(state)
     editor_page          = EditorPage(state)
     score_preview_page   = ScorePreviewPage(state)
@@ -466,32 +483,24 @@ async def main(page: ft.Page) -> None:
     about_page           = AboutPage()
 
     # ── Content area (ft.Stack with overlay support) ──────────────────────────
-    # 前 4 个容器对应导航栏 4 项；
-    # 第 5 个（index 4）是 jianpu_edit 子页；第 6 个（index 5）是 transposer 子页
-    content_stack = ft.Stack(
-        [
-            ft.Container(content=landing_page,        expand=True, visible=True),   # 0: landing
-            ft.Container(content=jianpu_preview_page, expand=True, visible=False),  # 1: editor
-            ft.Container(content=score_preview_page,  expand=True, visible=False),  # 2: score_preview
-            ft.Container(content=about_page,          expand=True, visible=False),  # 3: about
-            ft.Container(content=editor_page,         expand=True, visible=False),  # 4: jianpu_edit (sub)
-            ft.Container(content=transposer_page,     expand=True, visible=False),  # 5: transposer (sub)
-            overlay,
-        ],
-        expand=True,
-    )
-    _content_containers: list[ft.Container] = content_stack.controls[:6]  # type: ignore[index]
+    # 页面按名字映射到容器，避免依赖导航项/子页的硬编码索引。前若干项对应导航栏，
+    # 'jianpu_edit' 与 'transposer' 是没有导航项的子页（通过事件跳转）。
+    _page_containers: dict[str, ft.Container] = {
+        'landing':       ft.Container(content=landing_page,        expand=True, visible=True),
+        'audio':         ft.Container(content=audio_page,          expand=True, visible=False),
+        'editor':        ft.Container(content=jianpu_preview_page, expand=True, visible=False),
+        'score_preview': ft.Container(content=score_preview_page,  expand=True, visible=False),
+        'about':         ft.Container(content=about_page,          expand=True, visible=False),
+        'jianpu_edit':   ft.Container(content=editor_page,         expand=True, visible=False),  # sub
+        'transposer':    ft.Container(content=transposer_page,     expand=True, visible=False),  # sub
+    }
+    content_stack = ft.Stack([*_page_containers.values(), overlay], expand=True)
 
-    _NAV_NAMES = [item[0] for item in _NAV_ITEMS]  # ['landing', 'editor', 'score_preview', 'about']
+    _NAV_NAMES = [item[0] for item in _NAV_ITEMS]  # nav-rail page names, in order
 
     def _show_page(name: str) -> None:
-        for i, container in enumerate(_content_containers):
-            if i < len(_NAV_NAMES):
-                container.visible = (_NAV_NAMES[i] == name)
-            elif i == 4:
-                container.visible = (name == 'jianpu_edit')
-            else:  # i == 5
-                container.visible = (name == 'transposer')
+        for key, container in _page_containers.items():
+            container.visible = (key == name)
         state.current_page = name
         # 简谱编辑子页禁止语言切换（避免编辑期间整页重译干扰）；离开后恢复。
         _lang_icon.disabled = (name == 'jianpu_edit')
@@ -655,7 +664,7 @@ async def main(page: ft.Page) -> None:
             nav_rail.update()
         except Exception:
             pass
-        for pg in (landing_page, jianpu_preview_page, editor_page,
+        for pg in (landing_page, audio_page, jianpu_preview_page, editor_page,
                    score_preview_page, transposer_page, about_page):
             try:
                 pg.retranslate()
@@ -871,6 +880,7 @@ async def main(page: ft.Page) -> None:
     async def _on_app_close(e) -> None:
         import threading
         threading.Thread(target=landing_page.terminate_worker, daemon=True).start()
+        threading.Thread(target=audio_page.terminate_worker, daemon=True).start()
         if sys.platform == 'win32':
             import ctypes
             # TerminateProcess 跳过 DLL_PROCESS_DETACH，比 os._exit 更快

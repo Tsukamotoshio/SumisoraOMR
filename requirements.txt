@@ -31,3 +31,15 @@ onnxruntime-gpu>=1.26.0
 musicxml==1.4
 rapidocr>=3.7.0          # 标题 OCR；会拉入 opencv-python（完整版）
 requests>=2.32.5
+
+# ── 音频识别引擎（core/omr/audio_runner.py，ByteDance piano_transcription_inference）──
+# torch 需指定 CPU wheel index（否则会拉完整 CUDA 版，体积暴涨），不适合写成普通
+# requirements 行，按下列命令手动安装（与本仓库 llama-cpp-python 分支的处理方式一致）：
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install piano_transcription_inference torchlibrosa
+# 说明：
+#   - 仅支持钢琴独奏转录（模型本身是钢琴专用的，非通用乐器/人声）。
+#   - ~172 MB 模型权重按需下载到 <app_base_dir>/models/piano_transcription/
+#     （首次转换时自动下载，或在「音频识别」页手动点击「下载模型」预先获取）。
+#   - PyInstaller 打包目前尚未声明 torch / piano_transcription_inference —
+#     SumisoraOMR.spec 需补充后音频识别功能才能在打包产物中工作（见开发计划）。

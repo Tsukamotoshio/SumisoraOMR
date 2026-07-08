@@ -44,6 +44,7 @@ STRINGS: dict[str, dict[str, str]] = {
     # NOTE: nav-rail labels sit under an icon in a ~80px-wide column, so the
     # English text must stay short (single word) to avoid ugly wrapping.
     "app.nav_landing": {"zh": "乐谱识别", "en": "Recognize"},
+    "app.nav_audio": {"zh": "音频识别", "en": "Audio"},
     "app.nav_editor": {"zh": "简谱预览", "en": "Jianpu"},
     "app.nav_score_preview": {"zh": "五线谱预览", "en": "Staff"},
     "app.nav_about": {"zh": "关于", "en": "About"},
@@ -61,6 +62,58 @@ STRINGS: dict[str, dict[str, str]] = {
     "app.snack_done_default": {"zh": "完成", "en": "Done"},
     "app.single_instance_title": {"zh": "Sumisora OMR", "en": "Sumisora OMR"},
     "app.single_instance_body": {"zh": "Sumisora OMR 已在运行中。\n\n请查看任务栏。", "en": "Sumisora OMR is already running.\n\nCheck the taskbar."},
+
+    # ── audio recognition page ─────────────────────────────────────────────
+    "audio.center_title": {"zh": "音频识别", "en": "Audio Recognition"},
+    "audio.center_hint": {
+        "zh": "导入钢琴音频（mp3 / wav / flac / m4a / ogg），\n勾选后点击右侧「开始识别」转换为简谱与五线谱。\n（识别引擎仅支持钢琴演奏）",
+        "en": "Import piano audio (mp3 / wav / flac / m4a / ogg), check files,\nthen click “Start Recognition” to transcribe to jianpu & staff.\n(The engine supports solo piano only.)",
+    },
+    "audio.selected_file": {"zh": "已选择音频：{name}", "en": "Selected audio: {name}"},
+    "audio.section_options": {"zh": "识别选项", "en": "Recognition Options"},
+    "audio.engine_note": {
+        "zh": "引擎：字节跳动 Piano Transcription（钢琴 → MIDI → 乐谱）",
+        "en": "Engine: ByteDance Piano Transcription (piano → MIDI → score)",
+    },
+    "audio.button_start": {"zh": "开始识别", "en": "Start Recognition"},
+    "audio.melody_only": {"zh": "仅主旋律", "en": "Melody only"},
+    "audio.tooltip_melody_only": {
+        "zh": "只保留主旋律（取每个时刻的最高音）。适合旋律在最高声部的钢琴/主奏；关闭则输出完整复调。",
+        "en": "Keep only the melody (highest note at each moment). Best when the melody is the top voice; off = full polyphony.",
+    },
+    "audio.tooltip_engine": {
+        "zh": "钢琴音频经字节跳动 Piano Transcription 引擎识别为 MIDI，再转换为简谱 / 五线谱。首次使用会下载约 172 MB 模型。",
+        "en": "Piano audio is transcribed to MIDI by the ByteDance Piano Transcription engine, then converted to jianpu / staff. A ~172 MB model downloads on first use.",
+    },
+    "audio.running": {"zh": "正在识别音频…", "en": "Transcribing audio…"},
+    "audio.error_no_audio": {
+        "zh": "请先勾选至少一个音频文件。",
+        "en": "Please check at least one audio file first.",
+    },
+    "audio.result_summary": {
+        "zh": "识别完成：成功 {ok}，失败 {fail}（共 {total}）",
+        "en": "Done: {ok} succeeded, {fail} failed (of {total})",
+    },
+    "audio.button_view_jianpu": {"zh": "查看简谱", "en": "View Jianpu"},
+
+    # ── audio page: piano model management (mirrors landing.section_homr_models) ──
+    "audio.section_piano_model": {"zh": "钢琴转录模型", "en": "Piano Transcription Model"},
+    "audio.piano_model_ready": {"zh": "钢琴转录模型 · 已就绪", "en": "Piano Transcription Model · Ready"},
+    "audio.piano_model_missing": {"zh": "钢琴转录模型 · 未下载（约 172 MB）", "en": "Piano Transcription Model · Not downloaded (~172 MB)"},
+    "audio.button_download_model": {"zh": "下载模型", "en": "Download Model"},
+    "audio.button_delete_model": {"zh": "删除模型", "en": "Delete Model"},
+    "audio.delete_model_dialog_title": {"zh": "删除钢琴转录模型？", "en": "Delete Piano Transcription Model?"},
+    "audio.delete_model_dialog_body": {
+        "zh": "下次使用音频识别时需要重新下载（约 172 MB）。",
+        "en": "It will need to be downloaded again (~172 MB) the next time you use audio recognition.",
+    },
+    # 转换前预检：模型缺失时的下载确认弹窗（对应 landing 的 HOMR 预检）
+    "audio.download_prompt_title": {"zh": "需要下载钢琴转录模型", "en": "Piano Transcription Model Required"},
+    "audio.download_prompt_body": {
+        "zh": "首次使用音频识别需下载钢琴转录模型（约 172 MB）。是否现在下载？",
+        "en": "Audio recognition needs the piano transcription model (~172 MB) on first use. Download it now?",
+    },
+    "audio.button_download_now": {"zh": "现在下载", "en": "Download Now"},
     "app.crash_dialog_title": {"zh": "Sumisora OMR — 程序发生错误", "en": "Sumisora OMR — Application Error"},
     "app.crash_dialog_body": {"zh": "发生未预期的错误，程序即将退出。\n\n错误详情已写入日志：\n{path}\n\n反馈问题时请附上该日志文件。", "en": "An unexpected error occurred and the application will close.\n\nDetails were written to the log:\n{path}\n\nPlease attach this log file when reporting the issue."},
 
@@ -174,9 +227,9 @@ STRINGS: dict[str, dict[str, str]] = {
     "landing.button_delete_models": {"zh": "删除模型文件", "en": "Delete Model Files"},
     "landing.section_convert_options": {"zh": "转换选项", "en": "Conversion Options"},
     "landing.section_homr_models": {"zh": "HOMR 模型管理", "en": "HOMR Model Management"},
-    "landing.model_version_ready": {"zh": "OMR 模型权重 v{ver} · 已就绪", "en": "OMR weights v{ver} · Ready"},
-    "landing.model_version_missing": {"zh": "OMR 模型权重 v{ver} · 未下载", "en": "OMR weights v{ver} · Not downloaded"},
-    "landing.tooltip_model_version": {"zh": "OMR 模型权重版本（随发布更新）", "en": "OMR model weight version (updated with each release)"},
+    "landing.model_version_ready": {"zh": "OMR 引擎 “Homr” v{ver} · 已就绪", "en": "OMR Engine \"Homr\" v{ver} · Ready"},
+    "landing.model_version_missing": {"zh": "OMR 引擎 “Homr” v{ver} · 未下载", "en": "OMR Engine \"Homr\" v{ver} · Not downloaded"},
+    "landing.tooltip_model_version": {"zh": "Homr 深度识别模型版本（随发布更新）", "en": "Homr deep recognition model version (updated with each release)"},
     "landing.download_dialog_title": {"zh": "需要下载 HOMR 模型权重", "en": "HOMR Model Weights Required"},
     "landing.download_dialog_body": {"zh": "使用 HOMR 引擎可以支持图片格式的乐谱识别。\n需要下载约 292 MB 模型权重。", "en": "The HOMR engine enables recognition of image-format scores.\nIt requires downloading about 292 MB of model weights."},
     "landing.button_not_now": {"zh": "暂不下载", "en": "Not Now"},
@@ -374,6 +427,17 @@ STRINGS: dict[str, dict[str, str]] = {
     "model_download.error_no_source": {"zh": "下载失败 — 请检查网络连接", "en": "Download failed — check your network connection"},
     "model_download.error_hash_mismatch": {"zh": "权重文件校验失败：{exc}", "en": "Weight file verification failed: {exc}"},
     "model_download.error_generic": {"zh": "下载失败：{exc}", "en": "Download failed: {exc}"},
+
+    # ── piano_model_dialog.py (ByteDance piano transcription checkpoint) ─────
+    "piano_download.dialog_title": {"zh": "钢琴转录模型", "en": "Piano Transcription Model"},
+    "piano_download.intro_text": {
+        "zh": "首次使用音频识别需下载钢琴转录模型（约 172 MB，来自 Zenodo），下载到 models/piano_transcription/ 目录。",
+        "en": "First use of audio recognition needs the piano transcription model (~172 MB, from Zenodo), saved to models/piano_transcription/.",
+    },
+    "piano_download.button_start_download": {"zh": "开始下载", "en": "Start Download"},
+    "piano_download.status_preparing": {"zh": "准备中…", "en": "Preparing…"},
+    "piano_download.downloading_dialog_title": {"zh": "正在下载钢琴转录模型", "en": "Downloading Piano Transcription Model"},
+    "piano_download.error_generic": {"zh": "下载失败 — 请检查网络连接", "en": "Download failed — check your network connection"},
 
     # ── gui/components/progress_overlay.py ──────────────────────────────────
     "progress_overlay.button_show_log": {"zh": "显示详细日志", "en": "Show Detailed Log"},

@@ -71,6 +71,7 @@ class ConversionOptions:
     gen_midi: bool = True
     skip_dup: bool = False
     dup_files: list = field(default_factory=list)
+    melody_only: bool = False  # audio: reduce to a single melody line (skyline)
 
 
 class ConversionRunner:
@@ -154,6 +155,7 @@ class ConversionRunner:
                     'sr_engine': opts.sr_engine,
                     'output_dir': str(output_path),
                     'gen_midi': opts.gen_midi,
+                    'melody_only': opts.melody_only,
                     'skip_dup': opts.skip_dup,
                     'dup_files': list(opts.dup_files),
                     'base_dir': str(base_dir),
@@ -386,6 +388,7 @@ class ConversionRunner:
                     'sr_engine': opts.sr_engine,
                     'output_dir': str(output_path),
                     'gen_midi': opts.gen_midi,
+                    'melody_only': opts.melody_only,
                     'skip_dup': opts.skip_dup,
                     'dup_files': list(opts.dup_files),
                     'base_dir': str(base_dir),

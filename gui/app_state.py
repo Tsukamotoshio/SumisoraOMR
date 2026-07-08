@@ -34,6 +34,7 @@ class Event:
     THEME_CHANGED         = 'theme_changed'         # theme toggled (dark: bool)
     LANGUAGE_CHANGED      = 'language_changed'      # UI language toggled (language: str, 'zh' | 'en')
     MODELS_DOWNLOADED     = 'models_downloaded'     # HOMR weights finished downloading
+    PIANO_MODEL_CHANGED   = 'piano_model_changed'   # piano transcription checkpoint downloaded/deleted
     NAVIGATE              = 'navigate'              # request page switch (name: str, one of _NAV_NAMES)
 
 
@@ -76,6 +77,8 @@ class AppState:
 
     # Engine availability (HOMR weights presence; set on startup + after download)
     homr_available: bool = False
+    # Piano transcription checkpoint presence; set on startup + after download/delete
+    piano_model_available: bool = False
 
     # Log
     log_lines: list[str] = field(default_factory=list)

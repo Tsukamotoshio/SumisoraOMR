@@ -10,6 +10,7 @@ from typing import Optional
 from ..omr.audiveris_runner import run_audiveris_sliced_batch
 from ..config import (
     LOGGER,
+    SUPPORTED_AUDIO_SUFFIXES,
     AppConfig,
     ConversionSummary,
     OMREngine,
@@ -37,6 +38,13 @@ from ..utils import (
 # 调用签名：_subprogress_fn(value: float 0.0-1.0, message: str)
 # 在各主要流程节点处调用 _report_subprogress() 以向 GUI 报告文件内子步骤进度。
 _subprogress_fn: Optional[object] = None
+
+# 音频转录产物暂不归档到 xml-scores/（= 暂时关闭「五线谱预览」/「移调」对音频结果
+# 的可见性）：MIDI→music21 转出的 MusicXML 缺少 OMR 输出具备的声部/休止位移信息，
+# lilypond_runner 里大量的"OMR 伪影清洗"逻辑是针对 OMR 特征调的，套在音频产物上
+# 排版会很乱。简谱预览/编辑不受影响（走 editor_workspace_dir，与此无关）。
+# 待音频→MusicXML 的量化/结构质量进一步提升后再打开。
+_ARCHIVE_AUDIO_TO_XML_SCORES = False
 
 
 def _report_subprogress(value: float, message: str = '') -> None:
@@ -168,6 +176,7 @@ def process_single_input_to_jianpu(
     editor_workspace_dir: Optional[Path] = None,
     xml_scores_dir: Optional[Path] = None,
     use_gpu_inference: Optional[bool] = None,
+    melody_only: bool = False,
 ) -> bool:
     """Process one input file through the chosen OMR engine → MXL → jianpu PDF.
 
@@ -194,6 +203,50 @@ def process_single_input_to_jianpu(
     """
     if engine is None:
         engine = OMREngine.AUTO
+
+    # ── Audio inputs → basic-pitch transcription (auto-routed by suffix) ─────
+    # 音频没有 OMR 概念，engine 参数对其无意义：按后缀自动分流到 basic-pitch。
+    # 该分支自成闭环，复用下游的 find_first_musicxml_file + generate_jianpu_pdf_from_mxl，
+    # 不与图像/PDF 的参考图逻辑交织；音频无源图，source_path=None（隐藏参考图）。
+    if source_file.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES:
+        from ..omr.audio_runner import run_audio_transcription
+
+        log_message(f'  [引擎] {source_file.name} 为音频格式 → basic-pitch 转录引擎。')
+        _report_subprogress(0.05, '[basic-pitch] 启动音频转录…')
+        omr_out = run_audio_transcription(
+            source_file,
+            file_temp_dir,
+            use_gpu_inference=use_gpu_inference,
+            melody_only=melody_only,
+            progress_fn=_report_subprogress,
+        )
+        if omr_out is None:
+            log_message(f'  ✗ 音频转录失败，跳过 {source_file.name}。', logging.WARNING)
+            return False
+
+        mxl_file = find_first_musicxml_file(omr_out, source_file.stem)
+        if mxl_file is None:
+            log_message(
+                f'  ✗ 未找到音频转录输出的 MusicXML，跳过 {source_file.name}。',
+                logging.WARNING,
+            )
+            return False
+
+        _report_subprogress(0.70, '正在生成简谱 PDF…')
+        preferred_title = source_file.stem
+        if xml_scores_dir is not None and _ARCHIVE_AUDIO_TO_XML_SCORES:
+            _archive_mxl_to_xml_scores(
+                mxl_file, source_file.stem, xml_scores_dir, title=preferred_title,
+            )
+        return generate_jianpu_pdf_from_mxl(
+            mxl_file,
+            output_pdf,
+            file_temp_dir,
+            output_midi,
+            preferred_title=preferred_title,
+            source_path=None,  # 音频无源图，编辑器隐藏参考图（决策 A）
+            editor_workspace_dir=editor_workspace_dir,
+        )
 
     is_image = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO

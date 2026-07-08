@@ -31,6 +31,7 @@ from .config import (
     LOGGER,
     OMR_ENGINE_DIR_NAME,
     RUNTIME_ASSETS_DIR_NAME,
+    SUPPORTED_AUDIO_SUFFIXES,
     SUPPORTED_INPUT_SUFFIXES,
     AppConfig,
     ConversionSummary,
@@ -328,8 +329,11 @@ def build_safe_ascii_name(name: str, fallback: str = 'file') -> str:
 
 
 def is_supported_score_file(path: Path) -> bool:
-    """Return True if the path is a supported score input file."""
-    return path.is_file() and path.suffix.lower() in SUPPORTED_INPUT_SUFFIXES
+    """Return True if the path is a supported input file (score image/PDF or audio)."""
+    if not path.is_file():
+        return False
+    suffix = path.suffix.lower()
+    return suffix in SUPPORTED_INPUT_SUFFIXES or suffix in SUPPORTED_AUDIO_SUFFIXES
 
 
 def find_packaged_runtime_dir(dir_name: str) -> Optional[Path]:
