@@ -25,7 +25,6 @@ from __future__ import annotations
 import contextlib
 import io
 import logging
-import os
 import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
