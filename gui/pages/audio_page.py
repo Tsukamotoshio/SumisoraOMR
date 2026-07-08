@@ -17,7 +17,7 @@ import flet as ft
 
 from ..app_state import AppState, Event
 from ..worker_launcher import ConversionOptions, ConversionRunner
-from core.app.backend import output_dir, open_directory
+from core.app.backend import app_base_dir, output_dir, open_directory
 from core.config import SUPPORTED_AUDIO_SUFFIXES
 from ..components.file_sidebar import FileSidebar
 from ..components.progress_overlay import ProgressOverlay
@@ -41,6 +41,39 @@ class AudioPage(ft.Row):
         self._build_ui()
         state.on(Event.FILE_SELECTED, self._on_file_selected)
         self.vertical_alignment = ft.CrossAxisAlignment.STRETCH
+
+    def did_mount(self) -> None:
+        # 启动时扫描 Input/ 中已存在的音频文件并加入托盘（乐谱识别页只扫图片/PDF，
+        # 音频文件从不会被它收录，所以这里需要单独扫一遍音频后缀）。
+        threading.Thread(target=self._scan_input_audio, daemon=True).start()
+
+    def _scan_input_audio(self) -> None:
+        try:
+            if self.page is None:
+                return
+            input_dir = app_base_dir() / 'Input'
+            if not input_dir.is_dir():
+                return
+            newly: list[Path] = []
+            for suf in sorted(SUPPORTED_AUDIO_SUFFIXES):
+                for f in sorted(input_dir.glob(f'*{suf}')):
+                    resolved = f.resolve()
+                    if resolved not in self._state.pinned_files:
+                        self._state.pinned_files.append(resolved)
+                        self._state.checked_files.add(resolved)
+                        newly.append(resolved)
+            if not newly:
+                return
+            self._state.emit(Event.FILES_CHANGED, files=list(self._state.pinned_files))
+
+            async def _do_update():
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+            self.page.run_task(_do_update)  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
     # ── UI ────────────────────────────────────────────────────────────────────
 

@@ -384,8 +384,8 @@ class FileSidebar(ft.Column):
             return
         folder = Path(folder_path)
         paths: list[Path] = []
-        for ext in ('*.pdf', '*.png', '*.jpg', '*.jpeg'):
-            paths.extend(folder.glob(ext))
+        for suf in sorted(self._allowed_suffixes):
+            paths.extend(folder.glob(f'*{suf}'))
         if paths:
             await self._import_with_progress(paths)
 
