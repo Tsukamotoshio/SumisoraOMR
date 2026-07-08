@@ -273,7 +273,86 @@ class AudioPage(ft.Row):
         if self._state.is_processing:
             return
 
-        self._conversion_files = checked_audio
+        # 重复文件检查：与「乐谱识别」页一致，命名约定（<stem>_jianpu.pdf）由
+        # worker_main.py 统一处理，与引擎无关，此处逻辑可直接复用。
+        output_path = output_dir(None)
+        existing = [
+            src.name for src in checked_audio
+            if (output_path / (src.stem + '_jianpu.pdf')).exists()
+        ]
+
+        self._skip_dup_cb: Optional[ft.Checkbox] = None
+        warn_items: list[ft.Control] = []
+        if existing:
+            warn_items.append(
+                ft.Row([
+                    ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,
+                            color=Palette.WARNING, size=16),
+                    ft.Text(
+                        t("landing.existing_outputs_warning", n=len(existing)),
+                        color=Palette.WARNING, size=13,
+                    ),
+                ], spacing=4)
+            )
+            for name in existing[:5]:
+                warn_items.append(
+                    ft.Text(f'  • {name}', size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT)
+                )
+            if len(existing) > 5:
+                warn_items.append(
+                    ft.Text(t("landing.existing_outputs_more", n=len(existing) - 5),
+                            size=12, color=ft.Colors.OUTLINE)
+                )
+            self._skip_dup_cb = ft.Checkbox(
+                label=t("landing.checkbox_skip_duplicates"),
+                value=True,
+                active_color=Palette.PRIMARY,
+            )
+            warn_items.append(ft.Container(height=4))
+            warn_items.append(self._skip_dup_cb)
+
+        def _do_confirm(_ev) -> None:
+            self.page.pop_dialog()
+            skip = bool(self._skip_dup_cb.value) if self._skip_dup_cb is not None else False
+            self._start_conversion(
+                checked_audio, skip_duplicates=skip, duplicate_files=set(existing),
+            )
+
+        if not existing:
+            # 无重复文件，跳过确认弹窗直接开始（与乐谱识别页行为一致：仅在有
+            # 冲突需要用户决策时才弹窗打断操作）。
+            self._start_conversion(checked_audio)
+            return
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(
+                t("landing.convert_dialog_title", n=len(checked_audio)),
+                size=16, font_family=FONT_EMPHASIS,
+            ),
+            content=ft.Container(
+                content=ft.Column(warn_items, tight=True, spacing=8),
+                padding=ft.Padding.only(top=6),
+                width=400,
+            ),
+            actions=[
+                ft.TextButton(t("common.cancel"), on_click=lambda _ev: self.page.pop_dialog()),
+                ft.FilledButton(t("audio.button_start"), on_click=_do_confirm),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.show_dialog(dlg)
+
+    def _start_conversion(
+        self,
+        files: list[Path],
+        skip_duplicates: bool = False,
+        duplicate_files: Optional[set] = None,
+    ) -> None:
+        self._conversion_files = files
+        self._skip_dup = skip_duplicates
+        self._dup_files = duplicate_files or set()
         self._state.is_processing = True
         self._overlay.show(t('audio.running'))
         threading.Thread(target=self._run_conversion, daemon=True).start()
@@ -284,6 +363,8 @@ class AudioPage(ft.Row):
         opts = ConversionOptions(
             engine='auto', gen_midi=True,
             melody_only=bool(self._melody_only_cb.value),
+            skip_dup=getattr(self, '_skip_dup', False),
+            dup_files=list(getattr(self, '_dup_files', set())),
         )
         # 单 worker 顺序处理（音频转录本身受 CPU/GPU 限制，串行足够且更稳）。
         self._runner.run(files, 1, opts)
