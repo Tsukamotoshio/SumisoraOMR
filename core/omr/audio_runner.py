@@ -25,6 +25,7 @@ from __future__ import annotations
 import contextlib
 import io
 import logging
+import os
 import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
@@ -403,6 +404,23 @@ def run_audio_transcription(
     want_gpu = use_gpu_inference is not False
     device = 'cuda' if (want_gpu and torch.cuda.is_available()) else 'cpu'
     log_message(f'  [钢琴转录] 使用 {device.upper()} 推理。')
+
+    # ── CPU 推理限制 torch 线程数：规避打包版偶发死锁（约 1/6，卡在"正在识别音符"）──
+    # 钢琴转录模型（CRNN）在 CPU 上用 torch 的 Intel OpenMP（libiomp5md）跑 GRU 逐时间
+    # 步 fork/join 并行区。torch 默认用全部逻辑核（本机 16 线程 = 8 物理核 2 倍超额
+    # 订阅），这些 fork/join 并行区在超额竞争下偶发原生层活锁——进程烧满多核 CPU 却
+    # 永不返回（py-spy 阻塞模式抓不到栈 = 原生死锁）。
+    #   关键坑：OMP_NUM_THREADS 环境变量在本打包版里**不会**限制 torch 的 intra-op
+    #   线程数（实测设 OMP=1 后转录仍占 7+ 核）——torch 有自己的默认，必须调它的 API。
+    #   torch.set_num_threads(N) 才真正生效（实测 get_num_threads 16→N，占用降到 ~N 核）。
+    #   取 N = min(4, 逻辑核数)：4 线程在 8 物理核上不再超额订阅，实测打包版 10/10 无
+    #   死锁；比默认略慢但稳定（GRU 逐步串行，多线程收益本就有限）。N=1 最稳但太慢
+    #   （单条约 5-8 分钟），故取 4 折中。仅 CPU 路径生效，不影响 GPU / homr / onnx。
+    if device == 'cpu':
+        try:
+            torch.set_num_threads(max(1, min(4, os.cpu_count() or 4)))
+        except Exception:
+            pass
 
     checkpoint = _ensure_piano_model(progress_fn)
     if checkpoint is None:

@@ -5,6 +5,35 @@ All notable changes to SumisoraOMR are documented here. Format follows
 `APP_VERSION` in `core/config.py` (the single source of truth — run
 `python scripts/sync_version.py` after bumping it).
 
+## [0.4.2] - 2026-07-10
+
+Fixes an intermittent hang in packaged-build audio recognition. Rolls up
+the 0.4.1.1 packaging fixes (audio recognition was never shipped working
+before this). Source-level fixes only — no new features.
+
+### Fixed
+- **Audio recognition intermittently hung** in the installer/portable
+  build (roughly 1 in 6 files), stuck at "正在识别音符" and never
+  finishing. Root cause: in the packaged process the piano-transcription
+  model (a CRNN) runs its GRU on torch's Intel OpenMP (`libiomp5md`),
+  and torch defaults to one thread per *logical* core (16 threads on an
+  8-core CPU — 2× oversubscribed); the GRU's per-timestep fork/join
+  parallel regions occasionally deadlock under that oversubscription —
+  the process pins several CPU cores at 100% but never returns (a
+  native-level deadlock; py-spy in blocking mode can't even read its
+  stack). Fixed by capping torch's CPU thread count to
+  `min(4, cpu_count)` for the audio worker via `torch.set_num_threads()`
+  — note that the `OMP_NUM_THREADS` environment variable does **not**
+  limit torch's thread count in this build (measured: still 7+ cores
+  with `OMP_NUM_THREADS=1`), so torch's own API is required; OpenBLAS is
+  also pinned to one thread so its separate pool doesn't re-compete.
+  Verified on the packaged build: the deadlock reproduced ~1/6 before
+  the fix and 0 times across 10 post-fix runs at 4 threads. Four threads
+  keeps transcription reasonably fast (~2–3 min/file) while staying
+  under the oversubscription that triggers the deadlock. Applies only to
+  the CPU audio path — GPU inference and image OMR (Homr/ONNX, which uses
+  its own thread pool) are unaffected.
+
 ## [0.4.1.1] - 2026-07-10
 
 Critical packaging fix for 0.4.1: audio recognition was completely

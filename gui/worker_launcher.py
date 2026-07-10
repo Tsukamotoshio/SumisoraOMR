@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core.app.backend import app_base_dir, output_dir
+from core.config import SUPPORTED_AUDIO_SUFFIXES
 from .app_state import AppState, Event
 from .strings import t
 
@@ -38,7 +39,12 @@ def split_file_chunks(files: list, n: int) -> list[list]:
     return [files[i:i + chunk_size] for i in range(0, len(files), chunk_size)]
 
 
-def _build_popen_kwargs(n_workers: int) -> dict:
+def _is_audio_batch(files: list) -> bool:
+    """True if any input is an audio file (→ the audio-transcription path)."""
+    return any(Path(f).suffix.lower() in SUPPORTED_AUDIO_SUFFIXES for f in files)
+
+
+def _build_popen_kwargs(n_workers: int, audio_batch: bool = False) -> dict:
     """Shared Popen kwargs for worker subprocesses (single and parallel paths).
 
     Injects HOMR_MODELS_DIR so the worker loads weights from
@@ -49,6 +55,13 @@ def _build_popen_kwargs(n_workers: int) -> dict:
     ONNX intra-op 线程开到 (核数-2)，n 个 worker 一起就是 n×(核数-2) 抢占核数个核
     → 超额订阅、上下文切换抖动，实测比顺序还慢。按并发数把每个 worker 的线程上限
     压到约 核数/n，让总线程数不超过核数。单 worker 不设，保留全部线程。
+
+    音频批次（audio_batch）把 numpy/scipy 的 OpenBLAS 线程数压到 1：钢琴转录在 CPU
+    上偶发死锁的主因是 torch 的 OpenMP 线程超额订阅（真正的线程数限制在
+    core/omr/audio_runner.py 里用 torch.set_num_threads 完成——OMP_NUM_THREADS 环境
+    变量对本打包版的 torch **无效**，实测设 1 后仍占 7+ 核）。这里把 OpenBLAS 也降到
+    单线程，避免它那套独立线程池与 torch 的少量线程再抢核。仅音频 worker 生效，不影响
+    homr（图像识别的 numpy BLAS 保持多线程）。
     """
     kwargs: dict = {}
     if sys.platform == 'win32':
@@ -56,7 +69,9 @@ def _build_popen_kwargs(n_workers: int) -> dict:
     from core.app.backend import models_dir as _models_dir
     env = os.environ.copy()
     env['HOMR_MODELS_DIR'] = str(_models_dir())
-    if n_workers > 1:
+    if audio_batch:
+        env['OPENBLAS_NUM_THREADS'] = '1'
+    elif n_workers > 1:
         cpu = os.cpu_count() or 4
         env['HOMR_ORT_INTRA_THREADS'] = str(max(1, cpu // max(1, n_workers) - 1))
     kwargs['env'] = env
@@ -169,7 +184,7 @@ class ConversionRunner:
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    **_build_popen_kwargs(1),
+                    **_build_popen_kwargs(1, audio_batch=_is_audio_batch(files)),
                 )
                 self.procs = [proc]
 
@@ -345,7 +360,7 @@ class ConversionRunner:
             _current_files: list[str] = [''] * n_actual
             _worker_done: list[bool] = [False] * n_actual  # 是否已收到该 worker 的 done 消息
 
-            extra_kwargs = _build_popen_kwargs(n_actual)
+            extra_kwargs = _build_popen_kwargs(n_actual, audio_batch=_is_audio_batch(files))
 
             worker_cmd = build_worker_cmd()
             procs: list[subprocess.Popen] = []
