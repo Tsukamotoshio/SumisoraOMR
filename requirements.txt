@@ -44,13 +44,16 @@ requests>=2.32.5
 #   - SumisoraOMR.spec 是 gitignored 的本地文件（见 aeb7778 "untrack packaging/
 #     workspace files"），不随仓库同步 —— 每台打包机器都需要手动在其本地 spec
 #     里补上音频依赖的收集声明，否则打包产物里 worker 子进程 import 会失败。
-#     实测（2026-07-08，PyInstaller 6.20.0 + pyinstaller-hooks-contrib 2026.5，
-#     已验证 EXE 构建成功）需要在 collect_all('cv2') 之后加：
+#     实测（2026-07-10，PyInstaller 6.20.0 + pyinstaller-hooks-contrib 2026.5，
+#     已用真实 mp3 端到端验证转录成功，见 CHANGELOG 0.4.1/0.4.1.1）需要在
+#     collect_all('cv2') 之后加：
 #
 #       hiddenimports += [
 #           'torch', 'librosa', 'soundfile', 'numba', 'llvmlite', 'resampy',
-#           'soxr', 'scipy', 'matplotlib',
+#           'soxr', 'matplotlib',
 #       ]
+#       hiddenimports += collect_submodules('scipy')
+#       hiddenimports += collect_submodules('scipy._external')
 #       hiddenimports += collect_submodules('piano_transcription_inference')
 #       hiddenimports += collect_submodules('torchlibrosa')
 #       hiddenimports += collect_submodules('pretty_midi')
@@ -60,8 +63,16 @@ requests>=2.32.5
 #     resampy 只有真正跑一遍转录才会出现在 sys.modules，静态扫描看不到，必须
 #     显式列出才能触发 pyinstaller-hooks-contrib 里对应的 hook-*.py 收集 DLL/
 #     数据文件）；matplotlib 是 piano_transcription_inference 的顶层 import
-#     （非按需，已验证在 tkinter 被排除的环境下会正常回退到 Agg 后端，不崩溃）。
+#     （非按需，已验证在 tkinter 被排除的环境下会正常回退到 Agg 后端，不崩溃）——
+#     0.4.1 曾把 matplotlib/mpl_toolkits 误留在 excludes 里（excludes 优先级高于
+#     hiddenimports），导致打包版音频识别 100% 失败，0.4.1.1 修复，务必不要重新
+#     排除。scipy 改用 collect_submodules 而非裸模块名，但光这样还不够：
+#     scipy._external 是隐式命名空间包（无 __init__.py），collect_submodules('scipy')
+#     从顶层遍历时会静默跳过命名空间子包，array_api_compat（含 librosa 音频读取
+#     路径懒加载到的 numpy.fft 适配层）整棵子树都收不到，必须对 'scipy._external'
+#     再单独调一次 collect_submodules 才能收全。同样是 0.4.1.1 用真实 mp3 复现两轮
+#     （先漏 scipy 整体，修复后仍漏这个命名空间子树）才定位到的。
 #     torch/librosa/soundfile/numba/llvmlite/resampy 各自有 hooks-contrib 专用
-#     hook 负责收集 DLL/数据文件，无需额外 collect_all；scipy/matplotlib 由
-#     PyInstaller 内置 hook 覆盖；piano_transcription_inference/torchlibrosa/
-#     pretty_midi/mido 无专用 hook，用 collect_submodules 显式收集子模块。
+#     hook 负责收集 DLL/数据文件，无需额外 collect_all；piano_transcription_
+#     inference/torchlibrosa/pretty_midi/mido 无专用 hook，用 collect_submodules
+#     显式收集子模块。
