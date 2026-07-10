@@ -5,6 +5,37 @@ All notable changes to SumisoraOMR are documented here. Format follows
 `APP_VERSION` in `core/config.py` (the single source of truth — run
 `python scripts/sync_version.py` after bumping it).
 
+## [0.4.1.1] - 2026-07-10
+
+Critical packaging fix for 0.4.1: audio recognition was completely
+non-functional in the installer/portable build (worked fine in dev mode).
+Source-level fixes only — no new features.
+
+### Fixed
+- **Packaging**: `piano_transcription_inference` (the audio-recognition
+  engine) hard-imports `matplotlib`, but `SumisoraOMR.spec`'s `Analysis()`
+  still had `matplotlib`/`mpl_toolkits` in `excludes` (left over from before
+  the audio feature existed, when it was only music21's unused optional
+  dependency). `excludes` overrides `hiddenimports`, so matplotlib was
+  silently absent from every 0.4.1 build — every audio transcription failed
+  immediately with `No module named 'matplotlib'`. Verified against a real
+  packaged build with a real MP3 before and after the fix.
+- **UI**: the audio recognition page showed only a transient toast on
+  failure, with no reason, that disappeared on its own — the underlying
+  per-file failure detail was already being sent over IPC but never read.
+  Now shows a persistent results dialog listing each failed file and its
+  reason (mirrors the score-recognition page's results dialog).
+- **Worker**: `worker_main.py` hardcoded `"转换失败"` (generic "conversion
+  failed") as the reason whenever a conversion returned failure without
+  raising an exception, discarding the actual error already present in the
+  log stream. It now surfaces the first `✗`-prefixed log line for that file
+  as the real reason — this also improves failure messages on the
+  score-recognition page, not just audio.
+- `scripts/sync_version.py` and `app.py`'s VERSIONINFO derivation only read
+  the first 3 dot-separated segments of `APP_VERSION`, silently dropping a
+  4th (patch-of-patch) segment — needed for this release. Both now carry a
+  4th segment through instead of always forcing it to 0.
+
 ## [0.4.1] - 2026-07-09
 
 Headline feature: audio-to-notation transcription. Convert a piano

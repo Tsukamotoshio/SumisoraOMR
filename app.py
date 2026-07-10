@@ -134,11 +134,13 @@ def _app_version_tuple() -> tuple[int, int, int, int]:
 
     Single source of truth: core.config.APP_VERSION. Prevents the stale hardcoded
     version this call site used to carry drifting from the real app version.
+    A 3-segment version pads build=0; a 4-segment version ('0.4.1.1', used for a
+    packaging-only patch release) carries its own 4th part through.
     """
-    parts = [int(x) for x in APP_VERSION.split('.')[:3] if x.isdigit()]
-    while len(parts) < 3:
+    parts = [int(x) for x in APP_VERSION.split('.')[:4] if x.isdigit()]
+    while len(parts) < 4:
         parts.append(0)
-    return parts[0], parts[1], parts[2], 0
+    return parts[0], parts[1], parts[2], parts[3]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

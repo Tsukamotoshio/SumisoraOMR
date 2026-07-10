@@ -520,46 +520,125 @@ class AudioPage(ft.Row):
             self._show_results()
 
     def _show_results(self) -> None:
-        summary = self._state.conversion_summary
-        if not summary:
-            return
-        ok = summary.get('success_count', 0) + summary.get('fallback_count', 0)
-        fail = summary.get('failed_count', 0)
-        total = summary.get('total', ok + fail)
-        color = Palette.SUCCESS if fail == 0 and ok > 0 else (
-            Palette.WARNING if ok > 0 else Palette.ERROR
-        )
-        self._show_snack(t('audio.result_summary', ok=ok, fail=fail, total=total), color)
-        if ok > 0:
-            self._show_view_jianpu_dialog()
+        """显示转换结果详情（总览 + 每文件成功/失败信息，滚动列表）。
 
-    def _show_view_jianpu_dialog(self) -> None:
-        if self.page is None:
-            return
-
-        def _goto_jianpu(_ev):
-            self.page.pop_dialog()
-            self._state.emit(Event.NAVIGATE, name='editor')
-
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(t('audio.center_title'), size=16, font_family=FONT_EMPHASIS),
-            content=ft.Text(
-                t('audio.result_summary',
-                  ok=self._state.conversion_summary.get('success_count', 0)
-                  + self._state.conversion_summary.get('fallback_count', 0),
-                  fail=self._state.conversion_summary.get('failed_count', 0),
-                  total=self._state.conversion_summary.get('total', 0)),
-                size=13, color=ft.Colors.ON_SURFACE,
-            ),
-            actions=[
-                ft.TextButton(t('common.close'), on_click=lambda _ev: self.page.pop_dialog()),
-                ft.FilledButton(t('audio.button_view_jianpu'), on_click=_goto_jianpu),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
+        镜像 landing_page._show_conversion_results 的模式：之前这里全成功
+        才弹持久对话框，失败时只有一条会自动消失的 SnackBar，且不带具体
+        失败原因（worker_launcher 早已在 conversion_summary['failed_files']
+        里带上了 reason，只是没被读取显示）。
+        """
         try:
-            self.page.show_dialog(dlg)
+            if self.page is None:
+                return
+
+            summary = self._state.conversion_summary
+            if not summary:
+                return
+
+            success_count = summary.get('success_count', 0) + summary.get('fallback_count', 0)
+            failed_count  = summary.get('failed_count', 0)
+            total         = summary.get('total', success_count + failed_count)
+            success_files = summary.get('success_files', []) + summary.get('fallback_files', [])
+            failed_files  = summary.get('failed_files', [])
+
+            def _stat_chip(label: str, color: str) -> ft.Container:
+                return ft.Container(
+                    content=ft.Text(label, size=13, color=color, font_family=FONT_EMPHASIS),
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+                    border_radius=12,
+                    bgcolor=ft.Colors.with_opacity(0.12, color),
+                )
+
+            header_row = ft.Row(
+                [
+                    ft.Text(t('audio.stat_total', n=total), size=14, color=ft.Colors.ON_SURFACE),
+                    _stat_chip(t('audio.stat_success', n=success_count), Palette.SUCCESS) if success_count else ft.Container(),
+                    _stat_chip(t('audio.stat_failed', n=failed_count), Palette.ERROR) if failed_count else ft.Container(),
+                ],
+                spacing=8,
+                wrap=True,
+            )
+
+            list_items: list[ft.Control] = []
+
+            if success_files:
+                list_items.append(
+                    ft.Container(
+                        ft.Text(t('audio.section_success'), size=12, font_family=FONT_EMPHASIS, color=Palette.SUCCESS),
+                        padding=ft.Padding.only(top=8, bottom=2),
+                    )
+                )
+                for item in success_files:
+                    file_name = item.get('file', t('audio.unknown_file')) if isinstance(item, dict) else item
+                    list_items.append(
+                        ft.Container(
+                            content=ft.Text(file_name, size=12, color=ft.Colors.ON_SURFACE, no_wrap=False),
+                            padding=ft.Padding.symmetric(vertical=3),
+                        )
+                    )
+
+            if failed_files:
+                list_items.append(
+                    ft.Container(
+                        ft.Text(t('audio.section_failed'), size=12, font_family=FONT_EMPHASIS, color=Palette.ERROR),
+                        padding=ft.Padding.only(top=10, bottom=2),
+                    )
+                )
+                for item in failed_files:
+                    file_name = item.get('file', t('audio.unknown_file')) if isinstance(item, dict) else item
+                    reason    = (item.get('reason', '') if isinstance(item, dict) else '') or t('audio.unknown_reason')
+                    list_items.append(
+                        ft.Container(
+                            content=ft.Column(
+                                [
+                                    ft.Text(file_name, size=12, color=ft.Colors.ON_SURFACE, no_wrap=False),
+                                    ft.Text(
+                                        t('audio.list_item_reason', reason=reason),
+                                        size=11, color=Palette.ERROR, no_wrap=False,
+                                    ),
+                                ],
+                                spacing=1,
+                                tight=True,
+                            ),
+                            padding=ft.Padding.symmetric(vertical=3),
+                        )
+                    )
+
+            def _close_dialog(_ev=None):
+                if self.page:
+                    self.page.pop_dialog()
+
+            def _goto_jianpu(_ev=None):
+                _close_dialog()
+                self._state.emit(Event.NAVIGATE, name='editor')
+
+            actions: list[ft.Control] = [
+                ft.TextButton(t('landing.button_open_output_dir'), on_click=self._on_open_output_dir),
+                ft.TextButton(t('common.close'), on_click=_close_dialog),
+            ]
+            if success_count > 0:
+                actions.append(ft.FilledButton(t('audio.button_view_jianpu'), on_click=_goto_jianpu))
+
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(t('audio.result_dialog_title'), size=16, font_family=FONT_EMPHASIS),
+                content=ft.Column(
+                    [
+                        header_row,
+                        ft.Divider(height=1, thickness=1),
+                        ft.Container(
+                            content=ft.Column(list_items, tight=True, spacing=0, scroll=ft.ScrollMode.AUTO),
+                            height=320,
+                            width=460,
+                        ),
+                    ],
+                    tight=True,
+                    spacing=8,
+                ),
+                actions=actions,
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            self.page.show_dialog(dialog)
         except Exception:
             pass
 

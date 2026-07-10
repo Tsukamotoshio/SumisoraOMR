@@ -27,20 +27,26 @@ def _read_app_version() -> str:
     return m.group(1)
 
 
-def _version_parts(v: str) -> tuple[int, int, int]:
-    nums = [int(x) for x in v.split('.')[:3] if x.isdigit()]
-    while len(nums) < 3:
+def _version_parts(v: str) -> tuple[int, int, int, int]:
+    """Up to 4 dot-separated numeric segments (major, minor, patch, build).
+
+    A 3-segment version ('0.4.1') pads the 4th with 0; a 4-segment version
+    ('0.4.1.1', used for a packaging-only patch release) carries its own 4th
+    part through instead of always forcing it to 0.
+    """
+    nums = [int(x) for x in v.split('.')[:4] if x.isdigit()]
+    while len(nums) < 4:
         nums.append(0)
-    return nums[0], nums[1], nums[2]
+    return nums[0], nums[1], nums[2], nums[3]
 
 
 def _sync_version_info(v: str, changed: list[str]) -> None:
     p = ROOT / 'version_info.txt'
     s = p.read_text(encoding='utf-8')
-    ma, mi, pa = _version_parts(v)
-    quad = f'{ma}.{mi}.{pa}.0'
-    s2 = re.sub(r'filevers=\(\d+, \d+, \d+, \d+\)', f'filevers=({ma}, {mi}, {pa}, 0)', s)
-    s2 = re.sub(r'prodvers=\(\d+, \d+, \d+, \d+\)', f'prodvers=({ma}, {mi}, {pa}, 0)', s2)
+    ma, mi, pa, bu = _version_parts(v)
+    quad = f'{ma}.{mi}.{pa}.{bu}'
+    s2 = re.sub(r'filevers=\(\d+, \d+, \d+, \d+\)', f'filevers=({ma}, {mi}, {pa}, {bu})', s)
+    s2 = re.sub(r'prodvers=\(\d+, \d+, \d+, \d+\)', f'prodvers=({ma}, {mi}, {pa}, {bu})', s2)
     s2 = re.sub(r"(StringStruct\(u'FileVersion',\s*u')[^']+(')", rf'\g<1>{quad}\g<2>', s2)
     s2 = re.sub(r"(StringStruct\(u'ProductVersion',\s*u')[^']+(')", rf'\g<1>{quad}\g<2>', s2)
     if s2 != s:
@@ -65,10 +71,10 @@ def _sync_iss(v: str, changed: list[str]) -> None:
     p = ROOT / 'convert_setup.iss'
     if not p.is_file():
         return
-    ma, mi, pa = _version_parts(v)
+    ma, mi, pa, bu = _version_parts(v)
     s = p.read_text(encoding='utf-8')
     s2 = re.sub(r'(#define\s+MyAppVersion\s+")[^"]+(")', rf'\g<1>{v}\g<2>', s)
-    s2 = re.sub(r'(#define\s+MyAppVersionNumeric\s+")[^"]+(")', rf'\g<1>{ma}.{mi}.{pa}.0\g<2>', s2)
+    s2 = re.sub(r'(#define\s+MyAppVersionNumeric\s+")[^"]+(")', rf'\g<1>{ma}.{mi}.{pa}.{bu}\g<2>', s2)
     if s2 != s:
         p.write_text(s2, encoding='utf-8')
         changed.append(f'convert_setup.iss -> {v}')

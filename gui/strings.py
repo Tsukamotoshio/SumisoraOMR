@@ -98,6 +98,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Done: {ok} succeeded, {fail} failed (of {total})",
     },
     "audio.button_view_jianpu": {"zh": "查看简谱", "en": "View Jianpu"},
+    "audio.result_dialog_title": {"zh": "识别结果", "en": "Recognition Result"},
+    "audio.stat_total": {"zh": "共 {n} 个文件", "en": "{n} files total"},
+    "audio.stat_success": {"zh": "成功 {n}", "en": "{n} succeeded"},
+    "audio.stat_failed": {"zh": "失败 {n}", "en": "{n} failed"},
+    "audio.section_success": {"zh": "成功", "en": "Succeeded"},
+    "audio.section_failed": {"zh": "失败", "en": "Failed"},
+    "audio.list_item_reason": {"zh": "原因：{reason}", "en": "Reason: {reason}"},
+    "audio.unknown_file": {"zh": "（未知文件）", "en": "(unknown file)"},
+    "audio.unknown_reason": {"zh": "未知原因", "en": "Unknown reason"},
 
     # ── audio page: piano model management (mirrors landing.section_homr_models) ──
     "audio.section_piano_model": {"zh": "钢琴转录模型", "en": "Piano Transcription Model"},

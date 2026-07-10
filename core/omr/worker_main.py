@@ -98,6 +98,12 @@ def _patch_log_message() -> None:
             _current_file_detail['fallback_used'] = True
         if '回退成功' in message and 'Homr' in message:
             _current_file_detail['engine_used'] = 'Homr'
+        # 记录本文件第一条 "✗" 失败日志作为具体失败原因——process_single_input_to_jianpu
+        # 返回值只是个 bool，下面 else 分支原本只能写死 "转换失败"，看不出真实原因
+        # （例如 "No module named 'matplotlib'"）。只取第一条，因为同一文件失败时
+        # 往往会连续打印多条 ✗（具体原因 → 上层"已跳过"总结），第一条最具体。
+        if '✗' in message and 'reason' not in _current_file_detail:
+            _current_file_detail['reason'] = message.strip().lstrip('✗').strip()
         # 继续写入日志文件
         if not _utils.LOGGER.handlers:
             try:
@@ -302,7 +308,7 @@ def run_worker() -> None:
                 fail_count += 1
                 _send({'type': 'log', 'text': f'  ✗ 失败: {src.name}'})
                 _send({'type': 'result', 'success': False, 'output_pdf': None, 'archived_mxl': None,
-                       'reason': '转换失败'})
+                       'reason': _current_file_detail.get('reason') or '转换失败'})
 
         # ── 发送最终完成消息 ──────────────────────────────────────────────────
         parts: list[str] = []
