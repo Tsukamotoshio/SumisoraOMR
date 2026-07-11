@@ -86,6 +86,9 @@ class _BinaryImageView(ft.Column):
         self._raw_b64: Optional[str] = None
         self._highlighted_line: int = -1
         self._load_token: int = 0
+        # 左侧面板视口宽度（源图 / 预览共用同一宽度）。由两个视图的 on_size_change
+        # 更新，用于给 constrained=False 的图像注入宽度以铺满宽度（fit-width）。
+        self._viewport_w: int = 0
         self._build_ui()
         state.on(Event.JIANPU_TXT_SELECTED, self._on_line_selected)
 
@@ -177,8 +180,25 @@ class _BinaryImageView(ft.Column):
             visible=True,
             gapless_playback=True,
         )
-        self._preview_img_container = ft.Container(
+        # 简谱预览也用 InteractiveViewer 提供缩放/平移（与源图一致）。缩放按钮会路由
+        # 到当前可见的那个视图（见 _active_iv）——否则在预览态点缩放会命中被隐藏、
+        # Flutter 侧未挂载的源图 IV，导致 "Timeout waiting for invoke method listener"。
+        # constrained=False + FIT_WIDTH + 注入视口宽度：图像铺满面板宽度，超高时可
+        # 垂直拖动（与源图一致）。宽度由 _sync_preview_width() 从共享 _viewport_w 注入
+        # ——纯靠 on_size_change 不可靠（预览区初始隐藏，可能不触发 → 宽度 None → 按
+        # 图片固有像素显示 → 过大）。
+        self._preview_interactive = ft.InteractiveViewer(
             content=self._preview_img,
+            pan_enabled=True,
+            scale_enabled=True,
+            min_scale=self.MIN_SCALE,
+            max_scale=self.MAX_SCALE,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            constrained=False,
+            expand=True,
+        )
+        self._preview_img_container = ft.Container(
+            content=self._preview_interactive,
             expand=True,
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
             visible=False,
@@ -233,15 +253,24 @@ class _BinaryImageView(ft.Column):
     def _on_viewer_resize(self, e) -> None:
         """视口尺寸变化时将图像宽度同步为视口宽度，消除左右黑边并允许垂直拖动。"""
         w = int(e.width)
-        if w > 0 and self._image.width != w:
-            self._image.width = w
-            try:
-                self._image.update()
-            except Exception:
-                pass
+        if w > 0:
+            self._viewport_w = w
+            if self._image.width != w:
+                self._image.width = w
+                try:
+                    self._image.update()
+                except Exception:
+                    pass
 
     def _on_preview_resize(self, e) -> None:
         w = int(e.width)
+        if w > 0:
+            self._viewport_w = w
+            self._sync_preview_width()
+
+    def _sync_preview_width(self) -> None:
+        """将预览图宽度对齐到面板视口宽度（铺满宽度）。宽度未知时不动。"""
+        w = self._viewport_w
         if w > 0 and self._preview_img.width != w:
             self._preview_img.width = w
             try:
@@ -336,15 +365,40 @@ class _BinaryImageView(ft.Column):
             pass
 
     # ── 缩放（InteractiveViewer 内建）────────────────────────────────────────
+    # 缩放必须作用于当前**可见且已挂载**的那个 InteractiveViewer：源图态用源图 IV，
+    # 简谱预览态用预览 IV。对隐藏（Flutter 侧未挂载）的 IV 调 zoom() 会抛
+    # "Timeout waiting for invoke method listener"，故先选活动视图、再 try 兜底。
+
+    def _active_iv(self) -> Optional[ft.InteractiveViewer]:
+        if self._view_container.visible:
+            return self._interactive
+        if self._preview_area.visible and self._preview_img_container.visible:
+            return self._preview_interactive
+        return None
 
     async def _zoom_in(self, _e=None) -> None:
-        await self._interactive.zoom(1 + self.SCALE_STEP)
+        iv = self._active_iv()
+        if iv is not None:
+            try:
+                await iv.zoom(1 + self.SCALE_STEP)
+            except Exception:
+                pass
 
     async def _zoom_out(self, _e=None) -> None:
-        await self._interactive.zoom(1.0 / (1 + self.SCALE_STEP))
+        iv = self._active_iv()
+        if iv is not None:
+            try:
+                await iv.zoom(1.0 / (1 + self.SCALE_STEP))
+            except Exception:
+                pass
 
     async def _zoom_fit(self, _e=None) -> None:
-        await self._interactive.reset()
+        iv = self._active_iv()
+        if iv is not None:
+            try:
+                await iv.reset()
+            except Exception:
+                pass
 
     # ── 视图切换（由 EditorPage 调用）────────────────────────────────────────
 
@@ -408,6 +462,9 @@ class _BinaryImageView(ft.Column):
         if not self._preview_area.visible:
             return
         self._preview_img.src = b64
+        # 显示前把宽度对齐到面板视口宽度，保证新图一出现即铺满宽度（不依赖随后
+        # 是否触发 on_size_change）。
+        self._sync_preview_width()
         self._preview_img_container.visible = True
         self._preview_state_container.visible = False
         try:
