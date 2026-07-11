@@ -28,8 +28,12 @@ CJK_FONT_CANDIDATES = [
 
 ALLOWED_JIANPU_DURATIONS = [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125]
 SUPPORTED_INPUT_SUFFIXES = {'.pdf', '.png', '.jpg', '.jpeg'}
-# Audio inputs routed to the basic-pitch transcription engine (audio → MIDI → MusicXML).
-SUPPORTED_AUDIO_SUFFIXES = {'.mp3', '.wav', '.flac', '.m4a', '.ogg'}
+# Audio inputs routed to the piano-transcription engine (audio → MIDI → MusicXML).
+# Only formats decodable by the bundled libsndfile (via soundfile) are accepted:
+# WAV/FLAC/OGG/MP3 are all supported by libsndfile 1.2.2. .m4a/AAC is intentionally
+# excluded — libsndfile can't decode it and no ffmpeg is bundled, so accepting it
+# would only produce a silent "audio read failed" for the user (verified 2026-07-11).
+SUPPORTED_AUDIO_SUFFIXES = {'.mp3', '.wav', '.flac', '.ogg'}
 ENABLE_LYRICS_OUTPUT = True
 MAX_AUDIVERIS_SECONDS = 1800
 MAX_HOMR_SECONDS = 900

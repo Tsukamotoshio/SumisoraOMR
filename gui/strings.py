@@ -67,10 +67,10 @@ STRINGS: dict[str, dict[str, str]] = {
     "audio.center_title": {"zh": "音频识别", "en": "Audio Recognition"},
     "audio.section_title": {"zh": "音频文件", "en": "Audio Files"},
     "audio.empty_hint": {"zh": "还没有音频文件", "en": "No audio files yet"},
-    "audio.empty_supported_formats": {"zh": "支持 MP3 / WAV / FLAC / M4A / OGG\n也可直接放入 Input 文件夹", "en": "Supports MP3 / WAV / FLAC / M4A / OGG\nor drop files directly into the Input folder"},
+    "audio.empty_supported_formats": {"zh": "支持 MP3 / WAV / FLAC / OGG\n也可直接放入 Input 文件夹", "en": "Supports MP3 / WAV / FLAC / OGG\nor drop files directly into the Input folder"},
     "audio.center_hint": {
-        "zh": "导入钢琴音频（mp3 / wav / flac / m4a / ogg），\n勾选后点击右侧「开始识别」转换为简谱与五线谱。\n（识别引擎仅支持钢琴演奏）",
-        "en": "Import piano audio (mp3 / wav / flac / m4a / ogg), check files,\nthen click “Start Recognition” to transcribe to jianpu & staff.\n(The engine supports solo piano only.)",
+        "zh": "导入钢琴音频（mp3 / wav / flac / ogg），\n勾选后点击右侧「开始识别」转换为简谱与五线谱。\n（识别引擎仅支持钢琴演奏）",
+        "en": "Import piano audio (mp3 / wav / flac / ogg), check files,\nthen click “Start Recognition” to transcribe to jianpu & staff.\n(The engine supports solo piano only.)",
     },
     "audio.selected_file": {"zh": "已选择音频：{name}", "en": "Selected audio: {name}"},
     "audio.section_options": {"zh": "识别选项", "en": "Recognition Options"},

@@ -201,7 +201,7 @@ class FileSidebar(ft.Column):
         _suffix = path.suffix.lower()
         if _suffix == '.pdf':
             icon = ft.Icons.PICTURE_AS_PDF
-        elif _suffix in {'.mp3', '.wav', '.flac', '.m4a', '.ogg'}:
+        elif _suffix in {'.mp3', '.wav', '.flac', '.ogg'}:
             icon = ft.Icons.AUDIOTRACK_ROUNDED
         else:
             icon = ft.Icons.IMAGE_OUTLINED
