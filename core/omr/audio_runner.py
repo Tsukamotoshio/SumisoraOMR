@@ -3,7 +3,7 @@
 
 Pipeline
 --------
-audio (mp3/wav/flac/m4a/ogg) → ByteDance piano transcription → MIDI → music21 → MusicXML.
+audio (mp3/wav/flac/ogg) → ByteDance piano transcription → MIDI → music21 → MusicXML.
 
 The output directory mirrors the shape of the OMR runners (Audiveris/Homr): it
 contains ``<stem>.musicxml``, so ``pipeline.process_single_input_to_jianpu`` can
@@ -26,6 +26,8 @@ import contextlib
 import io
 import logging
 import os
+import re
+import threading
 import urllib.request
 from pathlib import Path
 from typing import Callable, Optional
@@ -65,6 +67,68 @@ _QUANTIZE_MIN_BEATS = 8      # skip quantization when beat tracking finds fewer 
 
 class PianoDownloadCancelled(Exception):
     """Raised internally when the caller's cancel_event is set mid-transfer."""
+
+
+class _SegmentProgressWriter(io.TextIOBase):
+    """stdout replacement that turns the transcription library's ``Segment X / Y``
+    prints into sub-progress updates.
+
+    ``PianoTranscription.transcribe`` is one multi-minute blocking call that prints
+    ``Segment X / Y`` per processed chunk to stdout. Those prints must be kept off
+    the worker's stdout (it carries the JSON IPC protocol), but swallowing them into
+    a plain ``io.StringIO`` froze the progress bar at 35 % for the whole run — the
+    single biggest reason a normal transcription looked like a hang. This parses the
+    counter and maps it into the 0.35–0.55 slice of the caller's progress budget;
+    all output is otherwise discarded (never reaches stdout).
+    """
+
+    _SEG_RE = re.compile(r'Segment\s+(\d+)\s*/\s*(\d+)')
+
+    def __init__(self, report: Callable[[float, str], None]) -> None:
+        super().__init__()
+        self._report = report
+        self._buf = ''
+
+    def write(self, s: str) -> int:  # type: ignore[override]
+        if not s:
+            return 0
+        self._buf += s
+        while '\n' in self._buf:
+            line, self._buf = self._buf.split('\n', 1)
+            m = self._SEG_RE.search(line)
+            if m:
+                done, total = int(m.group(1)), int(m.group(2))
+                if total > 0:
+                    frac = min(1.0, done / total)
+                    self._report(0.35 + 0.18 * frac,
+                                 f'[钢琴转录] 识别音符 {done}/{total} 段…')
+        return len(s)
+
+    def flush(self) -> None:  # type: ignore[override]
+        pass
+
+
+# Per-worker transcriptor cache. Loading PianoTranscription reads the ~172 MB
+# checkpoint and builds/moves the model each time; a batch converts one file per
+# call to run_audio_transcription, so without caching the model is reloaded for
+# every file. Keyed by (device, checkpoint); only one entry is kept. Safe because
+# a worker processes files strictly sequentially — the single exception is a
+# timed-out run whose runaway daemon thread still holds the old instance; the
+# timeout path clears this cache so the next file builds a fresh one instead of
+# racing the runaway on a shared model.
+_TRANSCRIPTOR_CACHE: dict = {}
+
+
+def _get_transcriptor(device: str, checkpoint: Path, cls):
+    """Return a cached PianoTranscription for (device, checkpoint), building once."""
+    key = (device, str(checkpoint))
+    tr = _TRANSCRIPTOR_CACHE.get(key)
+    if tr is None:
+        with contextlib.redirect_stdout(io.StringIO()):  # swallow the lib's load prints
+            tr = cls(device=device, checkpoint_path=str(checkpoint))
+        _TRANSCRIPTOR_CACHE.clear()
+        _TRANSCRIPTOR_CACHE[key] = tr
+    return tr
 
 
 def _piano_model_path() -> Path:
@@ -364,7 +428,7 @@ def run_audio_transcription(
 
     Parameters
     ----------
-    source_file:        Input audio file (mp3/wav/flac/m4a/ogg). Piano is expected.
+    source_file:        Input audio file (mp3/wav/flac/ogg). Piano is expected.
     output_dir:         Directory to write ``<stem>.mid`` and ``<stem>.musicxml``.
     use_gpu_inference:  True/False to force GPU/CPU; None to auto-detect CUDA.
     melody_only:        When True, reduce to a single melody line (skyline).
@@ -439,14 +503,41 @@ def run_audio_transcription(
 
     midi_path = output_dir / f'{stem}.mid'
     _report(0.35, '[钢琴转录] 正在识别音符…')
-    try:
-        # 该库通过 print() 向 stdout 输出进度（"Segment x/y" 等）；worker 子进程用
-        # stdout 传 JSON 协议，必须屏蔽，否则会污染协议。
-        with contextlib.redirect_stdout(io.StringIO()):
-            transcriptor = PianoTranscription(device=device, checkpoint_path=str(checkpoint))
-            transcriptor.transcribe(audio, str(midi_path))
-    except Exception as exc:
-        log_message(f'  ✗ 钢琴转录失败：{exc}', logging.WARNING)
+    # ── 转录 + 硬超时兜底 ────────────────────────────────────────────────────────
+    # transcribe() 是不可中断的阻塞 torch 调用，放到守护线程里 join(timeout)：超时即
+    # 判失败跳过，避免 worker 永久挂死（限线程已消除已知死锁，这是对未知 stall 的兜
+    # 底，补齐与 OMR 引擎一致的超时保护）。超时按音频时长动态取 6× 实时、下限 10 分
+    # 钟——只兜底真正卡死，不误杀慢机器上的正常长跑。超时后守护线程会随进程退出回收。
+    # 该库通过 print() 输出 "Segment x/y"；worker 用 stdout 传 JSON 协议，必须屏蔽，用
+    # _SegmentProgressWriter 拦截并转成子进度，让进度条在多分钟转录期间持续走动。
+    _holder: dict = {}
+
+    def _do_transcribe() -> None:
+        try:
+            transcriptor = _get_transcriptor(device, checkpoint, PianoTranscription)
+            with contextlib.redirect_stdout(_SegmentProgressWriter(_report)):
+                transcriptor.transcribe(audio, str(midi_path))
+            _holder['ok'] = True
+        except Exception as exc:  # noqa: BLE001 — 交由主线程统一记录
+            _holder['exc'] = exc
+
+    audio_seconds = len(audio) / _PIANO_SAMPLE_RATE
+    timeout_s = max(600.0, audio_seconds * 6.0)
+    _th = threading.Thread(target=_do_transcribe, daemon=True)
+    _th.start()
+    _th.join(timeout=timeout_s)
+    if _th.is_alive():
+        # 放弃该文件；runaway 守护线程仍持有缓存实例，清缓存让下个文件建新实例，
+        # 避免两个线程并发调用同一个模型。
+        _TRANSCRIPTOR_CACHE.clear()
+        log_message(
+            f'  ✗ 钢琴转录超时（>{timeout_s:.0f}s，音频约 {audio_seconds:.0f}s）：{source_file.name}\n'
+            '    → 可能是极端复杂/超长音频或环境异常，已跳过该文件。',
+            logging.WARNING,
+        )
+        return None
+    if 'exc' in _holder:
+        log_message(f'  ✗ 钢琴转录失败：{_holder["exc"]}', logging.WARNING)
         return None
 
     if not midi_path.exists():
