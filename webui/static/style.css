@@ -1,0 +1,71 @@
+/* webui M0 — 卡片式基调（迁移 UI 小样的设计令牌雏形；正式令牌 M2 落地） */
+:root {
+  --bg: #101418;
+  --surface: #1a2027;
+  --surface-2: #212a33;
+  --border: #2c3844;
+  --text: #dde5ec;
+  --text-muted: #8fa0af;
+  --accent: #4f8cc9;
+  --ok: #5cb85c;
+  --fail: #d9534f;
+  --pending: #8fa0af;
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.6 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  display: flex; flex-direction: column;
+  user-select: none;
+}
+
+/* ── 标题栏（frameless 自绘） ── */
+#titlebar {
+  height: 40px; flex: 0 0 40px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding-left: 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+#titlebar .title { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.app-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.muted { color: var(--text-muted); font-weight: 400; }
+.win-controls { display: flex; height: 100%; }
+.win-controls button {
+  width: 46px; height: 100%;
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 12px; cursor: default;
+}
+.win-controls button:hover { background: var(--surface-2); color: var(--text); }
+.win-controls button.close:hover { background: #c0392b; color: #fff; }
+
+/* ── 内容区 ── */
+main {
+  flex: 1; overflow-y: auto;
+  padding: 18px; display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-content: start;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.card h2 { font-size: 14px; margin-bottom: 10px; font-weight: 600; }
+.card code { color: var(--accent); font-size: 12px; word-break: break-all; }
+
+ul.checks, ul.drops, ul.manual { list-style: none; display: grid; gap: 8px; }
+ul.checks li { display: flex; align-items: baseline; gap: 8px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; align-self: center; }
+.dot.pending { background: var(--pending); }
+.dot.ok { background: var(--ok); }
+.dot.fail { background: var(--fail); }
+
+#dropzone.dragging { outline: 2px dashed var(--accent); outline-offset: -6px; }
+ul.drops li { font-size: 12.5px; color: var(--text); }
+ul.manual li { color: var(--text-muted); }
+ul.manual li::before { content: "☐ "; }

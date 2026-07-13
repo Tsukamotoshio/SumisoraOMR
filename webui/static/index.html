@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SumisoraOMR — pywebview M0</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 自定义标题栏：pywebview-drag-region class = 可拖动区域（frameless 窗口） -->
+  <header id="titlebar" class="pywebview-drag-region">
+    <div class="title">
+      <span class="app-dot"></span>
+      SumisoraOMR <span class="muted">· pywebview M0 骨架验证</span>
+    </div>
+    <div class="win-controls">
+      <button id="btn-min" title="最小化">&#x2500;</button>
+      <button id="btn-max" title="最大化/还原">&#x25A1;</button>
+      <button id="btn-close" class="close" title="关闭">&#x2715;</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>自动检查 <span class="muted">（selftest 读取 window.__m0state）</span></h2>
+      <ul class="checks">
+        <li id="chk-bridge"><span class="dot pending"></span>桥 echo（JS → Python → JS）<code id="bridge-detail"></code></li>
+        <li id="chk-coi"><span class="dot pending"></span>crossOriginIsolated（COOP/COEP 生效）</li>
+        <li id="chk-sab"><span class="dot pending"></span>SharedArrayBuffer 可用（noteDigger 前置）</li>
+        <li id="chk-worker"><span class="dot pending"></span>Worker + SAB 往返（Atomics 写读）</li>
+      </ul>
+    </section>
+
+    <section class="card" id="dropzone">
+      <h2>拖拽验证</h2>
+      <p class="muted">把任意文件从资源管理器拖到本窗口 —— 应显示完整磁盘路径
+        （Python 侧 <code>pywebviewFullPath</code>，浏览器 JS 拿不到）。</p>
+      <ul id="drop-list" class="drops"><li class="muted">（尚未拖入文件）</li></ul>
+    </section>
+
+    <section class="card">
+      <h2>人工检查清单 <span class="muted">（无法自动化）</span></h2>
+      <ul class="manual">
+        <li>标题栏可拖动窗口</li>
+        <li>双击标题栏 = 最大化/还原</li>
+        <li>Win+方向键 贴边分屏行为</li>
+        <li>多显示器 / DPI 缩放切换不糊不裂</li>
+        <li>最小化/最大化/关闭三键有效</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
