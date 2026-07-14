@@ -69,3 +69,38 @@ ul.checks li { display: flex; align-items: baseline; gap: 8px; }
 ul.drops li { font-size: 12.5px; color: var(--text); }
 ul.manual li { color: var(--text-muted); }
 ul.manual li::before { content: "☐ "; }
+
+/* ── M1 测试台 ── */
+.card.wide { grid-column: 1 / -1; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.small { font-size: 12px; }
+button {
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 14px; font-size: 13px; cursor: default;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.45; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.mini { padding: 0 6px; font-size: 11px; margin-left: auto; }
+
+ul.files { list-style: none; display: grid; gap: 6px; max-height: 180px; overflow-y: auto; }
+ul.files li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+ul.files li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.progress {
+  height: 8px; background: var(--surface-2);
+  border-radius: 4px; overflow: hidden; margin-bottom: 6px;
+}
+.progress.sub { height: 5px; }
+.progress .bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.15s; }
+
+#conv-status.error { color: var(--fail); }
+
+.log {
+  height: 220px; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font: 11.5px/1.5 Consolas, monospace;
+  color: var(--text-muted); user-select: text;
+}
+.log div { white-space: pre-wrap; word-break: break-all; }

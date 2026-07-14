@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>SumisoraOMR — pywebview M0</title>
+<title>SumisoraOMR — pywebview shell</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -10,7 +10,7 @@
   <header id="titlebar" class="pywebview-drag-region">
     <div class="title">
       <span class="app-dot"></span>
-      SumisoraOMR <span class="muted">· pywebview M0 骨架验证</span>
+      SumisoraOMR <span class="muted">· pywebview M1 主动脉测试台</span>
     </div>
     <div class="win-controls">
       <button id="btn-min" title="最小化">&#x2500;</button>
@@ -21,31 +21,46 @@
 
   <main>
     <section class="card">
-      <h2>自动检查 <span class="muted">（selftest 读取 window.__m0state）</span></h2>
+      <h2>自动检查</h2>
       <ul class="checks">
         <li id="chk-bridge"><span class="dot pending"></span>桥 echo（JS → Python → JS）<code id="bridge-detail"></code></li>
-        <li id="chk-coi"><span class="dot pending"></span>crossOriginIsolated（COOP/COEP 生效）</li>
-        <li id="chk-sab"><span class="dot pending"></span>SharedArrayBuffer 可用（noteDigger 前置）</li>
-        <li id="chk-worker"><span class="dot pending"></span>Worker + SAB 往返（Atomics 写读）</li>
+        <li id="chk-coi"><span class="dot pending"></span>crossOriginIsolated（COOP/COEP）</li>
+        <li id="chk-sab"><span class="dot pending"></span>SharedArrayBuffer（noteDigger 前置）</li>
+        <li id="chk-worker"><span class="dot pending"></span>Worker + SAB 往返</li>
+        <li id="chk-flood"><span class="dot pending"></span>Gate1：500 行日志连发不丢 <code id="flood-detail"></code></li>
       </ul>
     </section>
 
     <section class="card" id="dropzone">
-      <h2>拖拽验证</h2>
-      <p class="muted">把任意文件从资源管理器拖到本窗口 —— 应显示完整磁盘路径
-        （Python 侧 <code>pywebviewFullPath</code>，浏览器 JS 拿不到）。</p>
-      <ul id="drop-list" class="drops"><li class="muted">（尚未拖入文件）</li></ul>
+      <h2>文件托盘 <span class="muted">（拖文件进窗口添加）</span></h2>
+      <ul id="file-list" class="files"><li class="muted">（空 — 拖入 PDF/PNG/JPG 或音频）</li></ul>
     </section>
 
     <section class="card">
-      <h2>人工检查清单 <span class="muted">（无法自动化）</span></h2>
-      <ul class="manual">
-        <li>标题栏可拖动窗口</li>
-        <li>双击标题栏 = 最大化/还原</li>
-        <li>Win+方向键 贴边分屏行为</li>
-        <li>多显示器 / DPI 缩放切换不糊不裂</li>
-        <li>最小化/最大化/关闭三键有效</li>
-      </ul>
+      <h2>转换</h2>
+      <div class="row">
+        <button id="btn-start" class="primary">开始转换</button>
+        <button id="btn-cancel" disabled>取消</button>
+        <span id="conv-status" class="muted">空闲</span>
+      </div>
+      <div class="progress"><div id="bar-main" class="bar"></div></div>
+      <div class="progress sub"><div id="bar-sub" class="bar"></div></div>
+      <div id="sub-msg" class="muted small"></div>
+    </section>
+
+    <section class="card">
+      <h2>Gate 手动钩子</h2>
+      <div class="row">
+        <button id="btn-flood">重跑压测(500)</button>
+        <button id="btn-kill">杀 worker（Gate3 模拟崩溃）</button>
+      </div>
+      <p class="muted small">Gate2=转换中点「取消」；Gate3=转换中点「杀 worker」应弹错误；
+      Gate4=转换中直接关窗，worker 树应被清场（由外部脚本核验进程）。</p>
+    </section>
+
+    <section class="card wide">
+      <h2>日志流 <span class="muted small" id="log-count">0 行</span></h2>
+      <div id="log-view" class="log"></div>
     </section>
   </main>
 
