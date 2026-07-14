@@ -30,7 +30,7 @@ window.__omrEvents = (events) => {
 })();
 
 // ═══ 导航 ════════════════════════════════════════════════════════════════════
-const PAGES = ['score', 'audio', 'jianpu'];
+const PAGES = ['score', 'audio', 'jianpu', 'staff'];
 let activePage = 'score';
 const pageEnterHooks = {};   // page → () => void（进入页面时触发，如刷新列表）
 document.querySelectorAll('.nav[data-page]').forEach((btn) => {
@@ -559,6 +559,131 @@ $('jp-next').addEventListener('click', () => jpView.next());
 $('jp-zoomin').addEventListener('click', () => jpView.zoom(1.2));
 $('jp-zoomout').addEventListener('click', () => jpView.zoom(1 / 1.2));
 $('jp-zoomfit').addEventListener('click', () => jpView.zoomFit());
+
+// ═══ 五线谱预览页 ════════════════════════════════════════════════════════════
+// 与简谱页同构；差异：预览需按需 LilyPond 渲染（scores_preview 可能异步，等
+// score_preview_ready 事件），MIDI 缺失时确认后生成再播放，多一个「移调」入口。
+const stView = new PdfView($('st-canvas'), $('st-stage'), $('st-pageinfo'));
+let stEntries = [];
+let stChecked = new Set();
+let stSel = null;
+let stPendingRender = null;   // 等待 score_preview_ready 的 mxl 路径
+
+async function stRefresh() {
+  stEntries = await api().scores_list() || [];
+  stChecked = new Set([...stChecked].filter((p) => stEntries.some((e) => e.path === p)));
+  if (!stEntries.some((e) => e.path === stSel)) stSel = stEntries.length ? stEntries[0].path : null;
+  stRenderList();
+  stOpenSelected();
+}
+pageEnterHooks.staff = stRefresh;
+
+function stRenderList() {
+  const list = $('st-files');
+  list.replaceChildren();
+  if (!stEntries.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'xml-scores/ 中还没有 MusicXML';
+    list.appendChild(li);
+  }
+  for (const e of stEntries) {
+    const li = document.createElement('li');
+    li.className = 'file' + (e.path === stSel ? ' sel' : '');
+    const cb = document.createElement('button');
+    cb.className = 'cbx' + (stChecked.has(e.path) ? ' on' : '');
+    cb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    cb.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (stChecked.has(e.path)) stChecked.delete(e.path); else stChecked.add(e.path);
+      stRenderList();
+    });
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = e.name;
+    nm.title = e.path;
+    li.append(cb, nm);
+    li.addEventListener('click', () => { stSel = e.path; stRenderList(); stOpenSelected(); });
+    list.appendChild(li);
+  }
+  $('st-count').textContent = stEntries.length ? `勾选 ${stChecked.size} / ${stEntries.length}` : '';
+}
+
+async function stOpenSelected() {
+  const cur = stEntries.find((e) => e.path === stSel);
+  $('st-preview-name').textContent = cur ? cur.name : '';
+  const ph = $('st-stage').querySelector('.placeholder');
+  if (!cur) {
+    stView.close();
+    if (ph) { ph.classList.remove('hidden'); $('st-placeholder-text').textContent = '选中左侧文件预览五线谱'; }
+    return;
+  }
+  const r = await api().scores_preview(cur.path);
+  if (r.pdf) {
+    if (ph) ph.classList.add('hidden');
+    stPendingRender = null;
+    stView.open(`/file?path=${encodeURIComponent(r.pdf)}`).catch((e2) => toast(`PDF 打开失败：${e2}`));
+  } else if (r.started) {
+    stPendingRender = cur.path;
+    stView.close();
+    if (ph) { ph.classList.remove('hidden'); $('st-placeholder-text').textContent = `正在渲染 ${cur.name} …（LilyPond）`; }
+  } else {
+    toast(`无法预览：${r.error || '未知错误'}`);
+  }
+}
+
+window.addEventListener('score_preview_ready', (e) => {
+  const d = e.detail || {};
+  if (d.mxl !== stPendingRender) return;   // 已切换到其它文件，丢弃
+  stPendingRender = null;
+  if (!d.ok) {
+    $('st-placeholder-text').textContent = `渲染失败：${d.error || ''}`;
+    return;
+  }
+  const ph = $('st-stage').querySelector('.placeholder');
+  if (ph) ph.classList.add('hidden');
+  stView.open(`/file?path=${encodeURIComponent(d.pdf)}`).catch((e2) => toast(`PDF 打开失败：${e2}`));
+});
+
+$('st-refresh').addEventListener('click', stRefresh);
+$('st-selall').addEventListener('click', () => {
+  stChecked = stChecked.size === stEntries.length
+    ? new Set() : new Set(stEntries.map((e) => e.path));
+  stRenderList();
+});
+$('st-export').addEventListener('click', async () => {
+  if (!stChecked.size) { toast('先勾选要导出的文件'); return; }
+  toast('正在导出（未缓存的将逐个渲染，请稍候）…');
+  const r = await api().scores_export([...stChecked]);
+  if (r.ok) toast(`已导出 ${r.copied.length} 个五线谱 PDF 到 ${r.dest}`);
+  else if (r.error !== 'cancelled') toast(`导出失败：${r.error || (r.failed ? r.failed.length + ' 个文件失败' : '')}`);
+});
+$('st-delete').addEventListener('click', async () => {
+  if (!stChecked.size) { toast('先勾选要删除的文件'); return; }
+  if (!confirm(`删除勾选的 ${stChecked.size} 个 MusicXML？`)) return;
+  await api().scores_delete([...stChecked]);
+  stChecked.clear();
+  stRefresh();
+});
+$('st-midi').addEventListener('click', async () => {
+  if (!stSel) return;
+  const info = await api().scores_midi_for(stSel);
+  if (!info.exists && !confirm(`${info.name} 不存在。从当前乐谱生成 MIDI 并播放？`)) return;
+  const r = await api().scores_generate_play_midi(stSel);
+  if (r.started && !info.exists) toast('正在生成 MIDI…');
+});
+window.addEventListener('score_midi_done', (e) => {
+  const d = e.detail || {};
+  if (!d.ok) toast(`MIDI 生成/播放失败：${d.error || ''}`);
+});
+$('st-transpose').addEventListener('click', () => {
+  toast('移调页将在 M3-3 接入');   // TODO(M3-3)：跳转移调页并载入当前 MXL
+});
+$('st-prev').addEventListener('click', () => stView.prev());
+$('st-next').addEventListener('click', () => stView.next());
+$('st-zoomin').addEventListener('click', () => stView.zoom(1.2));
+$('st-zoomout').addEventListener('click', () => stView.zoom(1 / 1.2));
+$('st-zoomfit').addEventListener('click', () => stView.zoomFit());
 
 // ═══ 初始化 ══════════════════════════════════════════════════════════════════
 window.addEventListener('pywebviewready', async () => {

@@ -22,7 +22,7 @@ from .bridge import Bridge
 from .conversion import ConversionService
 from .events import EventPusher
 from .models import ModelsService
-from .outputs import OutputsService
+from .outputs import OutputsService, ScoresService
 from .server import start_server
 
 WINDOW_TITLE = 'SumisoraOMR — pywebview shell'
@@ -49,9 +49,10 @@ def _bind_dom(window: webview.Window, bridge: Bridge, conversion: ConversionServ
 
     dragover/dragenter must be prevent_default'ed or the drop event never fires.
     """
-    window.dom.document.events.dragenter += DOMEventHandler(lambda e: None, True, True)
-    window.dom.document.events.dragover += DOMEventHandler(lambda e: None, True, True, debounce=500)
-    window.dom.document.events.drop += DOMEventHandler(
+    # pywebview 的事件订阅就是 += DOMEventHandler（文档用法）；Pylance 对其注解误报
+    window.dom.document.events.dragenter += DOMEventHandler(lambda _e: None, True, True)  # type: ignore[operator]
+    window.dom.document.events.dragover += DOMEventHandler(lambda _e: None, True, True, debounce=500)  # type: ignore[operator]
+    window.dom.document.events.drop += DOMEventHandler(  # type: ignore[operator]
         lambda e: _on_drop(bridge, conversion, e), True, True)
 
 
@@ -209,7 +210,8 @@ def main() -> None:
     conversion = ConversionService(pusher, whitelist)
     models = ModelsService(pusher)
     outputs = OutputsService(pusher, whitelist)
-    bridge = Bridge(pusher, conversion, models, outputs)
+    scores = ScoresService(pusher, whitelist)
+    bridge = Bridge(pusher, conversion, models, outputs, scores)
     # selftest / gate 驱动跑在 M1 测试台（harness.html）上，正式 UI 在 index.html
     page = 'harness.html' if (selftest or gate_mode) else 'index.html'
     window = webview.create_window(
@@ -223,6 +225,7 @@ def main() -> None:
         background_color='#101418',
         min_size=(760, 520),
     )
+    assert window is not None  # create_window 注解为 Optional，实际必返回实例
     bridge.attach(window)
     pusher.attach(window)
 

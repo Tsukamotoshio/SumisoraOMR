@@ -19,13 +19,14 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from core.app.backend import editor_workspace_dir, output_dir
+from core.app.backend import build_dir, editor_workspace_dir, output_dir, xml_scores_dir
 from core.utils import log_message
 
 from .events import EventPusher
 from .server import FileWhitelist
 
 _JIANPU_SUFFIX = '_jianpu.pdf'
+_SCORE_EXTS = ('*.mxl', '*.xml', '*.musicxml')
 
 
 class OutputsService:
@@ -160,3 +161,161 @@ class OutputsService:
 
         threading.Thread(target=_work, daemon=True, name='rerender').start()
         return {'ok': True, 'started': True}
+
+
+class ScoresService:
+    """五线谱预览页后端：xml-scores/ 列表 + 按需 LilyPond 渲染（带扁平缓存）。
+
+    Mirrors the Flet score_preview_page:
+    - preview: ``render_musicxml_staff_pdf`` → flat cache
+      ``build/_score_preview_<stem>.pdf``（mxl 更新则重渲）；
+    - MIDI: ``Output/<stem>.mid``，缺失时由前端确认后 ``render_midi_from_musicxml``
+      生成再播放；
+    - delete: 仅删 MXL 与其缓存 PDF；
+    - export: 渲染（或拷缓存）到目标目录的 ``score_output/`` 子目录。
+    """
+
+    def __init__(self, pusher: EventPusher, whitelist: FileWhitelist) -> None:
+        self._pusher = pusher
+        self._whitelist = whitelist
+        self._render_lock = threading.Lock()  # LilyPond 逐个渲染，避免并发风暴
+
+    # ── 列表 ─────────────────────────────────────────────────────────────────
+
+    def list_scores(self) -> list[dict]:
+        d = xml_scores_dir()
+        paths: list[Path] = []
+        if d.exists():
+            for ext in _SCORE_EXTS:
+                paths.extend(d.glob(ext))
+        paths = sorted(set(paths), key=lambda p: p.stat().st_mtime, reverse=True)
+        out = output_dir(None)
+        return [{
+            'path': str(p),
+            'name': p.name,
+            'stem': p.stem,
+            'mtime': int(p.stat().st_mtime),
+            'has_midi': (out / f'{p.stem}.mid').exists(),
+        } for p in paths]
+
+    # ── 预览渲染（后台线程；完成推 score_preview_ready）──────────────────────
+
+    def _flat_pdf_for(self, mxl: Path) -> Path:
+        return build_dir() / f'_score_preview_{mxl.stem}.pdf'
+
+    def preview(self, path: str) -> dict:
+        """Return the cached staff PDF immediately, or start a background render."""
+        mxl = Path(path)
+        flat = self._flat_pdf_for(mxl)
+        if flat.exists() and mxl.exists() and flat.stat().st_mtime >= mxl.stat().st_mtime:
+            self._whitelist.allow(flat)
+            return {'ok': True, 'pdf': str(flat)}
+
+        def _work() -> None:
+            error = None
+            with self._render_lock:
+                try:
+                    import shutil as _sh
+                    import tempfile
+                    from core.render.lilypond_runner import render_musicxml_staff_pdf
+                    with tempfile.TemporaryDirectory(
+                            prefix=f'_score_preview_{mxl.stem}_', dir=str(build_dir())) as td:
+                        pdf = render_musicxml_staff_pdf(mxl, Path(td))
+                        if pdf and pdf.exists():
+                            _sh.copy2(str(pdf), str(flat))
+                        else:
+                            error = '五线谱渲染失败'
+                except Exception as exc:  # noqa: BLE001
+                    error = str(exc)
+            if error is None:
+                self._whitelist.allow(flat)
+            self._pusher.push('score_preview_ready', {
+                'mxl': str(mxl), 'pdf': str(flat) if error is None else None,
+                'ok': error is None, 'error': error,
+            })
+
+        threading.Thread(target=_work, daemon=True, name='staff-render').start()
+        return {'ok': True, 'started': True}
+
+    # ── MIDI（缺失时生成再播放；进度经事件）──────────────────────────────────
+
+    def midi_for(self, path: str) -> dict:
+        midi = output_dir(None) / f'{Path(path).stem}.mid'
+        return {'exists': midi.exists(), 'name': midi.name}
+
+    def generate_and_play_midi(self, path: str) -> dict:
+        mxl = Path(path)
+        midi = output_dir(None) / f'{mxl.stem}.mid'
+
+        def _work() -> None:
+            ok = False
+            error = None
+            try:
+                if midi.exists():
+                    ok = True
+                else:
+                    from core.render.renderer import render_midi_from_musicxml
+                    ok = bool(render_midi_from_musicxml(mxl, midi)) and midi.exists()
+            except Exception as exc:  # noqa: BLE001
+                error = str(exc)
+            if ok:
+                try:
+                    os.startfile(str(midi))  # noqa: S606
+                except OSError as exc:
+                    ok, error = False, str(exc)
+            self._pusher.push('score_midi_done', {
+                'mxl': str(mxl), 'ok': ok, 'error': error, 'name': midi.name,
+            })
+
+        threading.Thread(target=_work, daemon=True, name='midi-gen').start()
+        return {'ok': True, 'started': True}
+
+    # ── 删除 / 导出 ──────────────────────────────────────────────────────────
+
+    def delete(self, paths: list[str]) -> dict:
+        removed = 0
+        for raw in paths or []:
+            p = Path(raw)
+            try:
+                p.unlink(missing_ok=True)
+                removed += 1
+            except OSError as exc:
+                log_message(f'[webui] 删除失败 {p.name}：{exc}', logging.WARNING)
+                continue
+            flat = self._flat_pdf_for(p)
+            self._whitelist.revoke(flat)
+            try:
+                flat.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return {'ok': True, 'removed': removed}
+
+    def export_to(self, paths: list[str], dest_dir: str) -> dict:
+        """Render (or reuse cache) each MXL's staff PDF into <dest>/score_output/."""
+        dest = Path(dest_dir) / 'score_output'
+        try:
+            dest.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return {'ok': False, 'error': str(exc)}
+        copied, failed = [], []
+        for raw in paths or []:
+            mxl = Path(raw)
+            out_pdf = dest / f'{mxl.stem}_staff.pdf'
+            try:
+                flat = self._flat_pdf_for(mxl)
+                if not (flat.exists() and flat.stat().st_mtime >= mxl.stat().st_mtime):
+                    import shutil as _sh
+                    import tempfile
+                    from core.render.lilypond_runner import render_musicxml_staff_pdf
+                    with self._render_lock, tempfile.TemporaryDirectory(
+                            prefix=f'_score_export_{mxl.stem}_', dir=str(build_dir())) as td:
+                        pdf = render_musicxml_staff_pdf(mxl, Path(td))
+                        if not (pdf and pdf.exists()):
+                            failed.append({'file': mxl.name, 'error': '渲染失败'})
+                            continue
+                        _sh.copy2(str(pdf), str(flat))
+                shutil.copy2(str(flat), str(out_pdf))
+                copied.append(out_pdf.name)
+            except Exception as exc:  # noqa: BLE001
+                failed.append({'file': mxl.name, 'error': str(exc)})
+        return {'ok': not failed, 'copied': copied, 'failed': failed, 'dest': str(dest)}

@@ -24,7 +24,7 @@ import webview
 from .conversion import ConversionService
 from .events import EventPusher
 from .models import ModelsService
-from .outputs import OutputsService
+from .outputs import OutputsService, ScoresService
 
 
 class Bridge:
@@ -32,11 +32,13 @@ class Bridge:
 
     def __init__(self, pusher: EventPusher, conversion: ConversionService,
                  models: Optional[ModelsService] = None,
-                 outputs: Optional[OutputsService] = None) -> None:
+                 outputs: Optional[OutputsService] = None,
+                 scores: Optional[ScoresService] = None) -> None:
         self._pusher = pusher
         self._conversion = conversion
         self._models = models
         self._outputs = outputs
+        self._scores = scores
         self._window: Optional[webview.Window] = None
         self._maximized = False
 
@@ -112,6 +114,31 @@ class Bridge:
 
     def outputs_rerender(self, pdf_path: str) -> dict:
         return self._outputs.rerender(pdf_path) if self._outputs else {'ok': False}
+
+    # ── 五线谱（xml-scores）──────────────────────────────────────────────────
+    def scores_list(self) -> list:
+        return self._scores.list_scores() if self._scores else []
+
+    def scores_preview(self, path: str) -> dict:
+        return self._scores.preview(path) if self._scores else {'ok': False}
+
+    def scores_midi_for(self, path: str) -> dict:
+        return self._scores.midi_for(path) if self._scores else {'exists': False}
+
+    def scores_generate_play_midi(self, path: str) -> dict:
+        return self._scores.generate_and_play_midi(path) if self._scores else {'ok': False}
+
+    def scores_delete(self, paths: list) -> dict:
+        return self._scores.delete(paths) if self._scores else {'ok': False}
+
+    def scores_export(self, paths: list) -> dict:
+        if self._scores is None or self._window is None:
+            return {'ok': False, 'error': 'no service'}
+        result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+        if not result:
+            return {'ok': False, 'error': 'cancelled'}
+        dest = result[0] if isinstance(result, (list, tuple)) else result
+        return self._scores.export_to(paths, str(dest))
 
     # ── 系统集成 ─────────────────────────────────────────────────────────────
     def shell_open_output_dir(self) -> dict:
