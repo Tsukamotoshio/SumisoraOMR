@@ -28,8 +28,14 @@ from gui.app_state import AppState, Event
 from gui.worker_launcher import ConversionOptions, ConversionRunner
 
 from .events import EventPusher
+from .server import FileWhitelist
 
 _ACCEPTED_SUFFIXES = SUPPORTED_INPUT_SUFFIXES | SUPPORTED_AUDIO_SUFFIXES
+
+
+def _kind_of(path: Path) -> str:
+    """'audio' or 'score' — the per-view routing key (plan §3.2 允许后缀思路)."""
+    return 'audio' if path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES else 'score'
 
 # AppState 事件 → 前端 CustomEvent 的直转清单（payload 已是 JSON 安全或经 _jsonify）
 _FORWARDED_EVENTS = (
@@ -54,8 +60,10 @@ def _jsonify(value: Any) -> Any:
 class ConversionService:
     """File tray + conversion lifecycle, reported to the page via EventPusher."""
 
-    def __init__(self, pusher: EventPusher) -> None:
+    def __init__(self, pusher: EventPusher,
+                 whitelist: Optional[FileWhitelist] = None) -> None:
         self._pusher = pusher
+        self._whitelist = whitelist  # /file 预览端点的白名单（托盘内文件才可读）
         self._state = AppState()
         self._runner = ConversionRunner(
             self._state,
@@ -85,22 +93,28 @@ class ConversionService:
             'is_processing': self._state.is_processing,
         })
 
+    def _entry_dict(self, e: dict) -> dict:
+        return {
+            'path': str(e['path']),
+            'name': e['path'].name,
+            'checked': e['checked'],
+            'kind': _kind_of(e['path']),
+        }
+
     def _push_tray(self) -> None:
         with self._tray_lock:
-            files = [
-                {'path': str(e['path']), 'name': e['path'].name, 'checked': e['checked']}
-                for e in self._tray
-            ]
+            files = [self._entry_dict(e) for e in self._tray]
         self._pusher.push('files_changed', {'files': files})
 
     # ── 前端可调用面（经 Bridge 转发）────────────────────────────────────────
 
-    def files_list(self) -> list[dict]:
+    def files_list(self, view: Optional[str] = None) -> list[dict]:
+        """Tray entries; *view* ('score'|'audio') filters by kind."""
         with self._tray_lock:
-            return [
-                {'path': str(e['path']), 'name': e['path'].name, 'checked': e['checked']}
-                for e in self._tray
-            ]
+            entries = [self._entry_dict(e) for e in self._tray]
+        if view in ('score', 'audio'):
+            entries = [e for e in entries if e['kind'] == view]
+        return entries
 
     def files_add(self, paths: list[str]) -> dict:
         """Add files to the tray (dedup; unsupported suffixes rejected)."""
@@ -117,6 +131,8 @@ class ConversionService:
                 self._tray.append({'path': p, 'checked': True})
                 known.add(p)
                 added.append(str(p))
+                if self._whitelist is not None:
+                    self._whitelist.allow(p)
         self._push_tray()
         return {'added': added, 'rejected': rejected}
 
@@ -124,6 +140,8 @@ class ConversionService:
         p = Path(path).resolve()
         with self._tray_lock:
             self._tray = [e for e in self._tray if e['path'] != p]
+        if self._whitelist is not None:
+            self._whitelist.revoke(p)
         self._push_tray()
 
     def files_toggle_check(self, path: str) -> None:
@@ -135,14 +153,23 @@ class ConversionService:
         self._push_tray()
 
     def convert_start(self, opts: Optional[dict] = None) -> dict:
-        """Start converting the checked files on a background thread."""
+        """Start converting the checked files on a background thread.
+
+        opts.view ('score'|'audio') restricts to that page's files — the tray
+        is shared across pages, per-view filtering happens here (Python side,
+        plan §3.2).
+        """
+        opts = opts or {}
         if self._state.is_processing:
             return {'ok': False, 'error': 'busy'}
+        view = opts.get('view')
         with self._tray_lock:
-            files = [e['path'] for e in self._tray if e['checked']]
+            files = [
+                e['path'] for e in self._tray
+                if e['checked'] and (view not in ('score', 'audio') or _kind_of(e['path']) == view)
+            ]
         if not files:
             return {'ok': False, 'error': 'no_files'}
-        opts = opts or {}
         conv_opts = ConversionOptions(
             engine=opts.get('engine', 'auto'),
             sr_engine=opts.get('sr_engine', 'waifu2x'),

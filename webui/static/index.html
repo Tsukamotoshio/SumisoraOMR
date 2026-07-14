@@ -2,68 +2,196 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>SumisoraOMR — pywebview shell</title>
-<link rel="stylesheet" href="style.css">
+<title>SumisoraOMR</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <!-- 自定义标题栏：pywebview-drag-region class = 可拖动区域（frameless 窗口） -->
-  <header id="titlebar" class="pywebview-drag-region">
-    <div class="title">
-      <span class="app-dot"></span>
-      SumisoraOMR <span class="muted">· pywebview M1 主动脉测试台</span>
-    </div>
-    <div class="win-controls">
-      <button id="btn-min" title="最小化">&#x2500;</button>
-      <button id="btn-max" title="最大化/还原">&#x25A1;</button>
-      <button id="btn-close" class="close" title="关闭">&#x2715;</button>
-    </div>
-  </header>
+<div class="app">
+  <!-- ── 标题栏（frameless 自绘；pywebview-drag-region = 可拖动） ── -->
+  <div class="titlebar pywebview-drag-region">
+    <span class="dot"></span>
+    <span class="name">SumisoraOMR</span>
+    <span class="ver num" id="ver">webui</span>
+    <span class="spring"></span>
+    <button class="iconbtn" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button class="iconbtn" title="中英文切换（M3 接入）" aria-label="切换语言" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.4 3.8 5.6 3.8 9s-1.3 6.6-3.8 9c-2.5-2.4-3.8-5.6-3.8-9S9.5 5.4 12 3z"/></svg>
+    </button>
+    <span style="width:8px"></span>
+    <button class="wc" id="btn-min" aria-label="最小化"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+    <button class="wc" id="btn-max" aria-label="最大化"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg></button>
+    <button class="wc close" id="btn-close" aria-label="关闭"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg></button>
+  </div>
 
-  <main>
-    <section class="card">
-      <h2>自动检查</h2>
-      <ul class="checks">
-        <li id="chk-bridge"><span class="dot pending"></span>桥 echo（JS → Python → JS）<code id="bridge-detail"></code></li>
-        <li id="chk-coi"><span class="dot pending"></span>crossOriginIsolated（COOP/COEP）</li>
-        <li id="chk-sab"><span class="dot pending"></span>SharedArrayBuffer（noteDigger 前置）</li>
-        <li id="chk-worker"><span class="dot pending"></span>Worker + SAB 往返</li>
-        <li id="chk-flood"><span class="dot pending"></span>Gate1：500 行日志连发不丢 <code id="flood-detail"></code></li>
-      </ul>
-    </section>
+  <div class="body">
+    <!-- ── 导航栏 ── -->
+    <nav class="rail" aria-label="主导航">
+      <button class="nav" data-page="score" aria-current="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke-linecap="round"/></svg>
+        乐谱识别
+      </button>
+      <button class="nav" data-page="audio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>
+        音频识别
+      </button>
+      <button class="nav" disabled title="M3 接入">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg>
+        简谱预览<span class="soon">M3</span>
+      </button>
+      <button class="nav" disabled title="M3 接入">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18M3 11h18M3 15h18" opacity=".55"/><path d="M8 5c-1.5 4-1.5 10 0 14M13 5c-1.2 4-1.2 10 0 14" stroke-linecap="round"/></svg>
+        五线谱预览<span class="soon">M3</span>
+      </button>
+      <button class="nav" disabled title="M3 接入">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>
+        关于<span class="soon">M3</span>
+      </button>
+    </nav>
 
-    <section class="card" id="dropzone">
-      <h2>文件托盘 <span class="muted">（拖文件进窗口添加）</span></h2>
-      <ul id="file-list" class="files"><li class="muted">（空 — 拖入 PDF/PNG/JPG 或音频）</li></ul>
-    </section>
+    <div class="page-host">
+      <!-- ════ 乐谱识别页 ════ -->
+      <div class="content" id="page-score">
+        <section class="card" aria-label="输入文件">
+          <header><h2>输入文件</h2><span class="count num" id="score-count">已选 0 / 0</span></header>
+          <div class="toolrow">
+            <button class="chipbtn" id="score-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>添加文件</button>
+          </div>
+          <ul class="filelist" id="score-files"><li class="empty">拖入 PDF / PNG / JPG，或点「添加文件」</li></ul>
+        </section>
 
-    <section class="card">
-      <h2>转换</h2>
-      <div class="row">
-        <button id="btn-start" class="primary">开始转换</button>
-        <button id="btn-cancel" disabled>取消</button>
-        <span id="conv-status" class="muted">空闲</span>
+        <section class="card preview" aria-label="预览">
+          <header><h2>预览</h2><span class="count" id="score-preview-name"></span></header>
+          <div class="stage" id="score-stage">
+            <div class="placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>选中文件后在此预览<br>（PDF 预览将在 M3 接入 pdf.js）</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-label="识别选项">
+          <header><h2>识别选项</h2></header>
+          <div class="pad stack">
+            <div class="field">
+              <span class="lbl">OMR 引擎</span>
+              <div class="selectwrap"><select id="score-engine">
+                <option value="auto" selected>自动选择（推荐）</option>
+                <option value="audiveris">Audiveris</option>
+                <option value="homr">Homr</option>
+              </select></div>
+            </div>
+            <div class="field">
+              <span class="lbl">并发处理</span>
+              <div class="selectwrap"><select id="score-parallel">
+                <option value="1" selected>单文件顺序</option>
+                <option value="2">2 并发</option>
+                <option value="4">4 并发</option>
+              </select></div>
+            </div>
+            <button class="primary" id="score-start">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              开始识别
+            </button>
+            <button class="ghost" id="score-outdir">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              打开输出目录
+            </button>
+            <div class="rule"></div>
+            <span class="lbl">HOMR 模型</span>
+            <div class="status" id="homr-status"><span class="led"></span><span id="homr-status-text">检查中…</span></div>
+            <div class="modelbtns">
+              <button class="ghost" id="homr-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg>下载</button>
+              <button class="ghost" id="homr-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg>删除</button>
+            </div>
+          </div>
+        </section>
       </div>
-      <div class="progress"><div id="bar-main" class="bar"></div></div>
-      <div class="progress sub"><div id="bar-sub" class="bar"></div></div>
-      <div id="sub-msg" class="muted small"></div>
-    </section>
 
-    <section class="card">
-      <h2>Gate 手动钩子</h2>
-      <div class="row">
-        <button id="btn-flood">重跑压测(500)</button>
-        <button id="btn-kill">杀 worker（Gate3 模拟崩溃）</button>
+      <!-- ════ 音频识别页 ════ -->
+      <div class="content hidden" id="page-audio">
+        <section class="card" aria-label="音频文件">
+          <header><h2>音频文件</h2><span class="count num" id="audio-count">已选 0 / 0</span></header>
+          <div class="toolrow">
+            <button class="chipbtn" id="audio-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>添加文件</button>
+          </div>
+          <ul class="filelist" id="audio-files"><li class="empty">拖入 MP3 / WAV / FLAC / OGG，或点「添加文件」</li></ul>
+        </section>
+
+        <section class="card preview" aria-label="试听">
+          <header><h2>试听</h2><span class="count" id="audio-preview-name"></span></header>
+          <div class="stage" id="audio-stage">
+            <div class="placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>
+              <span>选中音频后在此试听<br>（识别引擎仅支持钢琴独奏）</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-label="识别选项">
+          <header><h2>识别选项</h2></header>
+          <div class="pad stack">
+            <label class="checkrow"><button class="cbx" id="audio-melody" role="checkbox" aria-checked="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button>仅主旋律（天际线约简）</label>
+            <button class="primary" id="audio-start">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              开始识别
+            </button>
+            <button class="ghost" id="audio-outdir">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              打开输出目录
+            </button>
+            <div class="rule"></div>
+            <span class="lbl">钢琴转录模型</span>
+            <div class="status" id="piano-status"><span class="led"></span><span id="piano-status-text">检查中…</span></div>
+            <div class="modelbtns">
+              <button class="ghost" id="piano-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg>下载</button>
+              <button class="ghost" id="piano-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg>删除</button>
+            </div>
+          </div>
+        </section>
       </div>
-      <p class="muted small">Gate2=转换中点「取消」；Gate3=转换中点「杀 worker」应弹错误；
-      Gate4=转换中直接关窗，worker 树应被清场（由外部脚本核验进程）。</p>
-    </section>
+    </div>
+  </div>
+</div>
 
-    <section class="card wide">
-      <h2>日志流 <span class="muted small" id="log-count">0 行</span></h2>
-      <div id="log-view" class="log"></div>
-    </section>
-  </main>
+<!-- ── 进度浮层 ── -->
+<div class="scrim hidden" id="progress-overlay">
+  <div class="sheet">
+    <h3 id="prog-title">正在识别…</h3>
+    <div class="msg num" id="prog-msg"></div>
+    <div class="meter"><i id="prog-main"></i></div>
+    <div class="meter thin"><i id="prog-sub"></i></div>
+    <div class="msg" id="prog-submsg" style="font-size:12px"></div>
+    <div class="logtail" id="prog-log"></div>
+    <div class="btnrow"><button class="ghost" id="prog-cancel">取消</button></div>
+  </div>
+</div>
 
-  <script src="app.js"></script>
+<!-- ── 结果弹层 ── -->
+<div class="scrim hidden" id="result-overlay">
+  <div class="sheet">
+    <h3 id="result-title">识别结果</h3>
+    <div class="result-summary" id="result-pills"></div>
+    <div class="result-list" id="result-list"></div>
+    <div class="btnrow">
+      <button class="ghost" id="result-outdir">打开输出目录</button>
+      <button class="primary" id="result-close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 模型下载弹层 ── -->
+<div class="scrim hidden" id="model-overlay">
+  <div class="sheet">
+    <h3 id="model-title">下载模型</h3>
+    <div class="msg num" id="model-msg"></div>
+    <div class="meter"><i id="model-bar"></i></div>
+    <div class="btnrow"><button class="ghost" id="model-cancel">取消</button></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>

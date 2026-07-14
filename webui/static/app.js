@@ -1,239 +1,378 @@
-// webui M1 — 主动脉测试台：批量事件接收 + 文件托盘 + 转换控制 + 日志流 + Gate 钩子。
-// 自动检查结果写入 window.__m0state，供 main.py --selftest 轮询读取。
+// webui app.js — 正式 UI 逻辑（M2）：导航/主题、分视图文件托盘、转换流程、
+// 进度浮层、结果弹层、模型下载。Python 是唯一状态源，本文件只渲染 + 转发操作。
 'use strict';
 
-window.__m0state = null;
-
 const $ = (id) => document.getElementById(id);
+const api = () => window.pywebview.api;
 
-function mark(id, ok, detail) {
-  const li = $(id);
-  if (!li) return;
-  const dot = li.querySelector('.dot');
-  dot.classList.remove('pending');
-  dot.classList.add(ok ? 'ok' : 'fail');
-  if (detail !== undefined) {
-    const code = li.querySelector('code');
-    if (code) code.textContent = ' ' + detail;
-  }
-}
+// gate/自动化驱动可读的 UI 状态镜像（与 harness 同名约定）
+window.__uiFlags = { busy: false, lastError: null, statusText: '', progressEvents: 0, summary: null };
 
-// ═══ 批量事件接收（EventPusher → 这里）═══════════════════════════════════════
-// Python 每 ~50ms 推一批 [{name, payload}]；逐条转成 CustomEvent 派发。
+// ═══ 批量事件接收（EventPusher → CustomEvent） ═══════════════════════════════
 window.__omrEvents = (events) => {
   for (const ev of events || []) {
     window.dispatchEvent(new CustomEvent(ev.name, { detail: ev.payload }));
   }
 };
 
-// ═══ 日志流 ══════════════════════════════════════════════════════════════════
-const logView = $('log-view');
-let logTotal = 0;         // 收到的 log_line 总数
-let floodReceived = 0;    // 其中 [flood] 行数（Gate1 计数）
-const MAX_LOG_NODES = 600;
+// ═══ 主题 ════════════════════════════════════════════════════════════════════
+(function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+  $('themeBtn').addEventListener('click', () => {
+    const root = document.documentElement;
+    let cur = root.dataset.theme;
+    if (!cur) cur = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    localStorage.setItem('theme', next);
+  });
+})();
 
-window.addEventListener('log_line', (e) => {
-  const line = (e.detail && e.detail.line) || '';
-  logTotal += 1;
-  if (line.startsWith('[flood]')) floodReceived += 1;
-  const div = document.createElement('div');
-  div.textContent = line;
-  logView.appendChild(div);
-  while (logView.childNodes.length > MAX_LOG_NODES) logView.removeChild(logView.firstChild);
-  logView.scrollTop = logView.scrollHeight;
-  $('log-count').textContent = `${logTotal} 行`;
+// ═══ 导航 ════════════════════════════════════════════════════════════════════
+let activePage = 'score';
+document.querySelectorAll('.nav[data-page]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav').forEach((x) => x.removeAttribute('aria-current'));
+    btn.setAttribute('aria-current', 'true');
+    activePage = btn.dataset.page;
+    $('page-score').classList.toggle('hidden', activePage !== 'score');
+    $('page-audio').classList.toggle('hidden', activePage !== 'audio');
+  });
 });
 
-// ═══ Gate1：日志压测 ═════════════════════════════════════════════════════════
-function runFlood(n) {
-  return new Promise((resolve) => {
-    const before = floodReceived;
-    const onDone = (e) => {
-      // flood_done 与最后一批 log_line 同批到达；再等两个批次周期收尾
-      setTimeout(() => {
-        window.removeEventListener('flood_done', onDone);
-        const received = floodReceived - before;
-        resolve({ sent: e.detail.sent, received, ok: received === e.detail.sent });
-      }, 200);
-    };
-    window.addEventListener('flood_done', onDone);
-    window.pywebview.api.debug_flood(n);
-  });
+// ═══ 标题栏 ══════════════════════════════════════════════════════════════════
+$('btn-min').addEventListener('click', () => api().window_minimize());
+$('btn-max').addEventListener('click', () => api().window_toggle_maximize());
+$('btn-close').addEventListener('click', () => api().window_close());
+document.querySelector('.titlebar').addEventListener('dblclick', (e) => {
+  if (e.target.closest('.wc') || e.target.closest('.iconbtn')) return;
+  api().window_toggle_maximize();
+});
+
+// ═══ 文件托盘（分视图渲染；Python 端共享一份托盘） ═══════════════════════════
+const VIEW = {
+  score: { list: 'score-files', count: 'score-count', sel: null,
+           empty: '拖入 PDF / PNG / JPG，或点「添加文件」' },
+  audio: { list: 'audio-files', count: 'audio-count', sel: null,
+           empty: '拖入 MP3 / WAV / FLAC / OGG，或点「添加文件」' },
+};
+
+const ICONS = {
+  pdf: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 13h6M9 17h4" stroke-linecap="round"/>',
+  img: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3" stroke-linecap="round" stroke-linejoin="round"/>',
+  audio: '<path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0" stroke-linecap="round"/>',
+};
+function iconFor(f) {
+  if (f.kind === 'audio') return ICONS.audio;
+  return f.name.toLowerCase().endsWith('.pdf') ? ICONS.pdf : ICONS.img;
 }
 
-// ═══ 文件托盘 ════════════════════════════════════════════════════════════════
-const fileList = $('file-list');
-function renderFiles(files) {
-  fileList.replaceChildren();
+let trayCache = [];
+
+function renderView(view) {
+  const cfg = VIEW[view];
+  const listEl = $(cfg.list);
+  const files = trayCache.filter((f) => f.kind === view);
+  listEl.replaceChildren();
   if (!files.length) {
     const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = '（空 — 拖入 PDF/PNG/JPG 或音频）';
-    fileList.appendChild(li);
+    li.className = 'empty';
+    li.textContent = cfg.empty;
+    listEl.appendChild(li);
+    cfg.sel = null;
+    updatePreview(view, null);
+  } else {
+    if (!files.some((f) => f.path === cfg.sel)) cfg.sel = files[0].path;
+    for (const f of files) {
+      const li = document.createElement('li');
+      li.className = 'file' + (f.path === cfg.sel ? ' sel' : '');
+      const cb = document.createElement('button');
+      cb.className = 'cbx' + (f.checked ? ' on' : '');
+      cb.setAttribute('role', 'checkbox');
+      cb.setAttribute('aria-checked', String(f.checked));
+      cb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      cb.addEventListener('click', (e) => { e.stopPropagation(); api().files_toggle_check(f.path); });
+      const ic = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      ic.setAttribute('class', 'ic');
+      ic.setAttribute('viewBox', '0 0 24 24');
+      ic.setAttribute('fill', 'none');
+      ic.setAttribute('stroke', 'currentColor');
+      ic.setAttribute('stroke-width', '1.6');
+      ic.innerHTML = iconFor(f);
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = f.name;
+      nm.title = f.path;
+      const x = document.createElement('button');
+      x.className = 'x';
+      x.setAttribute('aria-label', '移除');
+      x.innerHTML = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" fill="none"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg>';
+      x.addEventListener('click', (e) => { e.stopPropagation(); api().files_remove(f.path); });
+      li.append(cb, ic, nm, x);
+      li.addEventListener('click', () => { cfg.sel = f.path; renderView(view); });
+      listEl.appendChild(li);
+    }
+    updatePreview(view, files.find((f) => f.path === cfg.sel) || null);
+  }
+  const checked = files.filter((f) => f.checked).length;
+  $(cfg.count).textContent = `已选 ${checked} / ${files.length}`;
+}
+
+function updatePreview(view, file) {
+  const stage = $(view === 'score' ? 'score-stage' : 'audio-stage');
+  const nameEl = $(view === 'score' ? 'score-preview-name' : 'audio-preview-name');
+  nameEl.textContent = file ? file.name : '';
+  const url = file ? `/file?path=${encodeURIComponent(file.path)}` : null;
+  stage.replaceChildren();
+  if (!file) {
+    stage.innerHTML = view === 'score'
+      ? '<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>选中文件后在此预览<br>（PDF 预览将在 M3 接入 pdf.js）</span></div>'
+      : '<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg><span>选中音频后在此试听<br>（识别引擎仅支持钢琴独奏）</span></div>';
     return;
   }
-  for (const f of files) {
-    const li = document.createElement('li');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = f.checked;
-    cb.addEventListener('change', () => window.pywebview.api.files_toggle_check(f.path));
-    const name = document.createElement('span');
-    name.textContent = f.name;
-    name.title = f.path;
-    const rm = document.createElement('button');
-    rm.textContent = '✕';
-    rm.className = 'mini';
-    rm.addEventListener('click', () => window.pywebview.api.files_remove(f.path));
-    li.append(cb, name, rm);
-    fileList.appendChild(li);
+  if (view === 'audio') {
+    const au = document.createElement('audio');
+    au.controls = true;
+    au.src = url;
+    stage.appendChild(au);
+  } else if (/\.(png|jpe?g)$/i.test(file.name)) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = file.name;
+    stage.appendChild(img);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'placeholder';
+    ph.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 13h6M9 17h4" stroke-linecap="round"/></svg>';
+    const span = document.createElement('span');
+    span.textContent = `${file.name} — PDF 预览将在 M3 接入 pdf.js`;
+    ph.appendChild(span);
+    stage.appendChild(ph);
   }
 }
-window.addEventListener('files_changed', (e) => renderFiles((e.detail && e.detail.files) || []));
 
-// ═══ 转换控制 ════════════════════════════════════════════════════════════════
-const status = $('conv-status');
+window.addEventListener('files_changed', (e) => {
+  trayCache = (e.detail && e.detail.files) || [];
+  renderView('score');
+  renderView('audio');
+});
+
+$('score-add').addEventListener('click', () => api().shell_pick_files());
+$('audio-add').addEventListener('click', () => api().shell_pick_files());
+
+// ═══ 转换流程 + 进度浮层 ═════════════════════════════════════════════════════
 let cancelling = false;
+let converting = false;
 
-// Gate 驱动（--gate2/3/4）从 Python 侧轮询的 UI 状态镜像
-window.__uiFlags = { busy: false, lastError: null, statusText: '空闲', progressEvents: 0 };
-
-function setBusy(busy) {
-  window.__uiFlags.busy = busy;
-  $('btn-start').disabled = busy;
-  $('btn-cancel').disabled = !busy;
-  $('btn-kill').disabled = !busy;
-  if (!busy) {
-    $('bar-sub').style.width = '0%';
-    $('sub-msg').textContent = '';
-  }
+function showOverlay(title) {
+  $('prog-title').textContent = title;
+  $('prog-msg').textContent = '';
+  $('prog-submsg').textContent = '';
+  $('prog-main').style.width = '0%';
+  $('prog-sub').style.width = '0%';
+  $('prog-log').replaceChildren();
+  $('progress-overlay').classList.remove('hidden');
 }
-setBusy(false);
+function hideOverlay() { $('progress-overlay').classList.add('hidden'); }
 
-$('btn-start').addEventListener('click', async () => {
+async function startConvert(view) {
   cancelling = false;
-  const r = await window.pywebview.api.convert_start({ engine: 'auto' });
-  if (!r.ok) { status.textContent = `无法启动：${r.error}`; return; }
-  status.textContent = `转换中（${r.count} 个文件）…`;
-  setBusy(true);
-});
-$('btn-cancel').addEventListener('click', async () => {
+  const opts = { view };
+  if (view === 'score') {
+    opts.engine = $('score-engine').value;
+    opts.parallel = parseInt($('score-parallel').value, 10);
+  } else {
+    opts.engine = 'auto';
+    opts.melody_only = $('audio-melody').classList.contains('on');
+  }
+  const r = await api().convert_start(opts);
+  if (!r.ok) {
+    if (r.error === 'no_files') alert('没有勾选的文件。');
+    else if (r.error === 'busy') alert('已有转换在进行中。');
+    return;
+  }
+  converting = true;
+  window.__uiFlags.busy = true;
+  showOverlay(view === 'score' ? `正在识别乐谱（${r.count} 个文件）` : `正在识别音频（${r.count} 个文件）`);
+}
+$('score-start').addEventListener('click', () => startConvert('score'));
+$('audio-start').addEventListener('click', () => startConvert('audio'));
+$('prog-cancel').addEventListener('click', async () => {
   cancelling = true;
-  status.textContent = '取消中…';
-  await window.pywebview.api.convert_cancel();
+  $('prog-msg').textContent = '取消中…（正在终止 worker）';
+  await api().convert_cancel();
 });
-$('btn-kill').addEventListener('click', () => window.pywebview.api.debug_kill_worker());
-$('btn-flood').addEventListener('click', async () => {
-  const r = await runFlood(500);
-  mark('chk-flood', r.ok, `${r.received}/${r.sent}`);
+
+for (const id of ['score-outdir', 'audio-outdir', 'result-outdir']) {
+  $(id).addEventListener('click', () => api().shell_open_output_dir());
+}
+
+// 仅主旋律复选
+$('audio-melody').addEventListener('click', (e) => {
+  e.preventDefault();
+  const b = $('audio-melody');
+  b.classList.toggle('on');
+  b.setAttribute('aria-checked', b.classList.contains('on') ? 'true' : 'false');
 });
 
 window.addEventListener('progress_update', (e) => {
-  const v = (e.detail && e.detail.value) || 0;
   window.__uiFlags.progressEvents += 1;
-  $('bar-main').style.width = `${Math.round(v * 100)}%`;
-  if (e.detail && e.detail.message) status.textContent = e.detail.message;
+  $('prog-main').style.width = `${Math.round(((e.detail && e.detail.value) || 0) * 100)}%`;
+  if (e.detail && e.detail.message) $('prog-msg').textContent = e.detail.message;
 });
 window.addEventListener('sub_progress', (e) => {
-  const v = (e.detail && e.detail.value) || 0;
   window.__uiFlags.progressEvents += 1;
-  $('bar-sub').style.width = `${Math.round(v * 100)}%`;
-  $('sub-msg').textContent = (e.detail && e.detail.message) || '';
+  $('prog-sub').style.width = `${Math.round(((e.detail && e.detail.value) || 0) * 100)}%`;
+  $('prog-submsg').textContent = (e.detail && e.detail.message) || '';
 });
-window.addEventListener('progress_done', (e) => {
-  status.textContent = `完成：${(e.detail && e.detail.message) || ''}`;
-  window.__uiFlags.statusText = status.textContent;
-  setBusy(false);
+window.addEventListener('log_line', (e) => {
+  const el = $('prog-log');
+  const div = document.createElement('div');
+  div.textContent = (e.detail && e.detail.line) || '';
+  el.appendChild(div);
+  while (el.childNodes.length > 60) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
 });
+
 window.addEventListener('progress_error', (e) => {
-  // Gate2 语义：取消中收到的错误＝取消确认，不弹失败
   window.__uiFlags.lastError = (e.detail && e.detail.message) || '';
-  if (cancelling) {
-    status.textContent = '已取消（worker 已终止）';
-  } else {
-    status.textContent = `错误：${(e.detail && e.detail.message) || ''}`;
-    status.classList.add('error');
-    setTimeout(() => status.classList.remove('error'), 4000);
-  }
-  window.__uiFlags.statusText = status.textContent;
-  setBusy(false);
+  window.__uiFlags.busy = false;
+  if (!converting) return;
+  converting = false;
+  hideOverlay();
+  if (cancelling) return; // 取消确认，不弹错误
+  showResult({ error: (e.detail && e.detail.message) || '未知错误' });
 });
 window.addEventListener('conversion_finished', (e) => {
+  window.__uiFlags.busy = false;
   const s = (e.detail && e.detail.summary) || {};
   window.__uiFlags.summary = s;
-  if (s.total !== undefined && !cancelling) {
-    status.textContent += `　[成功 ${s.success_count} / 回退 ${s.fallback_count} / 失败 ${s.failed_count}]`;
+  if (!converting) return;
+  converting = false;
+  hideOverlay();
+  if (cancelling) return;
+  if (s.total !== undefined) showResult({ summary: s });
+});
+
+// ═══ 结果弹层 ════════════════════════════════════════════════════════════════
+function showResult({ summary, error }) {
+  const pills = $('result-pills');
+  const list = $('result-list');
+  pills.replaceChildren();
+  list.replaceChildren();
+  if (error) {
+    $('result-title').textContent = '识别失败';
+    const item = document.createElement('div');
+    item.className = 'result-item';
+    item.innerHTML = '<span class="tag bad">✗</span>';
+    const why = document.createElement('span');
+    why.className = 'why';
+    why.textContent = error;
+    item.appendChild(why);
+    list.appendChild(item);
+  } else {
+    $('result-title').textContent = '识别结果';
+    const mk = (cls, label, n) => {
+      // 全 textContent 构建；n 强制数值化（summary 来自 Python，防御性处理）
+      const p = document.createElement('span');
+      p.className = `pill ${cls}`;
+      p.append(label + ' ');
+      const b = document.createElement('b');
+      b.textContent = String(Number(n) || 0);
+      p.appendChild(b);
+      pills.appendChild(p);
+    };
+    mk('ok', '成功', summary.success_count || 0);
+    if (summary.fallback_count) mk('warn', '引擎回退', summary.fallback_count);
+    mk(summary.failed_count ? 'bad' : '', '失败', summary.failed_count || 0);
+    const addItem = (tagCls, tagTxt, fileName, why) => {
+      const item = document.createElement('div');
+      item.className = 'result-item';
+      const tag = document.createElement('span');
+      tag.className = `tag ${tagCls}`;
+      tag.textContent = tagTxt;
+      const fn = document.createElement('span');
+      fn.className = 'fn';
+      fn.textContent = fileName;
+      item.append(tag, fn);
+      if (why) {
+        const w = document.createElement('span');
+        w.className = 'why';
+        w.textContent = why;
+        item.appendChild(w);
+      }
+      list.appendChild(item);
+    };
+    for (const f of summary.success_files || []) addItem('ok', '✓', f.file, f.engine_used ? `引擎 ${f.engine_used}` : '');
+    for (const f of summary.fallback_files || []) addItem('warn', '↻', f.file, `引擎回退 ${f.engine_used || ''}`);
+    for (const f of summary.failed_files || []) addItem('bad', '✗', f.file, f.reason || '');
   }
-  setBusy(false);
+  $('result-overlay').classList.remove('hidden');
+}
+$('result-close').addEventListener('click', () => $('result-overlay').classList.add('hidden'));
+
+// ═══ 模型状态 + 下载弹层 ═════════════════════════════════════════════════════
+let modelKind = null;
+
+function renderModels(st) {
+  if (!st || !st.homr) return;
+  const homr = $('homr-status');
+  homr.classList.toggle('absent', !st.homr.available);
+  $('homr-status-text').textContent = st.homr.available
+    ? 'OMR 引擎 “Homr” · 已就绪'
+    : `未就绪（${st.homr.files_present}/${st.homr.files_total} 个权重）`;
+  $('homr-download').disabled = st.homr.available;
+  $('homr-delete').disabled = !st.homr.files_present;
+  const piano = $('piano-status');
+  piano.classList.toggle('absent', !st.piano.available);
+  $('piano-status-text').textContent = st.piano.available ? '钢琴转录模型 · 已就绪' : '未下载（约 172 MB，按需）';
+  $('piano-download').disabled = st.piano.available;
+  $('piano-delete').disabled = !st.piano.available;
+}
+
+async function refreshModels() { renderModels(await api().models_status()); }
+
+function startModelDownload(kind, title) {
+  modelKind = kind;
+  $('model-title').textContent = title;
+  $('model-msg').textContent = '连接中…';
+  $('model-bar').style.width = '0%';
+  $('model-overlay').classList.remove('hidden');
+  api().models_download(kind);
+}
+$('homr-download').addEventListener('click', () => startModelDownload('homr', '下载 HOMR 模型权重'));
+$('piano-download').addEventListener('click', () => startModelDownload('piano', '下载钢琴转录模型（约 172 MB）'));
+$('model-cancel').addEventListener('click', () => { if (modelKind) api().models_cancel_download(modelKind); });
+$('homr-delete').addEventListener('click', async () => {
+  if (confirm('删除 HOMR 模型权重？删除后图片识别将不可用，可随时重新下载。')) await api().models_delete('homr');
+});
+$('piano-delete').addEventListener('click', async () => {
+  if (confirm('删除钢琴转录模型？可随时重新下载。')) await api().models_delete('piano');
 });
 
-// M0 拖拽验证事件仍然监听（托盘由 Python 侧 files_add 更新，这里只提示）
-window.addEventListener('files-dropped-error', (e) => {
-  status.textContent = '拖拽处理异常：' + e.detail;
+window.addEventListener('model_download_progress', (e) => {
+  const d = e.detail || {};
+  if (d.kind !== modelKind) return;
+  $('model-bar').style.width = `${Math.round((d.value || 0) * 100)}%`;
+  $('model-msg').textContent = d.message || '';
 });
+window.addEventListener('model_download_done', (e) => {
+  const d = e.detail || {};
+  if (d.kind !== modelKind) return;
+  $('model-overlay').classList.add('hidden');
+  modelKind = null;
+  if (!d.ok && d.error !== 'cancelled') alert(`模型下载失败：${d.error}`);
+});
+window.addEventListener('models_changed', (e) => renderModels(e.detail && e.detail.status));
 
-// ═══ 自动检查（M0 四项 + Gate1）═══════════════════════════════════════════════
-function testWorkerSab() {
-  return new Promise((resolve) => {
-    if (typeof SharedArrayBuffer === 'undefined') { resolve(false); return; }
-    try {
-      const sab = new SharedArrayBuffer(4);
-      const src = 'onmessage = e => { const v = new Int32Array(e.data); Atomics.store(v, 0, 42); postMessage("done"); };';
-      const worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'application/javascript' })));
-      const timer = setTimeout(() => { worker.terminate(); resolve(false); }, 3000);
-      worker.onmessage = () => {
-        clearTimeout(timer);
-        worker.terminate();
-        resolve(new Int32Array(sab)[0] === 42);
-      };
-      worker.postMessage(sab);
-    } catch (_e) { resolve(false); }
+// ═══ 初始化 ══════════════════════════════════════════════════════════════════
+window.addEventListener('pywebviewready', async () => {
+  api().app_info().then((info) => { $('ver').textContent = 'v' + (info.version || ''); });
+  api().files_list().then((files) => {
+    trayCache = files || [];
+    renderView('score');
+    renderView('audio');
   });
-}
-
-async function runChecks() {
-  const state = {
-    crossOriginIsolated: !!window.crossOriginIsolated,
-    sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
-    workerSab: false,
-    bridgeEcho: false,
-    gate1Flood: null,
-  };
-  mark('chk-coi', state.crossOriginIsolated);
-  mark('chk-sab', state.sharedArrayBuffer);
-
-  state.workerSab = await testWorkerSab();
-  mark('chk-worker', state.workerSab);
-
-  try {
-    const r = await window.pywebview.api.echo('ping');
-    state.bridgeEcho = r && r.echo === 'ping';
-    mark('chk-bridge', state.bridgeEcho, `Python ${r.python}`);
-  } catch (e) {
-    mark('chk-bridge', false, String(e));
-  }
-
-  state.gate1Flood = await runFlood(500);
-  mark('chk-flood', state.gate1Flood.ok, `${state.gate1Flood.received}/${state.gate1Flood.sent}`);
-
-  window.__m0state = state;
-}
-window.addEventListener('pywebviewready', () => {
-  runChecks();
-  window.pywebview.api.files_list().then(renderFiles);
+  refreshModels();
 });
-
-// ═══ 标题栏 ═════════════════════════════════════════════════════════════════
-$('btn-min').addEventListener('click', () => window.pywebview.api.window_minimize());
-$('btn-max').addEventListener('click', () => window.pywebview.api.window_toggle_maximize());
-$('btn-close').addEventListener('click', () => window.pywebview.api.window_close());
-$('titlebar').addEventListener('dblclick', (e) => {
-  if (e.target.closest('.win-controls')) return;
-  window.pywebview.api.window_toggle_maximize();
-});
-
-// 拖入视觉反馈（真正的 preventDefault 在 Python 侧 DOMEventHandler 做）
-const dz = $('dropzone');
-window.addEventListener('dragover', () => dz.classList.add('dragging'));
-window.addEventListener('dragleave', () => dz.classList.remove('dragging'));
-window.addEventListener('drop', () => dz.classList.remove('dragging'));

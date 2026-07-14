@@ -21,6 +21,7 @@ from webview.dom import DOMEventHandler
 from .bridge import Bridge
 from .conversion import ConversionService
 from .events import EventPusher
+from .models import ModelsService
 from .server import start_server
 
 WINDOW_TITLE = 'SumisoraOMR — pywebview shell'
@@ -202,13 +203,16 @@ def main() -> None:
     gate_mode = next((a for a in sys.argv if a in ('--happy', '--gate2', '--gate3', '--gate4')), None)
     gate_file = sys.argv[sys.argv.index(gate_mode) + 1] if gate_mode else None
 
-    _httpd, base_url = start_server()
+    _httpd, base_url, whitelist = start_server()
     pusher = EventPusher()
-    conversion = ConversionService(pusher)
-    bridge = Bridge(pusher, conversion)
+    conversion = ConversionService(pusher, whitelist)
+    models = ModelsService(pusher)
+    bridge = Bridge(pusher, conversion, models)
+    # selftest / gate 驱动跑在 M1 测试台（harness.html）上，正式 UI 在 index.html
+    page = 'harness.html' if (selftest or gate_mode) else 'index.html'
     window = webview.create_window(
         WINDOW_TITLE,
-        url=f'{base_url}/index.html',
+        url=f'{base_url}/{page}',
         js_api=bridge,
         width=1180,
         height=800,
