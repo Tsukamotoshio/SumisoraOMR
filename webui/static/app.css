@@ -226,8 +226,46 @@ button { font-family: inherit; cursor: default; }
 .result-item .fn { color: var(--text); word-break: break-all; }
 .result-item .why { color: var(--faint); word-break: break-all; }
 
+/* ── 预览页（简谱/五线谱）─────────────────────────────────────────────── */
+.content.two { grid-template-columns: 280px minmax(0,1fr); }
+.previewbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.previewbar .lbl { margin-left: auto; }
+.zoom { display: flex; gap: 4px; margin-left: 10px; }
+.pvbtn {
+  width: 28px; height: 28px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--card-2); color: var(--muted);
+  display: grid; place-items: center;
+}
+.pvbtn:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text); }
+.pvbtn:disabled { opacity: .4; }
+.pvbtn svg { width: 15px; height: 15px; }
+.stage.pdfstage { place-items: start center; padding: 18px; }
+.stage.pdfstage canvas {
+  max-width: 100%; border-radius: 8px; box-shadow: var(--shadow); background: #fff;
+}
+.file .act {
+  margin-left: auto; display: none; gap: 2px; flex: none;
+}
+.file:hover .act { display: flex; }
+.file .act button {
+  width: 22px; height: 22px; border-radius: 5px; border: 0; background: transparent;
+  color: var(--faint); display: grid; place-items: center;
+}
+.file .act button:hover { background: var(--inset); color: var(--text); }
+.file .act svg { width: 13px; height: 13px; }
+
+/* toast */
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  z-index: 60; background: var(--card); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  padding: 10px 18px; font-size: 13px; box-shadow: var(--shadow);
+  opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 70vw;
+}
+.toast.show { opacity: 1; }
+
 @media (max-width: 880px) {
-  .content { grid-template-columns: 1fr; }
+  .content, .content.two { grid-template-columns: 1fr; }
   .preview .stage { min-height: 260px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

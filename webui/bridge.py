@@ -24,16 +24,19 @@ import webview
 from .conversion import ConversionService
 from .events import EventPusher
 from .models import ModelsService
+from .outputs import OutputsService
 
 
 class Bridge:
     """window.pywebview.api implementation. One instance per window."""
 
     def __init__(self, pusher: EventPusher, conversion: ConversionService,
-                 models: Optional[ModelsService] = None) -> None:
+                 models: Optional[ModelsService] = None,
+                 outputs: Optional[OutputsService] = None) -> None:
         self._pusher = pusher
         self._conversion = conversion
         self._models = models
+        self._outputs = outputs
         self._window: Optional[webview.Window] = None
         self._maximized = False
 
@@ -84,6 +87,31 @@ class Bridge:
 
     def models_delete(self, kind: str) -> dict:
         return self._models.delete(kind) if self._models else {'ok': False, 'error': 'no service'}
+
+    # ── 输出文件（预览页）────────────────────────────────────────────────────
+    def outputs_list_jianpu(self) -> list:
+        return self._outputs.list_jianpu() if self._outputs else []
+
+    def outputs_delete(self, paths: list) -> dict:
+        return self._outputs.delete(paths) if self._outputs else {'ok': False}
+
+    def outputs_export(self, paths: list) -> dict:
+        """Pick a folder via native dialog, then copy *paths* into it."""
+        if self._outputs is None or self._window is None:
+            return {'ok': False, 'error': 'no service'}
+        result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+        if not result:
+            return {'ok': False, 'error': 'cancelled'}
+        dest = result[0] if isinstance(result, (list, tuple)) else result
+        out = self._outputs.export_to(paths, str(dest))
+        out['dest'] = str(dest)
+        return out
+
+    def outputs_play_midi(self, pdf_path: str) -> dict:
+        return self._outputs.play_midi(pdf_path) if self._outputs else {'ok': False}
+
+    def outputs_rerender(self, pdf_path: str) -> dict:
+        return self._outputs.rerender(pdf_path) if self._outputs else {'ok': False}
 
     # ── 系统集成 ─────────────────────────────────────────────────────────────
     def shell_open_output_dir(self) -> dict:

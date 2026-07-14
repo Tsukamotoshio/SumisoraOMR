@@ -37,9 +37,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>
         音频识别
       </button>
-      <button class="nav" disabled title="M3 接入">
+      <button class="nav" data-page="jianpu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg>
-        简谱预览<span class="soon">M3</span>
+        简谱预览
       </button>
       <button class="nav" disabled title="M3 接入">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18M3 11h18M3 15h18" opacity=".55"/><path d="M8 5c-1.5 4-1.5 10 0 14M13 5c-1.2 4-1.2 10 0 14" stroke-linecap="round"/></svg>
@@ -105,6 +105,42 @@
             <div class="modelbtns">
               <button class="ghost" id="homr-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg>下载</button>
               <button class="ghost" id="homr-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg>删除</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════ 简谱预览页 ════ -->
+      <div class="content two hidden" id="page-jianpu">
+        <section class="card" aria-label="简谱文件">
+          <header><h2>简谱文件</h2><span class="count num" id="jp-count"></span></header>
+          <div class="toolrow">
+            <button class="chipbtn" id="jp-refresh" title="刷新列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg>刷新</button>
+            <button class="chipbtn" id="jp-selall" title="全选/全不选"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>全选</button>
+            <button class="chipbtn" id="jp-export" title="导出勾选到文件夹"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg>导出</button>
+            <button class="chipbtn" id="jp-delete" title="删除勾选（含 MIDI 与编辑文本）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg>删除</button>
+          </div>
+          <ul class="filelist" id="jp-files"><li class="empty">Output/ 中还没有简谱 PDF</li></ul>
+        </section>
+
+        <section class="card preview" aria-label="简谱预览">
+          <header>
+            <h2>预览</h2><span class="count" id="jp-preview-name"></span>
+          </header>
+          <div class="stage pdfstage" id="jp-stage">
+            <div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg><span>选中左侧文件预览简谱</span></div>
+            <canvas id="jp-canvas" class="hidden"></canvas>
+          </div>
+          <div class="previewbar">
+            <button class="pvbtn" id="jp-midi" title="播放 MIDI"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+            <button class="pvbtn" id="jp-rerender" title="从简谱文本重新渲染"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <span class="lbl num" id="jp-pageinfo"></span>
+            <button class="pvbtn" id="jp-prev" title="上一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="pvbtn" id="jp-next" title="下一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="zoom">
+              <button class="pvbtn" id="jp-zoomout" title="缩小"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="jp-zoomfit" title="适应宽度"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="jp-zoomin" title="放大"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
             </div>
           </div>
         </section>

@@ -30,16 +30,30 @@ window.__omrEvents = (events) => {
 })();
 
 // ═══ 导航 ════════════════════════════════════════════════════════════════════
+const PAGES = ['score', 'audio', 'jianpu'];
 let activePage = 'score';
+const pageEnterHooks = {};   // page → () => void（进入页面时触发，如刷新列表）
 document.querySelectorAll('.nav[data-page]').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.nav').forEach((x) => x.removeAttribute('aria-current'));
     btn.setAttribute('aria-current', 'true');
     activePage = btn.dataset.page;
-    $('page-score').classList.toggle('hidden', activePage !== 'score');
-    $('page-audio').classList.toggle('hidden', activePage !== 'audio');
+    for (const p of PAGES) $(`page-${p}`).classList.toggle('hidden', activePage !== p);
+    if (pageEnterHooks[activePage]) pageEnterHooks[activePage]();
   });
 });
+
+// ═══ Toast ═══════════════════════════════════════════════════════════════════
+const toastEl = document.createElement('div');
+toastEl.className = 'toast';
+document.body.appendChild(toastEl);
+let toastTimer = null;
+function toast(text) {
+  toastEl.textContent = text;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+}
 
 // ═══ 标题栏 ══════════════════════════════════════════════════════════════════
 $('btn-min').addEventListener('click', () => api().window_minimize());
@@ -365,6 +379,186 @@ window.addEventListener('model_download_done', (e) => {
   if (!d.ok && d.error !== 'cancelled') alert(`模型下载失败：${d.error}`);
 });
 window.addEventListener('models_changed', (e) => renderModels(e.detail && e.detail.status));
+
+// ═══ pdf.js 查看器 ═══════════════════════════════════════════════════════════
+// 本地捆绑 pdf.js（vendor/pdfjs，v6），worker 同源加载；渲染按 devicePixelRatio
+// 放大保证清晰度。fit = 适应舞台宽度。
+let _pdfjs = null;
+async function pdfjsLib() {
+  if (_pdfjs) return _pdfjs;
+  _pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
+  _pdfjs.GlobalWorkerOptions.workerSrc = './vendor/pdfjs/pdf.worker.min.mjs';
+  return _pdfjs;
+}
+
+class PdfView {
+  constructor(canvas, stage, pageInfoEl) {
+    this.canvas = canvas;
+    this.stage = stage;
+    this.pageInfoEl = pageInfoEl;
+    this.doc = null;
+    this.pageNo = 1;
+    this.scale = null;      // null = fit-width
+    this._renderToken = 0;
+  }
+
+  async open(url) {
+    const lib = await pdfjsLib();
+    if (this.doc) { try { this.doc.destroy(); } catch (_e) {} }
+    this.doc = await lib.getDocument({ url }).promise;
+    this.pageNo = 1;
+    this.scale = null;
+    await this.render();
+  }
+
+  close() {
+    if (this.doc) { try { this.doc.destroy(); } catch (_e) {} this.doc = null; }
+    this.canvas.classList.add('hidden');
+    if (this.pageInfoEl) this.pageInfoEl.textContent = '';
+  }
+
+  _fitScale(page) {
+    const avail = this.stage.clientWidth - 36;
+    return avail > 0 ? avail / page.getViewport({ scale: 1 }).width : 1;
+  }
+
+  async render() {
+    if (!this.doc) return;
+    const token = ++this._renderToken;
+    const page = await this.doc.getPage(this.pageNo);
+    if (token !== this._renderToken) return;
+    const scale = this.scale ?? this._fitScale(page);
+    const dpr = window.devicePixelRatio || 1;
+    const vp = page.getViewport({ scale: scale * dpr });
+    this.canvas.width = vp.width;
+    this.canvas.height = vp.height;
+    this.canvas.style.width = `${vp.width / dpr}px`;
+    this.canvas.style.height = `${vp.height / dpr}px`;
+    this.canvas.classList.remove('hidden');
+    await page.render({ canvas: this.canvas, viewport: vp }).promise;
+    if (this.pageInfoEl) this.pageInfoEl.textContent = `第 ${this.pageNo} / ${this.doc.numPages} 页`;
+  }
+
+  prev() { if (this.doc && this.pageNo > 1) { this.pageNo -= 1; this.render(); } }
+  next() { if (this.doc && this.pageNo < this.doc.numPages) { this.pageNo += 1; this.render(); } }
+  async zoom(f) {
+    if (!this.doc) return;
+    if (this.scale === null) {
+      const page = await this.doc.getPage(this.pageNo);
+      this.scale = this._fitScale(page);
+    }
+    this.scale = Math.min(6, Math.max(0.2, this.scale * f));
+    this.render();
+  }
+  zoomFit() { this.scale = null; this.render(); }
+}
+
+// ═══ 简谱预览页 ══════════════════════════════════════════════════════════════
+const jpView = new PdfView($('jp-canvas'), $('jp-stage'), $('jp-pageinfo'));
+let jpEntries = [];
+let jpChecked = new Set();
+let jpSel = null;
+
+async function jpRefresh() {
+  jpEntries = await api().outputs_list_jianpu() || [];
+  jpChecked = new Set([...jpChecked].filter((p) => jpEntries.some((e) => e.path === p)));
+  if (!jpEntries.some((e) => e.path === jpSel)) jpSel = jpEntries.length ? jpEntries[0].path : null;
+  jpRenderList();
+  jpOpenSelected();
+}
+pageEnterHooks.jianpu = jpRefresh;
+
+function jpRenderList() {
+  const list = $('jp-files');
+  list.replaceChildren();
+  if (!jpEntries.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'Output/ 中还没有简谱 PDF';
+    list.appendChild(li);
+  }
+  for (const e of jpEntries) {
+    const li = document.createElement('li');
+    li.className = 'file' + (e.path === jpSel ? ' sel' : '');
+    const cb = document.createElement('button');
+    cb.className = 'cbx' + (jpChecked.has(e.path) ? ' on' : '');
+    cb.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    cb.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (jpChecked.has(e.path)) jpChecked.delete(e.path); else jpChecked.add(e.path);
+      jpRenderList();
+    });
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = e.name;
+    nm.title = e.path;
+    li.append(cb, nm);
+    li.addEventListener('click', () => { jpSel = e.path; jpRenderList(); jpOpenSelected(); });
+    list.appendChild(li);
+  }
+  $('jp-count').textContent = jpEntries.length ? `勾选 ${jpChecked.size} / ${jpEntries.length}` : '';
+  const cur = jpEntries.find((e) => e.path === jpSel);
+  $('jp-midi').disabled = !(cur && cur.has_midi);
+  $('jp-rerender').disabled = !(cur && cur.has_txt);
+}
+
+function jpOpenSelected() {
+  const cur = jpEntries.find((e) => e.path === jpSel);
+  $('jp-preview-name').textContent = cur ? cur.name : '';
+  const ph = $('jp-stage').querySelector('.placeholder');
+  if (!cur) {
+    jpView.close();
+    if (ph) ph.classList.remove('hidden');
+    return;
+  }
+  if (ph) ph.classList.add('hidden');
+  jpView.open(`/file?path=${encodeURIComponent(cur.path)}`).catch((e) => toast(`PDF 打开失败：${e}`));
+}
+
+$('jp-refresh').addEventListener('click', jpRefresh);
+$('jp-selall').addEventListener('click', () => {
+  jpChecked = jpChecked.size === jpEntries.length
+    ? new Set() : new Set(jpEntries.map((e) => e.path));
+  jpRenderList();
+});
+$('jp-export').addEventListener('click', async () => {
+  if (!jpChecked.size) { toast('先勾选要导出的文件'); return; }
+  const r = await api().outputs_export([...jpChecked]);
+  if (r.ok) toast(`已导出 ${r.copied.length} 个文件到 ${r.dest}`);
+  else if (r.error !== 'cancelled') toast(`导出失败：${r.error || (r.failed && r.failed.length) + ' 个文件失败'}`);
+});
+$('jp-delete').addEventListener('click', async () => {
+  if (!jpChecked.size) { toast('先勾选要删除的文件'); return; }
+  if (!confirm(`删除勾选的 ${jpChecked.size} 个简谱（连同 MIDI 与编辑文本）？`)) return;
+  await api().outputs_delete([...jpChecked]);
+  jpChecked.clear();
+  jpRefresh();
+});
+$('jp-midi').addEventListener('click', async () => {
+  if (!jpSel) return;
+  const r = await api().outputs_play_midi(jpSel);
+  if (!r.ok) toast(r.error === 'not_found' ? `未找到 ${r.name}` : `打开失败：${r.error}`);
+});
+$('jp-rerender').addEventListener('click', async () => {
+  if (!jpSel) return;
+  const r = await api().outputs_rerender(jpSel);
+  if (r.started) toast('正在从简谱文本重新渲染…');
+  else toast(r.error === 'no_txt' ? `未找到 ${r.name}` : `无法重渲：${r.error}`);
+});
+window.addEventListener('rerender_done', (e) => {
+  const d = e.detail || {};
+  if (d.ok) {
+    toast('重新渲染完成');
+    if (d.path === jpSel) jpOpenSelected();
+  } else {
+    toast(`重新渲染失败：${d.error}`);
+  }
+});
+$('jp-prev').addEventListener('click', () => jpView.prev());
+$('jp-next').addEventListener('click', () => jpView.next());
+$('jp-zoomin').addEventListener('click', () => jpView.zoom(1.2));
+$('jp-zoomout').addEventListener('click', () => jpView.zoom(1 / 1.2));
+$('jp-zoomfit').addEventListener('click', () => jpView.zoomFit());
 
 // ═══ 初始化 ══════════════════════════════════════════════════════════════════
 window.addEventListener('pywebviewready', async () => {
