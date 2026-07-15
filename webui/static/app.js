@@ -30,17 +30,22 @@ window.__omrEvents = (events) => {
 })();
 
 // ═══ 导航 ════════════════════════════════════════════════════════════════════
-const PAGES = ['score', 'audio', 'jianpu', 'staff'];
+const PAGES = ['score', 'audio', 'jianpu', 'staff', 'transpose'];
 let activePage = 'score';
 const pageEnterHooks = {};   // page → () => void（进入页面时触发，如刷新列表）
+
+function showPage(name) {
+  activePage = name;
+  for (const p of PAGES) $(`page-${p}`).classList.toggle('hidden', name !== p);
+  // 移调页是五线谱预览的子流程，导航栏保持五线谱高亮
+  const navName = name === 'transpose' ? 'staff' : name;
+  document.querySelectorAll('.nav').forEach((x) => x.removeAttribute('aria-current'));
+  const nav = document.querySelector(`.nav[data-page='${navName}']`);
+  if (nav) nav.setAttribute('aria-current', 'true');
+  if (pageEnterHooks[name]) pageEnterHooks[name]();
+}
 document.querySelectorAll('.nav[data-page]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav').forEach((x) => x.removeAttribute('aria-current'));
-    btn.setAttribute('aria-current', 'true');
-    activePage = btn.dataset.page;
-    for (const p of PAGES) $(`page-${p}`).classList.toggle('hidden', activePage !== p);
-    if (pageEnterHooks[activePage]) pageEnterHooks[activePage]();
-  });
+  btn.addEventListener('click', () => showPage(btn.dataset.page));
 });
 
 // ═══ Toast ═══════════════════════════════════════════════════════════════════
@@ -677,13 +682,175 @@ window.addEventListener('score_midi_done', (e) => {
   if (!d.ok) toast(`MIDI 生成/播放失败：${d.error || ''}`);
 });
 $('st-transpose').addEventListener('click', () => {
-  toast('移调页将在 M3-3 接入');   // TODO(M3-3)：跳转移调页并载入当前 MXL
+  if (!stSel) { toast('先选中一个乐谱'); return; }
+  showPage('transpose');
+  tpLoad(stSel);
 });
 $('st-prev').addEventListener('click', () => stView.prev());
 $('st-next').addEventListener('click', () => stView.next());
 $('st-zoomin').addEventListener('click', () => stView.zoom(1.2));
 $('st-zoomout').addEventListener('click', () => stView.zoom(1 / 1.2));
 $('st-zoomfit').addEventListener('click', () => stView.zoomFit());
+
+// ═══ 移调页 ══════════════════════════════════════════════════════════════════
+// 三种模式（按调/按音程/按度数）分发到 core.notation.transposer；原调/移调后
+// 双栏对比预览；导出 = 渲染五线谱 PDF 另存。从五线谱预览页的「移调」按钮进入。
+const tpOrigView = new PdfView($('tp-orig-canvas'), $('tp-orig-stage'), $('tp-orig-pageinfo'));
+const tpTransView = new PdfView($('tp-trans-canvas'), $('tp-trans-stage'), $('tp-trans-pageinfo'));
+let tpOptionsLoaded = false;
+let tpBusy = false;
+
+async function tpEnsureOptions() {
+  if (tpOptionsLoaded) return;
+  const o = await api().transpose_options();
+  const fill = (sel, items, useObj) => {
+    sel.replaceChildren();
+    for (const it of items || []) {
+      const op = document.createElement('option');
+      op.value = useObj ? it.value : it;
+      op.textContent = useObj ? it.label : it;
+      sel.appendChild(op);
+    }
+  };
+  fill($('tp-from'), o.keys, true);
+  fill($('tp-to'), o.keys, true);
+  fill($('tp-interval'), o.intervals, false);
+  fill($('tp-degree'), o.degrees, false);
+  $('tp-from').value = 'C';
+  $('tp-to').value = 'C';
+  $('tp-interval').value = '大二度';
+  tpOptionsLoaded = true;
+}
+
+function tpSetPlaceholder(which, text) {
+  const ph = $(`tp-${which}-stage`).querySelector('.placeholder');
+  if (text === null) { if (ph) ph.classList.add('hidden'); return; }
+  if (ph) { ph.classList.remove('hidden'); $(`tp-${which}-ph`).textContent = text; }
+}
+
+async function tpLoad(path) {
+  await tpEnsureOptions();
+  tpTransView.close();
+  tpSetPlaceholder('trans', '移调后在此预览');
+  $('tp-export-trans').disabled = true;
+  $('tp-progress').style.width = '0%';
+  const r = await api().transpose_load(path);
+  if (!r.ok) { toast(`打开失败：${r.error || ''}`); return; }
+  $('tp-name').textContent = r.name;
+  $('tp-from').value = r.key;
+  $('tp-status').textContent = `检测到原调：${r.key_cn}`;
+  tpRequestPreview('orig');
+}
+
+async function tpRequestPreview(which) {
+  const r = await api().transpose_preview(which);
+  if (r.pdf) tpShowPreview(which, r.pdf);
+  else if (r.started) tpSetPlaceholder(which, '正在渲染…（LilyPond）');
+  else tpSetPlaceholder(which, `无法预览：${r.error || ''}`);
+}
+
+function tpShowPreview(which, pdf) {
+  tpSetPlaceholder(which, null);
+  const view = which === 'orig' ? tpOrigView : tpTransView;
+  view.open(`/file?path=${encodeURIComponent(pdf)}`).catch((e) => toast(`PDF 打开失败：${e}`));
+}
+
+window.addEventListener('transpose_preview_ready', (e) => {
+  const d = e.detail || {};
+  if (d.ok) tpShowPreview(d.which, d.pdf);
+  else tpSetPlaceholder(d.which, `渲染失败：${d.error || ''}`);
+});
+
+// 模式切换：显示对应字段组；方向选项按模式调整（按调支持「就近」）
+$('tp-mode').addEventListener('change', () => {
+  const m = $('tp-mode').value;
+  document.querySelectorAll('.tp-key').forEach((el) => el.classList.toggle('hidden', m !== 'key'));
+  document.querySelector('.tp-interval').classList.toggle('hidden', m !== 'interval');
+  document.querySelector('.tp-diatonic').classList.toggle('hidden', m !== 'diatonic');
+  document.querySelector('.tp-keysig').classList.toggle('hidden', m === 'diatonic');
+  const dir = $('tp-dir');
+  const hasClosest = m === 'key';
+  const cur = dir.value;
+  dir.replaceChildren();
+  const opts = hasClosest ? [['closest', '就近'], ['up', '向上'], ['down', '向下']]
+                          : [['up', '向上'], ['down', '向下']];
+  for (const [v, label] of opts) {
+    const op = document.createElement('option');
+    op.value = v;
+    op.textContent = label;
+    dir.appendChild(op);
+  }
+  dir.value = opts.some(([v]) => v === cur) ? cur : opts[0][0];
+});
+
+$('tp-keysig').addEventListener('click', (e) => {
+  e.preventDefault();
+  const b = $('tp-keysig');
+  b.classList.toggle('on');
+  b.setAttribute('aria-checked', b.classList.contains('on') ? 'true' : 'false');
+});
+
+$('tp-detect').addEventListener('click', async (e) => {
+  e.preventDefault();
+  if (!$('tp-name').textContent) return;
+  // 重新 load 即重新检测（load 幂等，且会刷新原谱预览缓存判断）
+  const cur = stEntries.find((x) => x.name === $('tp-name').textContent);
+  if (cur) tpLoad(cur.path);
+});
+
+$('tp-run').addEventListener('click', async () => {
+  if (tpBusy) return;
+  const mode = $('tp-mode').value;
+  const params = {
+    direction: $('tp-dir').value,
+    keysig: $('tp-keysig').classList.contains('on'),
+    from_key: $('tp-from').value,
+    to_key: $('tp-to').value,
+    interval: $('tp-interval').value,
+    degree: $('tp-degree').value,
+  };
+  const r = await api().transpose_run(mode, params);
+  if (!r.ok) { toast(r.error === 'no_file' ? '先载入乐谱' : `无法移调：${r.error || ''}`); return; }
+  tpBusy = true;
+  $('tp-run').disabled = true;
+  $('tp-status').textContent = '移调中…';
+  $('tp-progress').style.width = '0%';
+});
+
+window.addEventListener('transpose_progress', (e) => {
+  $('tp-progress').style.width = `${Math.round(((e.detail && e.detail.value) || 0) * 100)}%`;
+});
+window.addEventListener('transpose_done', (e) => {
+  const d = e.detail || {};
+  tpBusy = false;
+  $('tp-run').disabled = false;
+  if (!d.ok) {
+    $('tp-status').textContent = `移调失败：${d.error || ''}`;
+    toast(`移调失败：${d.error || ''}`);
+    return;
+  }
+  $('tp-progress').style.width = '100%';
+  $('tp-status').textContent = `完成：${d.name}`;
+  $('tp-export-trans').disabled = false;
+  tpSetPlaceholder('trans', '正在渲染移调结果…（LilyPond）');
+  tpRequestPreview('trans');
+});
+
+$('tp-back').addEventListener('click', () => showPage('staff'));
+for (const [id, which] of [['tp-export-orig', 'orig'], ['tp-export-trans', 'trans']]) {
+  $(id).addEventListener('click', async () => {
+    const r = await api().transpose_export(which);
+    if (r.ok) toast(`已导出：${r.dest}`);
+    else if (r.error !== 'cancelled') toast(`导出失败：${r.error || ''}`);
+  });
+}
+for (const [pfx, view] of [['tp-orig', tpOrigView], ['tp-trans', tpTransView]]) {
+  $(`${pfx}-prev`).addEventListener('click', () => view.prev());
+  $(`${pfx}-next`).addEventListener('click', () => view.next());
+  $(`${pfx}-zoomin`).addEventListener('click', () => view.zoom(1.2));
+  $(`${pfx}-zoomout`).addEventListener('click', () => view.zoom(1 / 1.2));
+  $(`${pfx}-zoomfit`).addEventListener('click', () => view.zoomFit());
+}
 
 // ═══ 初始化 ══════════════════════════════════════════════════════════════════
 window.addEventListener('pywebviewready', async () => {

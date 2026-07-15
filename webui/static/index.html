@@ -132,8 +132,8 @@
             <canvas id="jp-canvas" class="hidden"></canvas>
           </div>
           <div class="previewbar">
-            <button class="pvbtn" id="jp-midi" title="播放 MIDI"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-            <button class="pvbtn" id="jp-rerender" title="从简谱文本重新渲染"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="chipbtn" id="jp-midi" title="播放 MIDI"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>MIDI</button>
+            <button class="chipbtn" id="jp-rerender" title="从简谱文本重新渲染"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg>重渲</button>
             <span class="lbl num" id="jp-pageinfo"></span>
             <button class="pvbtn" id="jp-prev" title="上一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <button class="pvbtn" id="jp-next" title="下一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -168,8 +168,8 @@
             <canvas id="st-canvas" class="hidden"></canvas>
           </div>
           <div class="previewbar">
-            <button class="pvbtn" id="st-midi" title="播放 MIDI（缺失时可生成）"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-            <button class="pvbtn" id="st-transpose" title="移调"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="chipbtn accent" id="st-transpose" title="对当前乐谱移调（按调 / 音程 / 度数）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>移调</button>
+            <button class="chipbtn" id="st-midi" title="播放 MIDI（缺失时可生成）"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>MIDI</button>
             <span class="lbl num" id="st-pageinfo"></span>
             <button class="pvbtn" id="st-prev" title="上一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <button class="pvbtn" id="st-next" title="下一页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -177,6 +177,96 @@
               <button class="pvbtn" id="st-zoomout" title="缩小"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
               <button class="pvbtn" id="st-zoomfit" title="适应宽度"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
               <button class="pvbtn" id="st-zoomin" title="放大"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════ 移调页（从五线谱预览进入） ════ -->
+      <div class="content transpose hidden" id="page-transpose">
+        <section class="card span" aria-label="移调控制">
+          <header>
+            <button class="chipbtn" id="tp-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>返回</button>
+            <h2>移调</h2>
+            <span class="count" id="tp-name"></span>
+          </header>
+          <div class="pad tp-controls">
+            <div class="field">
+              <span class="lbl">模式</span>
+              <div class="selectwrap"><select id="tp-mode">
+                <option value="key" selected>按调（如 C → G）</option>
+                <option value="interval">按音程（半音级）</option>
+                <option value="diatonic">按度数（全音级）</option>
+              </select></div>
+            </div>
+            <div class="field tp-key">
+              <span class="lbl">原调 <button class="minibtn" id="tp-detect" title="从乐谱检测原调">检测</button></span>
+              <div class="selectwrap"><select id="tp-from"></select></div>
+            </div>
+            <div class="field tp-key">
+              <span class="lbl">目标调</span>
+              <div class="selectwrap"><select id="tp-to"></select></div>
+            </div>
+            <div class="field tp-interval hidden">
+              <span class="lbl">音程</span>
+              <div class="selectwrap"><select id="tp-interval"></select></div>
+            </div>
+            <div class="field tp-diatonic hidden">
+              <span class="lbl">度数</span>
+              <div class="selectwrap"><select id="tp-degree"></select></div>
+            </div>
+            <div class="field">
+              <span class="lbl">方向</span>
+              <div class="selectwrap"><select id="tp-dir">
+                <option value="closest" selected>就近</option>
+                <option value="up">向上</option>
+                <option value="down">向下</option>
+              </select></div>
+            </div>
+            <label class="checkrow tp-keysig"><button class="cbx on" id="tp-keysig" role="checkbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button>同时移调号</label>
+            <button class="primary tp-go" id="tp-run">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              开始移调
+            </button>
+          </div>
+          <div class="pad tp-foot">
+            <div class="meter thin" style="flex:1"><i id="tp-progress"></i></div>
+            <span class="msg small" id="tp-status"></span>
+            <button class="ghost slim" id="tp-export-orig">导出原谱 PDF</button>
+            <button class="ghost slim" id="tp-export-trans" disabled>导出移调 PDF</button>
+          </div>
+        </section>
+
+        <section class="card preview" aria-label="原调预览">
+          <header><h2>原调</h2><span class="count num" id="tp-orig-pageinfo"></span></header>
+          <div class="stage pdfstage" id="tp-orig-stage">
+            <div class="placeholder"><span id="tp-orig-ph">从五线谱预览页选择乐谱进入</span></div>
+            <canvas id="tp-orig-canvas" class="hidden"></canvas>
+          </div>
+          <div class="previewbar">
+            <button class="pvbtn" id="tp-orig-prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="pvbtn" id="tp-orig-next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="zoom">
+              <button class="pvbtn" id="tp-orig-zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-orig-zoomfit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-orig-zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card preview" aria-label="移调后预览">
+          <header><h2>移调后</h2><span class="count num" id="tp-trans-pageinfo"></span></header>
+          <div class="stage pdfstage" id="tp-trans-stage">
+            <div class="placeholder"><span id="tp-trans-ph">移调后在此预览</span></div>
+            <canvas id="tp-trans-canvas" class="hidden"></canvas>
+          </div>
+          <div class="previewbar">
+            <button class="pvbtn" id="tp-trans-prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="pvbtn" id="tp-trans-next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="zoom">
+              <button class="pvbtn" id="tp-trans-zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-trans-zoomfit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-trans-zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
             </div>
           </div>
         </section>

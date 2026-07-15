@@ -101,6 +101,13 @@ button { font-family: inherit; cursor: default; }
 }
 .chipbtn:hover { border-color: var(--border-strong); color: var(--text); }
 .chipbtn svg { width: 15px; height: 15px; }
+.chipbtn:disabled { opacity: .45; }
+/* 强调型 chip：用于页内主要跳转动作（如五线谱页的「移调」入口） */
+.chipbtn.accent {
+  background: var(--accent-tint); border-color: var(--accent);
+  color: var(--accent); font-weight: 500;
+}
+.chipbtn.accent:hover { background: var(--accent-tint-2); color: var(--accent-strong); border-color: var(--accent-strong); }
 .filelist { list-style: none; margin: 0; padding: 8px; overflow: auto; display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 120px; }
 .filelist .empty { color: var(--faint); font-size: 12.5px; padding: 18px 10px; text-align: center; }
 .file {
@@ -253,6 +260,25 @@ button { font-family: inherit; cursor: default; }
 }
 .file .act button:hover { background: var(--inset); color: var(--text); }
 .file .act svg { width: 13px; height: 13px; }
+
+/* ── 移调页 ─────────────────────────────────────────────────────────────── */
+.content.transpose { grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0,1fr); }
+.card.span { grid-column: 1 / -1; }
+.tp-controls {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+}
+.tp-controls .field { min-width: 128px; }
+.tp-controls .checkrow { padding-bottom: 8px; }
+.tp-controls .primary.tp-go { width: auto; padding: 10px 22px; }
+.minibtn {
+  border: 1px solid var(--border); background: var(--card-2); color: var(--muted);
+  border-radius: 6px; font-size: 10.5px; padding: 1px 8px; margin-left: 6px;
+  letter-spacing: normal; text-transform: none;
+}
+.minibtn:hover { border-color: var(--accent); color: var(--accent); }
+.tp-foot { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--border); }
+.tp-foot .ghost.slim { width: auto; padding: 7px 14px; font-size: 12.5px; }
+.tp-foot .msg { min-width: 180px; }
 
 /* toast */
 .toast {

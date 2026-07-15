@@ -24,6 +24,7 @@ from .events import EventPusher
 from .models import ModelsService
 from .outputs import OutputsService, ScoresService
 from .server import start_server
+from .transpose import TransposeService
 
 WINDOW_TITLE = 'SumisoraOMR — pywebview shell'
 
@@ -211,7 +212,8 @@ def main() -> None:
     models = ModelsService(pusher)
     outputs = OutputsService(pusher, whitelist)
     scores = ScoresService(pusher, whitelist)
-    bridge = Bridge(pusher, conversion, models, outputs, scores)
+    transpose = TransposeService(pusher, whitelist)
+    bridge = Bridge(pusher, conversion, models, outputs, scores, transpose)
     # selftest / gate 驱动跑在 M1 测试台（harness.html）上，正式 UI 在 index.html
     page = 'harness.html' if (selftest or gate_mode) else 'index.html'
     window = webview.create_window(

@@ -25,6 +25,7 @@ from .conversion import ConversionService
 from .events import EventPusher
 from .models import ModelsService
 from .outputs import OutputsService, ScoresService
+from .transpose import TransposeService
 
 
 class Bridge:
@@ -33,12 +34,14 @@ class Bridge:
     def __init__(self, pusher: EventPusher, conversion: ConversionService,
                  models: Optional[ModelsService] = None,
                  outputs: Optional[OutputsService] = None,
-                 scores: Optional[ScoresService] = None) -> None:
+                 scores: Optional[ScoresService] = None,
+                 transpose: Optional[TransposeService] = None) -> None:
         self._pusher = pusher
         self._conversion = conversion
         self._models = models
         self._outputs = outputs
         self._scores = scores
+        self._transpose = transpose
         self._window: Optional[webview.Window] = None
         self._maximized = False
 
@@ -139,6 +142,35 @@ class Bridge:
             return {'ok': False, 'error': 'cancelled'}
         dest = result[0] if isinstance(result, (list, tuple)) else result
         return self._scores.export_to(paths, str(dest))
+
+    # ── 移调 ─────────────────────────────────────────────────────────────────
+    def transpose_options(self) -> dict:
+        return self._transpose.options() if self._transpose else {}
+
+    def transpose_load(self, path: str) -> dict:
+        return self._transpose.load(path) if self._transpose else {'ok': False}
+
+    def transpose_preview(self, which: str) -> dict:
+        return self._transpose.render_preview(which) if self._transpose else {'ok': False}
+
+    def transpose_run(self, mode: str, params: dict) -> dict:
+        return self._transpose.run(mode, params or {}) if self._transpose else {'ok': False}
+
+    def transpose_export(self, which: str) -> dict:
+        """Save-as dialog for the original/transposed staff PDF, then render+copy."""
+        if self._transpose is None or self._window is None:
+            return {'ok': False, 'error': 'no service'}
+        default = self._transpose.default_export_name(which)
+        if default is None:
+            return {'ok': False, 'error': 'no_file'}
+        result = self._window.create_file_dialog(
+            webview.FileDialog.SAVE, save_filename=default,
+            file_types=('PDF (*.pdf)',),
+        )
+        if not result:
+            return {'ok': False, 'error': 'cancelled'}
+        dest = result[0] if isinstance(result, (list, tuple)) else result
+        return self._transpose.export_to(which, str(dest))
 
     # ── 系统集成 ─────────────────────────────────────────────────────────────
     def shell_open_output_dir(self) -> dict:
