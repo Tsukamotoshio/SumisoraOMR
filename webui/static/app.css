@@ -280,6 +280,23 @@ button { font-family: inherit; cursor: default; }
 .tp-foot .ghost.slim { width: auto; padding: 7px 14px; font-size: 12.5px; }
 .tp-foot .msg { min-width: 180px; }
 
+/* ── 关于页 ─────────────────────────────────────────────────────────────── */
+.content.about { grid-template-columns: 1fr; justify-items: center; align-content: start; }
+.about-card { width: min(640px, 100%); }
+.about-head { display: flex; align-items: center; gap: 14px; }
+.dot.big { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px var(--accent-tint); flex: none; }
+.about-title { font-size: 17px; font-weight: 600; }
+.about-row { display: flex; align-items: baseline; gap: 14px; }
+.about-row .lbl { min-width: 72px; }
+.about-row a { color: var(--accent); text-decoration: none; }
+.about-row a:hover { text-decoration: underline; color: var(--accent-strong); }
+pre.license {
+  margin: 0; padding: 12px 14px; border-radius: 9px;
+  background: var(--inset); border: 1px solid var(--border);
+  font: 12px/1.7 inherit; font-family: inherit;
+  color: var(--muted); white-space: pre-wrap; user-select: text;
+}
+
 /* toast */
 .toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);

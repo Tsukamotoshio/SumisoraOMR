@@ -60,6 +60,22 @@ class Bridge:
         from core.config import APP_VERSION
         return {'version': APP_VERSION}
 
+    def shell_open_url(self, url: str) -> None:
+        """Open a URL in the default browser (about page homepage link)."""
+        import webbrowser
+        if url.startswith(('https://', 'http://')):
+            webbrowser.open_new_tab(url)
+
+    def about_copy_diagnostics(self) -> dict:
+        """Collect environment diagnostics and copy to clipboard (may take a
+        few seconds — collection can import onnxruntime)."""
+        try:
+            from core.app.diagnostics import collect_diagnostics, copy_to_clipboard
+            ok = copy_to_clipboard(collect_diagnostics())
+            return {'ok': ok, 'error': None if ok else 'clipboard'}
+        except Exception as exc:  # noqa: BLE001
+            return {'ok': False, 'error': str(exc)}
+
     # ── 文件托盘 ──────────────────────────────────────────────────────────────
     def files_list(self, view: Optional[str] = None) -> list:
         return self._conversion.files_list(view)

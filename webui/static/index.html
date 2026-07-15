@@ -45,9 +45,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18M3 11h18M3 15h18" opacity=".55"/><path d="M8 5c-1.5 4-1.5 10 0 14M13 5c-1.2 4-1.2 10 0 14" stroke-linecap="round"/></svg>
         五线谱预览
       </button>
-      <button class="nav" disabled title="M3 接入">
+      <button class="nav" data-page="about">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>
-        关于<span class="soon">M3</span>
+        关于
       </button>
     </nav>
 
@@ -311,6 +311,43 @@
               <button class="ghost" id="piano-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg>下载</button>
               <button class="ghost" id="piano-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg>删除</button>
             </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════ 关于页 ════ -->
+      <div class="content about hidden" id="page-about">
+        <section class="card about-card">
+          <div class="pad stack">
+            <div class="about-head">
+              <span class="dot big"></span>
+              <div>
+                <div class="about-title">SumisoraOMR <span class="num muted" id="about-ver"></span></div>
+                <div class="muted">五线谱识别与简谱生成工具</div>
+              </div>
+            </div>
+            <div class="rule"></div>
+            <div class="about-row"><span class="lbl">作者</span><span>Tsukamotoshio</span></div>
+            <div class="about-row"><span class="lbl">项目主页</span>
+              <a href="#" id="about-github">github.com/Tsukamotoshio/SumisoraOMR</a></div>
+            <div class="rule"></div>
+            <span class="lbl">开源许可证 (AGPL-3.0)</span>
+            <pre class="license">GNU Affero General Public License v3.0
+
+Copyright (c) 2026 Tsukamotoshio
+
+本程序是自由软件：您可以根据自由软件基金会发布的 GNU Affero 通用公共许可证
+（第 3 版或更高版本）重新分发或修改它。
+
+本程序的发布是希望它有用，但不提供任何担保；甚至不提供对适销性或特定用途
+适用性的隐含担保。详情请参阅 GNU Affero 通用公共许可证。
+
+您应该已收到 GNU Affero 通用公共许可证的副本；如未收到，请访问：
+https://www.gnu.org/licenses/agpl-3.0.html</pre>
+            <div class="rule"></div>
+            <span class="lbl">诊断信息</span>
+            <p class="muted small" style="margin:0">报告问题时，请点击下方按钮复制环境信息一并附上。</p>
+            <button class="ghost" id="about-diag" style="width:auto;align-self:flex-start">复制诊断信息</button>
           </div>
         </section>
       </div>

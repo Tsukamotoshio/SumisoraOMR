@@ -30,7 +30,7 @@ window.__omrEvents = (events) => {
 })();
 
 // ═══ 导航 ════════════════════════════════════════════════════════════════════
-const PAGES = ['score', 'audio', 'jianpu', 'staff', 'transpose'];
+const PAGES = ['score', 'audio', 'jianpu', 'staff', 'transpose', 'about'];
 let activePage = 'score';
 const pageEnterHooks = {};   // page → () => void（进入页面时触发，如刷新列表）
 
@@ -852,9 +852,28 @@ for (const [pfx, view] of [['tp-orig', tpOrigView], ['tp-trans', tpTransView]]) 
   $(`${pfx}-zoomfit`).addEventListener('click', () => view.zoomFit());
 }
 
+// ═══ 关于页 ══════════════════════════════════════════════════════════════════
+$('about-github').addEventListener('click', (e) => {
+  e.preventDefault();
+  api().shell_open_url('https://github.com/Tsukamotoshio/SumisoraOMR');
+});
+$('about-diag').addEventListener('click', async () => {
+  $('about-diag').disabled = true;
+  toast('正在收集诊断信息…');
+  try {
+    const r = await api().about_copy_diagnostics();
+    toast(r.ok ? '诊断信息已复制到剪贴板' : `复制失败：${r.error || ''}`);
+  } finally {
+    $('about-diag').disabled = false;
+  }
+});
+
 // ═══ 初始化 ══════════════════════════════════════════════════════════════════
 window.addEventListener('pywebviewready', async () => {
-  api().app_info().then((info) => { $('ver').textContent = 'v' + (info.version || ''); });
+  api().app_info().then((info) => {
+    $('ver').textContent = 'v' + (info.version || '');
+    $('about-ver').textContent = 'v' + (info.version || '');
+  });
   api().files_list().then((files) => {
     trayCache = files || [];
     renderView('score');
