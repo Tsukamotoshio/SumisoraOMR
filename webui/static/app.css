@@ -237,19 +237,48 @@ button { font-family: inherit; cursor: default; }
 .content.two { grid-template-columns: 280px minmax(0,1fr); }
 .previewbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
 .previewbar .lbl { margin-left: auto; }
-.zoom { display: flex; gap: 4px; margin-left: 10px; }
 .pvbtn {
-  width: 28px; height: 28px; border-radius: 7px;
+  width: 30px; height: 28px; border-radius: 7px;
   border: 1px solid var(--border); background: var(--card-2); color: var(--muted);
   display: grid; place-items: center;
 }
-.pvbtn:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text); }
+.pvbtn:hover:not(:disabled) { background: var(--accent-tint); color: var(--accent); }
 .pvbtn:disabled { opacity: .4; }
 .pvbtn svg { width: 15px; height: 15px; }
-.stage.pdfstage { place-items: start center; padding: 18px; }
-.stage.pdfstage canvas {
-  max-width: 100%; border-radius: 8px; box-shadow: var(--shadow); background: #fff;
+
+/* segmented control：相连按钮组（业界惯用），共享内边框，只保留外侧圆角 */
+.btngroup { display: inline-flex; }
+.btngroup > .pvbtn { border-radius: 0; margin-left: -1px; position: relative; }
+.btngroup > .pvbtn:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+.btngroup > .pvbtn:last-child { border-radius: 0 7px 7px 0; }
+.btngroup > .pvbtn:hover:not(:disabled) { z-index: 1; }
+.zoom { margin-left: 10px; }
+
+/* 列表卡工具条：四个动作等宽相连占满整行（文件管理器命令栏样式） */
+.chipgroup { display: flex; width: 100%; }
+.chipgroup .chipbtn {
+  flex: 1; justify-content: center;
+  border-radius: 0; margin-left: -1px; position: relative;
+  padding-left: 6px; padding-right: 6px;
 }
+.chipgroup .chipbtn:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+.chipgroup .chipbtn:last-child { border-radius: 0 8px 8px 0; }
+.chipgroup .chipbtn:hover:not(:disabled) { z-index: 1; }
+.chipbtn.danger:hover:not(:disabled) {
+  border-color: var(--danger); color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.stage.pdfstage { display: flex; padding: 16px; }
+/* A4 画框：预览视口固定 A4 比例（按可用高度定宽），fit 缩放即恰好整页；
+   放大超出后在画框内滚动，画框本身不变形。 */
+.a4frame {
+  height: 100%; aspect-ratio: 210 / 297;
+  max-width: 100%;
+  margin: auto; overflow: auto;
+  background: #fff; border-radius: 8px; box-shadow: var(--shadow);
+}
+.a4frame:has(> canvas.hidden) { display: none; }
+.a4frame canvas { display: block; }
 .file .act {
   margin-left: auto; display: none; gap: 2px; flex: none;
 }
@@ -296,6 +325,17 @@ pre.license {
   font: 12px/1.7 inherit; font-family: inherit;
   color: var(--muted); white-space: pre-wrap; user-select: text;
 }
+
+/* ── 窗口 resize 把手（frameless）───────────────────────────────────────── */
+.resize-grip { position: fixed; z-index: 200; }
+.grip-n  { top: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+.grip-s  { bottom: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+.grip-e  { right: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+.grip-w  { left: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+.grip-nw { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+.grip-se { bottom: 0; right: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+.grip-ne { top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+.grip-sw { bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; }
 
 /* toast */
 .toast {

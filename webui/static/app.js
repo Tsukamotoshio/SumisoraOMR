@@ -60,6 +60,24 @@ function toast(text) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
 }
 
+// ═══ 窗口边缘 resize 把手（frameless 窗口任意调整大小） ═══════════════════════
+// pointerdown → Python 发 SC_SIZE，进入 Windows 原生 resize 循环（原生手感）。
+(function initResizeGrips() {
+  const DIRS = {
+    n: 'top', s: 'bottom', e: 'right', w: 'left',
+    ne: 'topright', nw: 'topleft', se: 'bottomright', sw: 'bottomleft',
+  };
+  for (const [k, dir] of Object.entries(DIRS)) {
+    const g = document.createElement('div');
+    g.className = `resize-grip grip-${k}`;
+    g.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      window.pywebview.api.window_start_resize(dir);
+    });
+    document.body.appendChild(g);
+  }
+})();
+
 // ═══ 标题栏 ══════════════════════════════════════════════════════════════════
 $('btn-min').addEventListener('click', () => api().window_minimize());
 $('btn-max').addEventListener('click', () => api().window_toggle_maximize());
@@ -423,8 +441,15 @@ class PdfView {
   }
 
   _fitScale(page) {
-    const avail = this.stage.clientWidth - 36;
-    return avail > 0 ? avail / page.getViewport({ scale: 1 }).width : 1;
+    // fit = 整页装入 A4 画框（宽高双约束取小 = contain）。A4 页面正好铺满；
+    // 非 A4 页面也保证整页可见。-1px 抵消取整误差，避免冒出滚动条吃掉宽度。
+    const frame = this.canvas.parentElement;
+    const vp = page.getViewport({ scale: 1 });
+    if (!frame) return Math.max(0.1, (this.stage.clientWidth - 36) / vp.width);
+    const w = frame.clientWidth - 1;
+    const h = frame.clientHeight - 1;
+    if (w <= 0 || h <= 0) return 1;
+    return Math.min(w / vp.width, h / vp.height);
   }
 
   async render() {
@@ -432,6 +457,8 @@ class PdfView {
     const token = ++this._renderToken;
     const page = await this.doc.getPage(this.pageNo);
     if (token !== this._renderToken) return;
+    // 先取消隐藏再测量：canvas.hidden 时 A4 画框 display:none，宽度为 0
+    this.canvas.classList.remove('hidden');
     const scale = this.scale ?? this._fitScale(page);
     const dpr = window.devicePixelRatio || 1;
     const vp = page.getViewport({ scale: scale * dpr });
@@ -439,7 +466,6 @@ class PdfView {
     this.canvas.height = vp.height;
     this.canvas.style.width = `${vp.width / dpr}px`;
     this.canvas.style.height = `${vp.height / dpr}px`;
-    this.canvas.classList.remove('hidden');
     await page.render({ canvas: this.canvas, viewport: vp }).promise;
     if (this.pageInfoEl) this.pageInfoEl.textContent = `第 ${this.pageNo} / ${this.doc.numPages} 页`;
   }

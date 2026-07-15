@@ -244,3 +244,26 @@ class Bridge:
     def window_close(self) -> None:
         if self._window is not None:
             self._window.destroy()
+
+    # frameless 窗口边缘拖拽调整大小：SC_SIZE + WMSZ_* 让 Windows 进入原生
+    # resize 模态循环（与系统窗口边缘完全一致的手感，含最小尺寸与贴边）。
+    _RESIZE_EDGES = {
+        'left': 1, 'right': 2, 'top': 3, 'topleft': 4,
+        'topright': 5, 'bottom': 6, 'bottomleft': 7, 'bottomright': 8,
+    }
+
+    def window_start_resize(self, direction: str) -> None:
+        if self._window is None or self._maximized:
+            return
+        edge = self._RESIZE_EDGES.get(direction)
+        if edge is None:
+            return
+        try:
+            import ctypes
+            handle = self._window.native.Handle  # WinForms Form 句柄（IntPtr）
+            hwnd = int(handle) if isinstance(handle, int) else handle.ToInt64()
+            WM_SYSCOMMAND, SC_SIZE = 0x0112, 0xF000
+            ctypes.windll.user32.ReleaseCapture()
+            ctypes.windll.user32.SendMessageW(hwnd, WM_SYSCOMMAND, SC_SIZE + edge, 0)
+        except Exception:
+            pass  # 非 Windows / 后端变更时静默忽略，不破坏其它功能
