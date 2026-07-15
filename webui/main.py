@@ -206,6 +206,11 @@ def main() -> None:
     gate_mode = next((a for a in sys.argv if a in ('--happy', '--gate2', '--gate3', '--gate4')), None)
     gate_file = sys.argv[sys.argv.index(gate_mode) + 1] if gate_mode else None
 
+    # 启动时恢复持久化语言（与 Flet 版共用 ui-settings.json / gui.strings 状态）
+    from gui.settings import get_saved_language
+    from gui.strings import set_language
+    set_language(get_saved_language())
+
     _httpd, base_url, whitelist = start_server()
     pusher = EventPusher()
     conversion = ConversionService(pusher, whitelist)

@@ -60,6 +60,25 @@ class Bridge:
         from core.config import APP_VERSION
         return {'version': APP_VERSION}
 
+    # ── i18n ─────────────────────────────────────────────────────────────────
+    def i18n_catalog(self) -> dict:
+        """Full string catalog + current language (single source: Python)."""
+        from gui.strings import get_language
+
+        from .i18n import merged_catalog
+        return {'lang': get_language(), 'strings': merged_catalog()}
+
+    def i18n_set_language(self, lang: str) -> dict:
+        """Switch UI language; also flips gui.strings so worker-side summary
+        text (ConversionRunner uses t()) follows, and persists the choice."""
+        if lang not in ('zh', 'en'):
+            return {'ok': False}
+        from gui.settings import set_saved_language
+        from gui.strings import set_language
+        set_language(lang)
+        set_saved_language(lang)
+        return {'ok': True, 'lang': lang}
+
     def shell_open_url(self, url: str) -> None:
         """Open a URL in the default browser (about page homepage link)."""
         import webbrowser

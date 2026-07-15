@@ -5,6 +5,23 @@
 const $ = (id) => document.getElementById(id);
 const api = () => window.pywebview.api;
 
+// ═══ i18n ════════════════════════════════════════════════════════════════════
+// 目录由 Python 下发（gui/strings.py + webui/i18n.py 合并，Python 为唯一事实源）。
+// 静态文本：data-i18n / data-i18n-title 属性，retranslate() 统一刷；
+// 动态文本：JS 里一律 t(key, params)。
+const I18N = { lang: 'zh', strings: {} };
+function t(key, params) {
+  const entry = I18N.strings[key];
+  let s = entry ? (entry[I18N.lang] || entry.zh || key) : key;
+  if (params) for (const [k, v] of Object.entries(params)) s = s.split(`{${k}}`).join(String(v));
+  return s;
+}
+function retranslate() {
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+  document.documentElement.lang = I18N.lang === 'zh' ? 'zh-CN' : 'en';
+}
+
 // gate/自动化驱动可读的 UI 状态镜像（与 harness 同名约定）
 window.__uiFlags = { busy: false, lastError: null, statusText: '', progressEvents: 0, summary: null };
 
@@ -90,9 +107,9 @@ document.querySelector('.titlebar').addEventListener('dblclick', (e) => {
 // ═══ 文件托盘（分视图渲染；Python 端共享一份托盘） ═══════════════════════════
 const VIEW = {
   score: { list: 'score-files', count: 'score-count', sel: null,
-           empty: '拖入 PDF / PNG / JPG，或点「添加文件」' },
+           empty: 'w.score.empty' },
   audio: { list: 'audio-files', count: 'audio-count', sel: null,
-           empty: '拖入 MP3 / WAV / FLAC / OGG，或点「添加文件」' },
+           empty: 'w.audio.empty' },
 };
 
 const ICONS = {
@@ -115,7 +132,7 @@ function renderView(view) {
   if (!files.length) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = cfg.empty;
+    li.textContent = t(cfg.empty);
     listEl.appendChild(li);
     cfg.sel = null;
     updatePreview(view, null);
@@ -153,7 +170,7 @@ function renderView(view) {
     updatePreview(view, files.find((f) => f.path === cfg.sel) || null);
   }
   const checked = files.filter((f) => f.checked).length;
-  $(cfg.count).textContent = `已选 ${checked} / ${files.length}`;
+  $(cfg.count).textContent = t('w.list.selected_count', { n: checked, t: files.length });
 }
 
 function updatePreview(view, file) {
@@ -163,9 +180,12 @@ function updatePreview(view, file) {
   const url = file ? `/file?path=${encodeURIComponent(file.path)}` : null;
   stage.replaceChildren();
   if (!file) {
-    stage.innerHTML = view === 'score'
-      ? '<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>选中文件后在此预览<br>（PDF 预览将在 M3 接入 pdf.js）</span></div>'
-      : '<div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg><span>选中音频后在此试听<br>（识别引擎仅支持钢琴独奏）</span></div>';
+    const phKey = view === 'score' ? 'w.score.preview_ph' : 'w.audio.listen_ph';
+    const phIcon = view === 'score'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>';
+    stage.innerHTML = `<div class="placeholder">${phIcon}<span data-i18n="${phKey}"></span></div>`;
+    stage.querySelector('[data-i18n]').textContent = t(phKey);
     return;
   }
   if (view === 'audio') {
@@ -183,7 +203,7 @@ function updatePreview(view, file) {
     ph.className = 'placeholder';
     ph.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 13h6M9 17h4" stroke-linecap="round"/></svg>';
     const span = document.createElement('span');
-    span.textContent = `${file.name} — PDF 预览将在 M3 接入 pdf.js`;
+    span.textContent = `${file.name} — ${t('w.score.preview_ph')}`;
     ph.appendChild(span);
     stage.appendChild(ph);
   }
@@ -225,19 +245,19 @@ async function startConvert(view) {
   }
   const r = await api().convert_start(opts);
   if (!r.ok) {
-    if (r.error === 'no_files') alert('没有勾选的文件。');
-    else if (r.error === 'busy') alert('已有转换在进行中。');
+    if (r.error === 'no_files') alert(t('w.conv.no_files'));
+    else if (r.error === 'busy') alert(t('w.conv.busy'));
     return;
   }
   converting = true;
   window.__uiFlags.busy = true;
-  showOverlay(view === 'score' ? `正在识别乐谱（${r.count} 个文件）` : `正在识别音频（${r.count} 个文件）`);
+  showOverlay(t(view === 'score' ? 'w.conv.running_score' : 'w.conv.running_audio', { n: r.count }));
 }
 $('score-start').addEventListener('click', () => startConvert('score'));
 $('audio-start').addEventListener('click', () => startConvert('audio'));
 $('prog-cancel').addEventListener('click', async () => {
   cancelling = true;
-  $('prog-msg').textContent = '取消中…（正在终止 worker）';
+  $('prog-msg').textContent = t('w.conv.cancelling');
   await api().convert_cancel();
 });
 
@@ -279,7 +299,7 @@ window.addEventListener('progress_error', (e) => {
   converting = false;
   hideOverlay();
   if (cancelling) return; // 取消确认，不弹错误
-  showResult({ error: (e.detail && e.detail.message) || '未知错误' });
+  showResult({ error: (e.detail && e.detail.message) || t('w.result.unknown') });
 });
 window.addEventListener('conversion_finished', (e) => {
   window.__uiFlags.busy = false;
@@ -299,7 +319,7 @@ function showResult({ summary, error }) {
   pills.replaceChildren();
   list.replaceChildren();
   if (error) {
-    $('result-title').textContent = '识别失败';
+    $('result-title').textContent = t('w.result.title_error');
     const item = document.createElement('div');
     item.className = 'result-item';
     item.innerHTML = '<span class="tag bad">✗</span>';
@@ -309,7 +329,7 @@ function showResult({ summary, error }) {
     item.appendChild(why);
     list.appendChild(item);
   } else {
-    $('result-title').textContent = '识别结果';
+    $('result-title').textContent = t('w.result.title');
     const mk = (cls, label, n) => {
       // 全 textContent 构建；n 强制数值化（summary 来自 Python，防御性处理）
       const p = document.createElement('span');
@@ -320,9 +340,9 @@ function showResult({ summary, error }) {
       p.appendChild(b);
       pills.appendChild(p);
     };
-    mk('ok', '成功', summary.success_count || 0);
-    if (summary.fallback_count) mk('warn', '引擎回退', summary.fallback_count);
-    mk(summary.failed_count ? 'bad' : '', '失败', summary.failed_count || 0);
+    mk('ok', t('w.result.success'), summary.success_count || 0);
+    if (summary.fallback_count) mk('warn', t('w.result.fallback'), summary.fallback_count);
+    mk(summary.failed_count ? 'bad' : '', t('w.result.failed'), summary.failed_count || 0);
     const addItem = (tagCls, tagTxt, fileName, why) => {
       const item = document.createElement('div');
       item.className = 'result-item';
@@ -341,8 +361,8 @@ function showResult({ summary, error }) {
       }
       list.appendChild(item);
     };
-    for (const f of summary.success_files || []) addItem('ok', '✓', f.file, f.engine_used ? `引擎 ${f.engine_used}` : '');
-    for (const f of summary.fallback_files || []) addItem('warn', '↻', f.file, `引擎回退 ${f.engine_used || ''}`);
+    for (const f of summary.success_files || []) addItem('ok', '✓', f.file, f.engine_used ? t('w.result.engine', { name: f.engine_used }) : '');
+    for (const f of summary.fallback_files || []) addItem('warn', '↻', f.file, t('w.result.fallback_engine', { name: f.engine_used || '' }));
     for (const f of summary.failed_files || []) addItem('bad', '✗', f.file, f.reason || '');
   }
   $('result-overlay').classList.remove('hidden');
@@ -357,13 +377,13 @@ function renderModels(st) {
   const homr = $('homr-status');
   homr.classList.toggle('absent', !st.homr.available);
   $('homr-status-text').textContent = st.homr.available
-    ? 'OMR 引擎 “Homr” · 已就绪'
-    : `未就绪（${st.homr.files_present}/${st.homr.files_total} 个权重）`;
+    ? t('w.score.homr_ready')
+    : t('w.score.homr_missing', { p: st.homr.files_present, t: st.homr.files_total });
   $('homr-download').disabled = st.homr.available;
   $('homr-delete').disabled = !st.homr.files_present;
   const piano = $('piano-status');
   piano.classList.toggle('absent', !st.piano.available);
-  $('piano-status-text').textContent = st.piano.available ? '钢琴转录模型 · 已就绪' : '未下载（约 172 MB，按需）';
+  $('piano-status-text').textContent = st.piano.available ? t('w.audio.piano_ready') : t('w.audio.piano_missing');
   $('piano-download').disabled = st.piano.available;
   $('piano-delete').disabled = !st.piano.available;
 }
@@ -373,19 +393,19 @@ async function refreshModels() { renderModels(await api().models_status()); }
 function startModelDownload(kind, title) {
   modelKind = kind;
   $('model-title').textContent = title;
-  $('model-msg').textContent = '连接中…';
+  $('model-msg').textContent = t('w.model.connecting');
   $('model-bar').style.width = '0%';
   $('model-overlay').classList.remove('hidden');
   api().models_download(kind);
 }
-$('homr-download').addEventListener('click', () => startModelDownload('homr', '下载 HOMR 模型权重'));
-$('piano-download').addEventListener('click', () => startModelDownload('piano', '下载钢琴转录模型（约 172 MB）'));
+$('homr-download').addEventListener('click', () => startModelDownload('homr', t('w.model.dl_title_homr')));
+$('piano-download').addEventListener('click', () => startModelDownload('piano', t('w.model.dl_title_piano')));
 $('model-cancel').addEventListener('click', () => { if (modelKind) api().models_cancel_download(modelKind); });
 $('homr-delete').addEventListener('click', async () => {
-  if (confirm('删除 HOMR 模型权重？删除后图片识别将不可用，可随时重新下载。')) await api().models_delete('homr');
+  if (confirm(t('w.model.del_homr_confirm'))) await api().models_delete('homr');
 });
 $('piano-delete').addEventListener('click', async () => {
-  if (confirm('删除钢琴转录模型？可随时重新下载。')) await api().models_delete('piano');
+  if (confirm(t('w.model.del_piano_confirm'))) await api().models_delete('piano');
 });
 
 window.addEventListener('model_download_progress', (e) => {
@@ -399,7 +419,7 @@ window.addEventListener('model_download_done', (e) => {
   if (d.kind !== modelKind) return;
   $('model-overlay').classList.add('hidden');
   modelKind = null;
-  if (!d.ok && d.error !== 'cancelled') alert(`模型下载失败：${d.error}`);
+  if (!d.ok && d.error !== 'cancelled') alert(t('w.model.dl_failed', { e: d.error }));
 });
 window.addEventListener('models_changed', (e) => renderModels(e.detail && e.detail.status));
 
@@ -467,7 +487,7 @@ class PdfView {
     this.canvas.style.width = `${vp.width / dpr}px`;
     this.canvas.style.height = `${vp.height / dpr}px`;
     await page.render({ canvas: this.canvas, viewport: vp }).promise;
-    if (this.pageInfoEl) this.pageInfoEl.textContent = `第 ${this.pageNo} / ${this.doc.numPages} 页`;
+    if (this.pageInfoEl) this.pageInfoEl.textContent = t('w.pv.page_info', { n: this.pageNo, t: this.doc.numPages });
   }
 
   prev() { if (this.doc && this.pageNo > 1) { this.pageNo -= 1; this.render(); } }
@@ -505,7 +525,7 @@ function jpRenderList() {
   if (!jpEntries.length) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = 'Output/ 中还没有简谱 PDF';
+    li.textContent = t('w.jp.empty');
     list.appendChild(li);
   }
   for (const e of jpEntries) {
@@ -527,7 +547,7 @@ function jpRenderList() {
     li.addEventListener('click', () => { jpSel = e.path; jpRenderList(); jpOpenSelected(); });
     list.appendChild(li);
   }
-  $('jp-count').textContent = jpEntries.length ? `勾选 ${jpChecked.size} / ${jpEntries.length}` : '';
+  $('jp-count').textContent = jpEntries.length ? t('w.list.checked_count', { n: jpChecked.size, t: jpEntries.length }) : '';
   const cur = jpEntries.find((e) => e.path === jpSel);
   $('jp-midi').disabled = !(cur && cur.has_midi);
   $('jp-rerender').disabled = !(cur && cur.has_txt);
@@ -543,7 +563,7 @@ function jpOpenSelected() {
     return;
   }
   if (ph) ph.classList.add('hidden');
-  jpView.open(`/file?path=${encodeURIComponent(cur.path)}`).catch((e) => toast(`PDF 打开失败：${e}`));
+  jpView.open(`/file?path=${encodeURIComponent(cur.path)}`).catch((e) => toast(t('w.pv.open_failed', { e })));
 }
 
 $('jp-refresh').addEventListener('click', jpRefresh);
@@ -553,14 +573,14 @@ $('jp-selall').addEventListener('click', () => {
   jpRenderList();
 });
 $('jp-export').addEventListener('click', async () => {
-  if (!jpChecked.size) { toast('先勾选要导出的文件'); return; }
+  if (!jpChecked.size) { toast(t('w.list.pick_first_export')); return; }
   const r = await api().outputs_export([...jpChecked]);
-  if (r.ok) toast(`已导出 ${r.copied.length} 个文件到 ${r.dest}`);
-  else if (r.error !== 'cancelled') toast(`导出失败：${r.error || (r.failed && r.failed.length) + ' 个文件失败'}`);
+  if (r.ok) toast(t('w.jp.export_done', { n: r.copied.length, dest: r.dest }));
+  else if (r.error !== 'cancelled') toast(t('w.tp.export_failed', { e: r.error || (r.failed && r.failed.length) }));
 });
 $('jp-delete').addEventListener('click', async () => {
-  if (!jpChecked.size) { toast('先勾选要删除的文件'); return; }
-  if (!confirm(`删除勾选的 ${jpChecked.size} 个简谱（连同 MIDI 与编辑文本）？`)) return;
+  if (!jpChecked.size) { toast(t('w.list.pick_first_delete')); return; }
+  if (!confirm(t('w.jp.delete_confirm', { n: jpChecked.size }))) return;
   await api().outputs_delete([...jpChecked]);
   jpChecked.clear();
   jpRefresh();
@@ -568,21 +588,21 @@ $('jp-delete').addEventListener('click', async () => {
 $('jp-midi').addEventListener('click', async () => {
   if (!jpSel) return;
   const r = await api().outputs_play_midi(jpSel);
-  if (!r.ok) toast(r.error === 'not_found' ? `未找到 ${r.name}` : `打开失败：${r.error}`);
+  if (!r.ok) toast(r.error === 'not_found' ? t('w.jp.no_midi', { name: r.name }) : t('w.tp.open_failed', { e: r.error }));
 });
 $('jp-rerender').addEventListener('click', async () => {
   if (!jpSel) return;
   const r = await api().outputs_rerender(jpSel);
-  if (r.started) toast('正在从简谱文本重新渲染…');
-  else toast(r.error === 'no_txt' ? `未找到 ${r.name}` : `无法重渲：${r.error}`);
+  if (r.started) toast(t('w.jp.rerender_started'));
+  else toast(r.error === 'no_txt' ? t('w.jp.no_txt', { name: r.name }) : t('w.jp.rerender_failed', { e: r.error }));
 });
 window.addEventListener('rerender_done', (e) => {
   const d = e.detail || {};
   if (d.ok) {
-    toast('重新渲染完成');
+    toast(t('w.jp.rerender_done'));
     if (d.path === jpSel) jpOpenSelected();
   } else {
-    toast(`重新渲染失败：${d.error}`);
+    toast(t('w.jp.rerender_failed', { e: d.error }));
   }
 });
 $('jp-prev').addEventListener('click', () => jpView.prev());
@@ -615,7 +635,7 @@ function stRenderList() {
   if (!stEntries.length) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = 'xml-scores/ 中还没有 MusicXML';
+    li.textContent = t('w.st.empty');
     list.appendChild(li);
   }
   for (const e of stEntries) {
@@ -637,7 +657,7 @@ function stRenderList() {
     li.addEventListener('click', () => { stSel = e.path; stRenderList(); stOpenSelected(); });
     list.appendChild(li);
   }
-  $('st-count').textContent = stEntries.length ? `勾选 ${stChecked.size} / ${stEntries.length}` : '';
+  $('st-count').textContent = stEntries.length ? t('w.list.checked_count', { n: stChecked.size, t: stEntries.length }) : '';
 }
 
 async function stOpenSelected() {
@@ -646,20 +666,20 @@ async function stOpenSelected() {
   const ph = $('st-stage').querySelector('.placeholder');
   if (!cur) {
     stView.close();
-    if (ph) { ph.classList.remove('hidden'); $('st-placeholder-text').textContent = '选中左侧文件预览五线谱'; }
+    if (ph) { ph.classList.remove('hidden'); $('st-placeholder-text').textContent = t('w.st.preview_ph'); }
     return;
   }
   const r = await api().scores_preview(cur.path);
   if (r.pdf) {
     if (ph) ph.classList.add('hidden');
     stPendingRender = null;
-    stView.open(`/file?path=${encodeURIComponent(r.pdf)}`).catch((e2) => toast(`PDF 打开失败：${e2}`));
+    stView.open(`/file?path=${encodeURIComponent(r.pdf)}`).catch((e2) => toast(t('w.pv.open_failed', { e: e2 })));
   } else if (r.started) {
     stPendingRender = cur.path;
     stView.close();
-    if (ph) { ph.classList.remove('hidden'); $('st-placeholder-text').textContent = `正在渲染 ${cur.name} …（LilyPond）`; }
+    if (ph) { ph.classList.remove('hidden'); $('st-placeholder-text').textContent = t('w.st.rendering', { name: cur.name }); }
   } else {
-    toast(`无法预览：${r.error || '未知错误'}`);
+    toast(t('w.pv.cannot_preview', { e: r.error || t('w.result.unknown') }));
   }
 }
 
@@ -668,12 +688,12 @@ window.addEventListener('score_preview_ready', (e) => {
   if (d.mxl !== stPendingRender) return;   // 已切换到其它文件，丢弃
   stPendingRender = null;
   if (!d.ok) {
-    $('st-placeholder-text').textContent = `渲染失败：${d.error || ''}`;
+    $('st-placeholder-text').textContent = t('w.st.render_failed', { e: d.error || '' });
     return;
   }
   const ph = $('st-stage').querySelector('.placeholder');
   if (ph) ph.classList.add('hidden');
-  stView.open(`/file?path=${encodeURIComponent(d.pdf)}`).catch((e2) => toast(`PDF 打开失败：${e2}`));
+  stView.open(`/file?path=${encodeURIComponent(d.pdf)}`).catch((e2) => toast(t('w.pv.open_failed', { e: e2 })));
 });
 
 $('st-refresh').addEventListener('click', stRefresh);
@@ -683,15 +703,15 @@ $('st-selall').addEventListener('click', () => {
   stRenderList();
 });
 $('st-export').addEventListener('click', async () => {
-  if (!stChecked.size) { toast('先勾选要导出的文件'); return; }
-  toast('正在导出（未缓存的将逐个渲染，请稍候）…');
+  if (!stChecked.size) { toast(t('w.list.pick_first_export')); return; }
+  toast(t('w.st.export_started'));
   const r = await api().scores_export([...stChecked]);
-  if (r.ok) toast(`已导出 ${r.copied.length} 个五线谱 PDF 到 ${r.dest}`);
-  else if (r.error !== 'cancelled') toast(`导出失败：${r.error || (r.failed ? r.failed.length + ' 个文件失败' : '')}`);
+  if (r.ok) toast(t('w.st.export_done', { n: r.copied.length, dest: r.dest }));
+  else if (r.error !== 'cancelled') toast(t('w.tp.export_failed', { e: r.error || (r.failed ? r.failed.length : '') }));
 });
 $('st-delete').addEventListener('click', async () => {
-  if (!stChecked.size) { toast('先勾选要删除的文件'); return; }
-  if (!confirm(`删除勾选的 ${stChecked.size} 个 MusicXML？`)) return;
+  if (!stChecked.size) { toast(t('w.list.pick_first_delete')); return; }
+  if (!confirm(t('w.st.delete_confirm', { n: stChecked.size }))) return;
   await api().scores_delete([...stChecked]);
   stChecked.clear();
   stRefresh();
@@ -699,16 +719,16 @@ $('st-delete').addEventListener('click', async () => {
 $('st-midi').addEventListener('click', async () => {
   if (!stSel) return;
   const info = await api().scores_midi_for(stSel);
-  if (!info.exists && !confirm(`${info.name} 不存在。从当前乐谱生成 MIDI 并播放？`)) return;
+  if (!info.exists && !confirm(t('w.st.gen_midi_confirm', { name: info.name }))) return;
   const r = await api().scores_generate_play_midi(stSel);
-  if (r.started && !info.exists) toast('正在生成 MIDI…');
+  if (r.started && !info.exists) toast(t('w.st.gen_midi_started'));
 });
 window.addEventListener('score_midi_done', (e) => {
   const d = e.detail || {};
-  if (!d.ok) toast(`MIDI 生成/播放失败：${d.error || ''}`);
+  if (!d.ok) toast(t('w.st.gen_midi_failed', { e: d.error || '' }));
 });
 $('st-transpose').addEventListener('click', () => {
-  if (!stSel) { toast('先选中一个乐谱'); return; }
+  if (!stSel) { toast(t('w.st.pick_score_first')); return; }
   showPage('transpose');
   tpLoad(stSel);
 });
@@ -757,34 +777,34 @@ function tpSetPlaceholder(which, text) {
 async function tpLoad(path) {
   await tpEnsureOptions();
   tpTransView.close();
-  tpSetPlaceholder('trans', '移调后在此预览');
+  tpSetPlaceholder('trans', t('w.tp.trans_ph'));
   $('tp-export-trans').disabled = true;
   $('tp-progress').style.width = '0%';
   const r = await api().transpose_load(path);
-  if (!r.ok) { toast(`打开失败：${r.error || ''}`); return; }
+  if (!r.ok) { toast(t('w.tp.open_failed', { e: r.error || '' })); return; }
   $('tp-name').textContent = r.name;
   $('tp-from').value = r.key;
-  $('tp-status').textContent = `检测到原调：${r.key_cn}`;
+  $('tp-status').textContent = t('w.tp.detected', { key: r.key_cn });
   tpRequestPreview('orig');
 }
 
 async function tpRequestPreview(which) {
   const r = await api().transpose_preview(which);
   if (r.pdf) tpShowPreview(which, r.pdf);
-  else if (r.started) tpSetPlaceholder(which, '正在渲染…（LilyPond）');
-  else tpSetPlaceholder(which, `无法预览：${r.error || ''}`);
+  else if (r.started) tpSetPlaceholder(which, t('w.tp.rendering'));
+  else tpSetPlaceholder(which, t('w.pv.cannot_preview', { e: r.error || '' }));
 }
 
 function tpShowPreview(which, pdf) {
   tpSetPlaceholder(which, null);
   const view = which === 'orig' ? tpOrigView : tpTransView;
-  view.open(`/file?path=${encodeURIComponent(pdf)}`).catch((e) => toast(`PDF 打开失败：${e}`));
+  view.open(`/file?path=${encodeURIComponent(pdf)}`).catch((e) => toast(t('w.pv.open_failed', { e })));
 }
 
 window.addEventListener('transpose_preview_ready', (e) => {
   const d = e.detail || {};
   if (d.ok) tpShowPreview(d.which, d.pdf);
-  else tpSetPlaceholder(d.which, `渲染失败：${d.error || ''}`);
+  else tpSetPlaceholder(d.which, t('w.st.render_failed', { e: d.error || '' }));
 });
 
 // 模式切换：显示对应字段组；方向选项按模式调整（按调支持「就近」）
@@ -798,8 +818,9 @@ $('tp-mode').addEventListener('change', () => {
   const hasClosest = m === 'key';
   const cur = dir.value;
   dir.replaceChildren();
-  const opts = hasClosest ? [['closest', '就近'], ['up', '向上'], ['down', '向下']]
-                          : [['up', '向上'], ['down', '向下']];
+  const opts = hasClosest
+    ? [['closest', t('w.tp.dir_closest')], ['up', t('w.tp.dir_up')], ['down', t('w.tp.dir_down')]]
+    : [['up', t('w.tp.dir_up')], ['down', t('w.tp.dir_down')]];
   for (const [v, label] of opts) {
     const op = document.createElement('option');
     op.value = v;
@@ -836,10 +857,10 @@ $('tp-run').addEventListener('click', async () => {
     degree: $('tp-degree').value,
   };
   const r = await api().transpose_run(mode, params);
-  if (!r.ok) { toast(r.error === 'no_file' ? '先载入乐谱' : `无法移调：${r.error || ''}`); return; }
+  if (!r.ok) { toast(r.error === 'no_file' ? t('w.tp.load_first') : t('w.tp.cannot', { e: r.error || '' })); return; }
   tpBusy = true;
   $('tp-run').disabled = true;
-  $('tp-status').textContent = '移调中…';
+  $('tp-status').textContent = t('w.tp.running');
   $('tp-progress').style.width = '0%';
 });
 
@@ -851,14 +872,14 @@ window.addEventListener('transpose_done', (e) => {
   tpBusy = false;
   $('tp-run').disabled = false;
   if (!d.ok) {
-    $('tp-status').textContent = `移调失败：${d.error || ''}`;
-    toast(`移调失败：${d.error || ''}`);
+    $('tp-status').textContent = t('w.tp.failed', { e: d.error || '' });
+    toast(t('w.tp.failed', { e: d.error || '' }));
     return;
   }
   $('tp-progress').style.width = '100%';
-  $('tp-status').textContent = `完成：${d.name}`;
+  $('tp-status').textContent = t('w.tp.done', { name: d.name });
   $('tp-export-trans').disabled = false;
-  tpSetPlaceholder('trans', '正在渲染移调结果…（LilyPond）');
+  tpSetPlaceholder('trans', t('w.tp.rendering_trans'));
   tpRequestPreview('trans');
 });
 
@@ -866,8 +887,8 @@ $('tp-back').addEventListener('click', () => showPage('staff'));
 for (const [id, which] of [['tp-export-orig', 'orig'], ['tp-export-trans', 'trans']]) {
   $(id).addEventListener('click', async () => {
     const r = await api().transpose_export(which);
-    if (r.ok) toast(`已导出：${r.dest}`);
-    else if (r.error !== 'cancelled') toast(`导出失败：${r.error || ''}`);
+    if (r.ok) toast(t('w.tp.exported', { dest: r.dest }));
+    else if (r.error !== 'cancelled') toast(t('w.tp.export_failed', { e: r.error || '' }));
   });
 }
 for (const [pfx, view] of [['tp-orig', tpOrigView], ['tp-trans', tpTransView]]) {
@@ -885,17 +906,42 @@ $('about-github').addEventListener('click', (e) => {
 });
 $('about-diag').addEventListener('click', async () => {
   $('about-diag').disabled = true;
-  toast('正在收集诊断信息…');
+  toast(t('w.about.diag_collecting'));
   try {
     const r = await api().about_copy_diagnostics();
-    toast(r.ok ? '诊断信息已复制到剪贴板' : `复制失败：${r.error || ''}`);
+    toast(r.ok ? t('w.about.diag_copied') : t('w.about.diag_failed', { e: r.error || '' }));
   } finally {
     $('about-diag').disabled = false;
   }
 });
 
+// ═══ 语言切换 ════════════════════════════════════════════════════════════════
+function rerenderDynamic() {
+  // 语言切换后重刷所有由 JS 渲染的动态区域（列表/计数/占位/模型状态）
+  renderView('score');
+  renderView('audio');
+  jpRenderList();
+  stRenderList();
+  refreshModels();
+}
+$('langBtn').addEventListener('click', async () => {
+  const next = I18N.lang === 'zh' ? 'en' : 'zh';
+  const r = await api().i18n_set_language(next);
+  if (!r.ok) return;
+  I18N.lang = next;
+  retranslate();
+  rerenderDynamic();
+});
+
 // ═══ 初始化 ══════════════════════════════════════════════════════════════════
 window.addEventListener('pywebviewready', async () => {
+  // 先取文案目录（决定初始语言），再渲染其余部分
+  try {
+    const cat = await api().i18n_catalog();
+    I18N.lang = cat.lang || 'zh';
+    I18N.strings = cat.strings || {};
+  } catch (_e) { /* 目录失败时回退键名显示，不阻断 */ }
+  retranslate();
   api().app_info().then((info) => {
     $('ver').textContent = 'v' + (info.version || '');
     $('about-ver').textContent = 'v' + (info.version || '');
