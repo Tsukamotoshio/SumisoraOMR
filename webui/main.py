@@ -10,8 +10,55 @@ M1: batched event artery (EventPusher) + file tray + ConversionRunner wiring
 """
 from __future__ import annotations
 
-import json
+import os
 import sys
+
+
+def _bootstrap_venv() -> None:
+    """Re-exec with the project .venv interpreter unless already running from it.
+
+    Mirrors app.py's bootstrap so ``python -m webui.main`` "just works" from any
+    interpreter. Must run **before** ``import webview`` — pywebview lives in the
+    .venv, so under a system Python the top-level import would crash first.
+
+    Unlike app.py (a top-level script), this module uses relative imports, so it
+    must be re-launched as ``-m webui.main`` — never as a bare file path, which
+    would strip the package context and break ``from .bridge import ...``.
+    """
+    if getattr(sys, 'frozen', False):
+        return  # 打包版：依赖已捆绑，无 venv 概念
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 仓库根 = webui/ 的上级
+    for _rel in (('.venv', 'Scripts', 'python.exe'), ('.venv', 'bin', 'python')):
+        _py = os.path.join(_root, *_rel)
+        if not os.path.isfile(_py):
+            continue
+        if os.path.normcase(os.path.abspath(sys.executable)) == os.path.normcase(_py):
+            return  # 已经在项目 venv 里
+        import subprocess
+        print('[启动] 检测到当前不是项目 .venv 解释器，切换到 .venv 运行（壳启动中，请稍候）…',
+              file=sys.stderr, flush=True)
+        try:
+            # 以模块方式重启（保留 --selftest / --gateN 等参数），保住相对导入的包上下文
+            sys.exit(subprocess.run([_py, '-m', 'webui.main'] + sys.argv[1:]).returncode)
+        except KeyboardInterrupt:
+            sys.exit(130)
+    # 项目 .venv 不存在 —— 回退到依赖可用性检测（允许用户自备环境）
+    try:
+        import webview  # noqa: F401, PLC0415
+        return
+    except ImportError:
+        print(
+            '\n[错误] 未找到虚拟环境或 pywebview 未安装。\n'
+            '  pip install -r requirements.txt\n',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    _bootstrap_venv()
+
+import json
 import threading
 import time
 
