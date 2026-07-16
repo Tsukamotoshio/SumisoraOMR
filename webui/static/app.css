@@ -31,6 +31,7 @@ button { font-family: inherit; cursor: default; }
   border-bottom: 1px solid var(--border);
 }
 .titlebar .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.titlebar .logo { width: 18px; height: 18px; flex: none; display: block; -webkit-user-select: none; user-select: none; }
 .titlebar .name { font-weight: 500; font-size: 13px; letter-spacing: .01em; }
 .titlebar .ver { color: var(--faint); font-size: 12px; }
 .titlebar .spring { flex: 1; }
@@ -349,6 +350,7 @@ button { font-family: inherit; cursor: default; }
 .about-card { width: min(640px, 100%); }
 .about-head { display: flex; align-items: center; gap: 14px; }
 .dot.big { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px var(--accent-tint); flex: none; }
+.about-logo { width: 44px; height: 44px; flex: none; border-radius: 10px; -webkit-user-select: none; user-select: none; }
 .about-title { font-size: 17px; font-weight: 600; }
 .about-row { display: flex; align-items: baseline; gap: 14px; }
 .about-row .lbl { min-width: 72px; }

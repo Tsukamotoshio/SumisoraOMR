@@ -76,6 +76,36 @@ from .transpose import TransposeService
 
 WINDOW_TITLE = 'SumisoraOMR — pywebview shell'
 
+# Windows taskbar identity — same AppUserModelID as the Flet shell (app.py) so
+# both share one taskbar group / pinned-shortcut identity during the migration.
+APP_USER_MODEL_ID = 'Tsukamotoshio.SumisoraOMR'
+
+
+def _asset_path(*parts: str) -> str:
+    """Resolve an assets/ file for dev (repo root) and frozen (_MEIPASS) builds."""
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(base, 'assets', *parts)
+
+
+def _setup_windows_identity() -> None:
+    """Set the explicit AppUserModelID so the taskbar shows our app, not Python.
+
+    pywebview hosts the window in *this* process (WinForms BrowserForm), so —
+    unlike the Flet shell, which needed a whole flet.exe rename/resource patch —
+    a single ctypes call plus the ``icon=`` passed to ``webview.start`` gives the
+    correct taskbar icon and right-click app name. Dev mode still runs under
+    python.exe, so the pinned-taskbar exe icon is Python's; the window/taskbar
+    icon and grouping identity are ours. Release builds get the exe icon from the
+    frozen SumisoraOMR.exe + Inno Setup shortcut (M5-④).
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes  # noqa: PLC0415
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except Exception:
+        pass  # 身份设置失败不应阻断启动
+
 
 def _on_drop(bridge: Bridge, conversion: ConversionService, e: dict) -> None:
     """DOM drop handler (Python side): real filesystem paths → file tray.
@@ -255,6 +285,9 @@ def main() -> None:
     from core.app.ssl_setup import setup_system_ssl
     setup_system_ssl()
 
+    # Windows 任务栏身份（图标 + 分组 + 右键应用名）—— 必须在建窗前设置
+    _setup_windows_identity()
+
     selftest = '--selftest' in sys.argv
     gate_mode = next((a for a in sys.argv if a in ('--happy', '--gate2', '--gate3', '--gate4')), None)
     gate_file = sys.argv[sys.argv.index(gate_mode) + 1] if gate_mode else None
@@ -313,9 +346,17 @@ def main() -> None:
 
     window.events.loaded += _on_loaded
     window.events.closed += _on_closed
-    # WebView2（Edge Chromium）为 Windows 唯一目标后端；debug 开发期开启 F12。
+    # WebView2（Edge Chromium）为 Windows 唯一目标后端。
+    # DevTools/F12 默认关闭：开启（debug=True）时 WebView2 会在拖动 resize 时于窗口
+    # 右上角叠加一行像素尺寸浮层，遮挡视线。需要调试前端时设 WEBUI_DEVTOOLS=1 开启。
     headless_run = selftest or bool(gate_mode)
-    webview.start(gui='edgechromium', debug=not headless_run)
+    _devtools = (not headless_run) and os.environ.get('WEBUI_DEVTOOLS') == '1'
+    _icon = _asset_path('icon.ico')
+    webview.start(
+        gui='edgechromium',
+        debug=_devtools,
+        icon=_icon if os.path.isfile(_icon) else None,
+    )
 
     if gate_mode:
         # gate4：窗口销毁后在这里核验 worker 树是否被 closed 清场杀干净
