@@ -56,7 +56,7 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.audio.listen_title": {"zh": "试听", "en": "Listen"},
     "w.audio.listen_ph": {"zh": "选中音频后在此试听\n（识别引擎仅支持钢琴独奏）",
                           "en": "Select audio to play it here\n(the engine supports solo piano only)"},
-    "w.audio.melody_only": {"zh": "仅主旋律（天际线约简）", "en": "Melody only (skyline reduction)"},
+    "w.audio.melody_only": {"zh": "仅主旋律", "en": "Melody only"},
     "w.audio.piano_label": {"zh": "钢琴转录模型", "en": "Piano Transcription Model"},
     "w.audio.piano_ready": {"zh": "钢琴转录模型 · 已就绪", "en": "Piano transcription model · ready"},
     "w.audio.piano_missing": {"zh": "未下载（约 172 MB，按需）", "en": "Not downloaded (~172 MB, on demand)"},
