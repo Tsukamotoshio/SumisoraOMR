@@ -1,4 +1,3 @@
-# webui/transpose.py — transposer service (五线谱移调页后端).
 """Mirrors the Flet transposer_page:
 
 - three modes: 'key' (按调), 'interval' (按音程/半音), 'diatonic' (按度数/全音),
@@ -77,7 +76,8 @@ class TransposeService:
             key = detect_key_from_musicxml(p)
         except Exception as exc:  # noqa: BLE001 — 检测失败回退 C，不阻断
             log_message(f'[webui] 键检测失败：{exc}', logging.WARNING)
-        return {'ok': True, 'name': p.name, 'key': key, 'key_cn': key_display_cn(key)}
+        return {'ok': True, 'path': str(p), 'name': p.name,
+                'key': key, 'key_cn': key_display_cn(key)}
 
     # ── 预览渲染（orig / transposed 共用；完成推 transpose_preview_ready）────
 

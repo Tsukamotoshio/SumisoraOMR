@@ -191,6 +191,30 @@ class Bridge:
     def transpose_run(self, mode: str, params: dict) -> dict:
         return self._transpose.run(mode, params or {}) if self._transpose else {'ok': False}
 
+    def transpose_pick_file(self) -> dict:
+        """Native open dialog for a MusicXML → transpose_load it. 与 Flet
+        transposer 的「打开乐谱」等价（不限于 xml-scores 目录）。"""
+        if self._transpose is None or self._window is None:
+            return {'ok': False, 'error': 'no service'}
+        result = self._window.create_file_dialog(
+            webview.FileDialog.OPEN, allow_multiple=False,
+            file_types=('MusicXML (*.mxl;*.xml;*.musicxml)', 'All files (*.*)'),
+        )
+        if not result:
+            return {'ok': False, 'error': 'cancelled'}
+        path = result[0] if isinstance(result, (list, tuple)) else result
+        return self._transpose.load(str(path))
+
+    def shell_open_xml_dir(self) -> dict:
+        from core.app.backend import xml_scores_dir
+        try:
+            d = xml_scores_dir()
+            d.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(d))  # noqa: S606
+            return {'ok': True}
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
+
     def transpose_export(self, which: str) -> dict:
         """Save-as dialog for the original/transposed staff PDF, then render+copy."""
         if self._transpose is None or self._window is None:
@@ -279,7 +303,7 @@ class Bridge:
             return
         try:
             import ctypes
-            handle = self._window.native.Handle  # WinForms Form 句柄（IntPtr）
+            handle = self._window.native.Handle  # type: ignore[union-attr]  # WinForms Form 句柄
             hwnd = int(handle) if isinstance(handle, int) else handle.ToInt64()
             WM_SYSCOMMAND, SC_SIZE = 0x0112, 0xF000
             ctypes.windll.user32.ReleaseCapture()

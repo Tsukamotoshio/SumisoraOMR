@@ -19,6 +19,7 @@ Notes vs. the Flet pages:
 """
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 from typing import Any, Optional
@@ -170,15 +171,29 @@ class ConversionService:
             ]
         if not files:
             return {'ok': False, 'error': 'no_files'}
+
+        # 重复输出检测（与 Flet landing 一致：Output/<stem>_jianpu.pdf 已存在）。
+        # 首次调用发现重复 → 返回清单让前端弹确认；前端带 dup_resolved 重新调用。
+        from core.app.backend import output_dir
+        out = output_dir(None)
+        existing = [f.name for f in files if (out / f'{f.stem}_jianpu.pdf').exists()]
+        if existing and not opts.get('dup_resolved'):
+            return {'ok': False, 'error': 'duplicates', 'existing': existing}
+        skip_dup = bool(opts.get('skip_dup')) and bool(existing)
+
         conv_opts = ConversionOptions(
             engine=opts.get('engine', 'auto'),
             sr_engine=opts.get('sr_engine', 'waifu2x'),
             gen_midi=bool(opts.get('gen_midi', True)),
             melody_only=bool(opts.get('melody_only', False)),
-            skip_dup=False,
-            dup_files=[],
+            skip_dup=skip_dup,
+            dup_files=list(existing) if skip_dup else [],
         )
-        n_workers = max(1, int(opts.get('parallel', 1)))
+        parallel = opts.get('parallel', 1)
+        if parallel == 'auto':
+            n_workers = max(1, min(4, (os.cpu_count() or 2) // 2))  # 与 Flet landing 同式
+        else:
+            n_workers = max(1, int(parallel))
         self._state.is_processing = True
         self._run_thread = threading.Thread(
             target=self._runner.run, args=(files, n_workers, conv_opts),

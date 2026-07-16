@@ -233,26 +233,80 @@ function showOverlay(title) {
 }
 function hideOverlay() { $('progress-overlay').classList.add('hidden'); }
 
-async function startConvert(view) {
+async function doStart(opts) {
   cancelling = false;
-  const opts = { view };
-  if (view === 'score') {
-    opts.engine = $('score-engine').value;
-    opts.parallel = parseInt($('score-parallel').value, 10);
-  } else {
-    opts.engine = 'auto';
-    opts.melody_only = $('audio-melody').classList.contains('on');
-  }
   const r = await api().convert_start(opts);
   if (!r.ok) {
     if (r.error === 'no_files') alert(t('w.conv.no_files'));
     else if (r.error === 'busy') alert(t('w.conv.busy'));
+    else if (r.error === 'duplicates') showDupConfirm(opts, r.existing || []);
     return;
   }
   converting = true;
   window.__uiFlags.busy = true;
-  showOverlay(t(view === 'score' ? 'w.conv.running_score' : 'w.conv.running_audio', { n: r.count }));
+  showOverlay(t(opts.view === 'score' ? 'w.conv.running_score' : 'w.conv.running_audio', { n: r.count }));
 }
+
+function startConvert(view) {
+  const opts = { view };
+  if (view === 'score') {
+    opts.engine = $('score-engine').value;
+    opts.sr_engine = $('score-sr').value;
+    opts.parallel = $('score-parallel').value;   // '1'|'2'|'4'|'auto'（Python 侧解析）
+  } else {
+    opts.engine = 'auto';
+    opts.melody_only = $('audio-melody').classList.contains('on');
+  }
+  return doStart(opts);
+}
+
+// ── 重复输出确认弹层（与 Flet landing 语义一致：默认勾选跳过） ──
+let dupPendingOpts = null;
+function showDupConfirm(opts, existing) {
+  dupPendingOpts = opts;
+  $('confirm-title').textContent = t('landing.convert_dialog_title', { n: existing.length });
+  $('confirm-warn').textContent = t('landing.existing_outputs_warning', { n: existing.length });
+  const list = $('confirm-list');
+  list.replaceChildren();
+  for (const name of existing.slice(0, 5)) {
+    const item = document.createElement('div');
+    item.className = 'result-item';
+    const fn = document.createElement('span');
+    fn.className = 'fn';
+    fn.textContent = name;
+    item.appendChild(fn);
+    list.appendChild(item);
+  }
+  if (existing.length > 5) {
+    const more = document.createElement('div');
+    more.className = 'result-item';
+    const w2 = document.createElement('span');
+    w2.className = 'why';
+    w2.textContent = t('landing.existing_outputs_more', { n: existing.length - 5 });
+    more.appendChild(w2);
+    list.appendChild(more);
+  }
+  $('confirm-skip').classList.add('on');
+  $('confirm-skip').setAttribute('aria-checked', 'true');
+  $('confirm-overlay').classList.remove('hidden');
+}
+$('confirm-skip').addEventListener('click', (e) => {
+  e.preventDefault();
+  const b = $('confirm-skip');
+  b.classList.toggle('on');
+  b.setAttribute('aria-checked', b.classList.contains('on') ? 'true' : 'false');
+});
+$('confirm-cancel').addEventListener('click', () => {
+  $('confirm-overlay').classList.add('hidden');
+  dupPendingOpts = null;
+});
+$('confirm-go').addEventListener('click', () => {
+  const opts = dupPendingOpts;
+  dupPendingOpts = null;
+  $('confirm-overlay').classList.add('hidden');
+  if (!opts) return;
+  doStart({ ...opts, dup_resolved: true, skip_dup: $('confirm-skip').classList.contains('on') });
+});
 $('score-start').addEventListener('click', () => startConvert('score'));
 $('audio-start').addEventListener('click', () => startConvert('audio'));
 $('prog-cancel').addEventListener('click', async () => {
@@ -318,6 +372,7 @@ function showResult({ summary, error }) {
   const list = $('result-list');
   pills.replaceChildren();
   list.replaceChildren();
+  $('result-jianpu').classList.toggle('hidden', !(summary && summary.success_count > 0));
   if (error) {
     $('result-title').textContent = t('w.result.title_error');
     const item = document.createElement('div');
@@ -368,6 +423,10 @@ function showResult({ summary, error }) {
   $('result-overlay').classList.remove('hidden');
 }
 $('result-close').addEventListener('click', () => $('result-overlay').classList.add('hidden'));
+$('result-jianpu').addEventListener('click', () => {
+  $('result-overlay').classList.add('hidden');
+  showPage('jianpu');
+});
 
 // ═══ 模型状态 + 下载弹层 ═════════════════════════════════════════════════════
 let modelKind = null;
@@ -774,18 +833,29 @@ function tpSetPlaceholder(which, text) {
   if (ph) { ph.classList.remove('hidden'); $(`tp-${which}-ph`).textContent = text; }
 }
 
-async function tpLoad(path) {
-  await tpEnsureOptions();
+let tpCurrentPath = null;
+
+function tpResetPanes() {
   tpTransView.close();
   tpSetPlaceholder('trans', t('w.tp.trans_ph'));
   $('tp-export-trans').disabled = true;
   $('tp-progress').style.width = '0%';
-  const r = await api().transpose_load(path);
-  if (!r.ok) { toast(t('w.tp.open_failed', { e: r.error || '' })); return; }
+}
+
+function tpApplyLoad(r, path) {
+  tpCurrentPath = path || tpCurrentPath;
   $('tp-name').textContent = r.name;
   $('tp-from').value = r.key;
   $('tp-status').textContent = t('w.tp.detected', { key: r.key_cn });
   tpRequestPreview('orig');
+}
+
+async function tpLoad(path) {
+  await tpEnsureOptions();
+  tpResetPanes();
+  const r = await api().transpose_load(path);
+  if (!r.ok) { toast(t('w.tp.open_failed', { e: r.error || '' })); return; }
+  tpApplyLoad(r, path);
 }
 
 async function tpRequestPreview(which) {
@@ -837,13 +907,20 @@ $('tp-keysig').addEventListener('click', (e) => {
   b.setAttribute('aria-checked', b.classList.contains('on') ? 'true' : 'false');
 });
 
-$('tp-detect').addEventListener('click', async (e) => {
+$('tp-detect').addEventListener('click', (e) => {
   e.preventDefault();
-  if (!$('tp-name').textContent) return;
-  // 重新 load 即重新检测（load 幂等，且会刷新原谱预览缓存判断）
-  const cur = stEntries.find((x) => x.name === $('tp-name').textContent);
-  if (cur) tpLoad(cur.path);
+  // 重新 load 即重新检测（load 幂等）
+  if (tpCurrentPath) tpLoad(tpCurrentPath);
 });
+$('tp-open').addEventListener('click', async () => {
+  await tpEnsureOptions();
+  const r = await api().transpose_pick_file();
+  if (r.error === 'cancelled') return;
+  if (!r.ok) { toast(t('w.tp.open_failed', { e: r.error || '' })); return; }
+  tpResetPanes();
+  tpApplyLoad(r, r.path);
+});
+$('tp-xmldir').addEventListener('click', () => api().shell_open_xml_dir());
 
 $('tp-run').addEventListener('click', async () => {
   if (tpBusy) return;

@@ -84,9 +84,17 @@
               </select></div>
             </div>
             <div class="field">
+              <span class="lbl" data-i18n="landing.label_sr_engine">超分辨率算法</span>
+              <div class="selectwrap"><select id="score-sr" title="" data-i18n-title="landing.tooltip_sr_engine">
+                <option value="realesrgan" selected data-i18n="landing.option_realesrgan">Real-ESRGAN（anime，默认）</option>
+                <option value="waifu2x" data-i18n="landing.option_waifu2x">waifu2x（线条画）</option>
+              </select></div>
+            </div>
+            <div class="field">
               <span class="lbl" data-i18n="w.score.parallel">并发处理</span>
-              <div class="selectwrap"><select id="score-parallel">
-                <option value="1" selected data-i18n="w.score.parallel_1">单文件顺序</option>
+              <div class="selectwrap"><select id="score-parallel" title="" data-i18n-title="landing.tooltip_concurrency">
+                <option value="auto" selected data-i18n="landing.option_concurrency_auto">自动（按 CPU 核数）</option>
+                <option value="1" data-i18n="w.score.parallel_1">单文件顺序</option>
                 <option value="2" data-i18n="w.score.parallel_2">2 并发</option>
                 <option value="4" data-i18n="w.score.parallel_4">4 并发</option>
               </select></div>
@@ -196,6 +204,8 @@
           <header>
             <button class="chipbtn" id="tp-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
             <h2 data-i18n="w.tp.title">移调</h2>
+            <button class="chipbtn" id="tp-open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="common.open_score">打开乐谱</span></button>
+            <button class="chipbtn" id="tp-xmldir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5" stroke-linecap="round"/></svg><span data-i18n="transposer.button_open_score_dir">打开乐谱目录</span></button>
             <span class="count" id="tp-name"></span>
           </header>
           <div class="pad tp-controls">
@@ -388,7 +398,22 @@ https://www.gnu.org/licenses/agpl-3.0.html</pre>
     <div class="result-list" id="result-list"></div>
     <div class="btnrow">
       <button class="ghost" id="result-outdir" data-i18n="w.score.outdir">打开输出目录</button>
+      <button class="ghost hidden" id="result-jianpu" data-i18n="landing.button_view_jianpu">查看简谱</button>
       <button class="primary" id="result-close" data-i18n="w.result.close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 转换确认弹层（含重复输出警告 + 跳过复选） ── -->
+<div class="scrim hidden" id="confirm-overlay">
+  <div class="sheet">
+    <h3 id="confirm-title"></h3>
+    <div class="msg" id="confirm-warn"></div>
+    <div class="result-list" id="confirm-list"></div>
+    <label class="checkrow"><button class="cbx on" id="confirm-skip" role="checkbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="landing.checkbox_skip_duplicates">跳过重复文件（不重新识别）</span></label>
+    <div class="btnrow">
+      <button class="ghost" id="confirm-cancel" data-i18n="w.conv.cancel">取消</button>
+      <button class="primary" id="confirm-go" data-i18n="w.score.start">开始识别</button>
     </div>
   </div>
 </div>
