@@ -319,10 +319,37 @@ class Bridge:
         if self._window is None or maxed == self._maximized:
             return
         if maxed:
-            self._window.maximize()
+            # 无边框 form（FormBorderStyle.None）最大化默认盖满整屏、遮住任务栏。
+            # 把 MaximizedBounds 限到窗口所在屏的工作区（排除任务栏）后再最大化；
+            # 拿不到原生 form 时回退 pywebview 默认 maximize()。
+            if not self._maximize_to_workarea():
+                self._window.maximize()
         else:
             self._window.restore()
         self._maximized = maxed
+
+    def _maximize_to_workarea(self) -> bool:
+        """Maximize within the current monitor's work area (taskbar preserved).
+
+        Returns False if the native WinForms form isn't reachable, so the caller
+        can fall back to the default full-screen maximize.
+        """
+        form = getattr(self._window, 'native', None)
+        if form is None:
+            return False
+        try:
+            from System import Action  # noqa: PLC0415 — pythonnet, loaded by pywebview
+            from System.Windows.Forms import FormWindowState, Screen  # noqa: PLC0415
+
+            def _apply() -> None:
+                # WorkingArea 按窗口当前所在屏取（多屏正确），排除任务栏区域
+                form.MaximizedBounds = Screen.FromControl(form).WorkingArea
+                form.WindowState = FormWindowState.Maximized
+
+            form.Invoke(Action(_apply))
+            return True
+        except Exception:
+            return False
 
     def window_is_maximized(self) -> bool:
         return self._maximized
