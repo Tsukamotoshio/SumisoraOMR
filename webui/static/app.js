@@ -521,7 +521,9 @@ window.addEventListener('models_changed', (e) => renderModels(e.detail && e.deta
 // 本地捆绑 pdf.js（vendor/pdfjs，v6），worker 同源加载；渲染按 devicePixelRatio
 // 放大保证清晰度。fit = 适应舞台宽度。
 let _pdfjs = null;
-async function pdfjsLib() {
+// 注意：函数不能叫 pdfjsLib —— pdf.min.mjs 求值时会 `globalThis.pdfjsLib = 库对象`，
+// 覆盖同名的全局函数声明，导致第二次调用起报 "pdfjsLib is not a function"。
+async function loadPdfjs() {
   if (_pdfjs) return _pdfjs;
   _pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
   _pdfjs.GlobalWorkerOptions.workerSrc = './vendor/pdfjs/pdf.worker.min.mjs';
@@ -550,7 +552,7 @@ class PdfView {
   }
 
   async open(url) {
-    const lib = await pdfjsLib();
+    const lib = await loadPdfjs();
     if (this.doc) { try { this.doc.destroy(); } catch (_e) {} }
     this.doc = await lib.getDocument({ url }).promise;
     this.pageNo = 1;
