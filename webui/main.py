@@ -347,14 +347,16 @@ def main() -> None:
     window.events.loaded += _on_loaded
     window.events.closed += _on_closed
     # WebView2（Edge Chromium）为 Windows 唯一目标后端。
-    # DevTools/F12 默认关闭：开启（debug=True）时 WebView2 会在拖动 resize 时于窗口
-    # 右上角叠加一行像素尺寸浮层，遮挡视线。需要调试前端时设 WEBUI_DEVTOOLS=1 开启。
+    # debug=True 保留浏览器快捷键（Ctrl+R 刷新）、右键菜单与 F12——pywebview 把这些
+    # 全绑在 debug 上（AreBrowserAcceleratorKeysEnabled = debug）。但默认不自动打开
+    # DevTools：DevTools 停靠打开时 WebView2 会在拖动 resize 时于右上角叠加视口像素
+    # 浮层遮挡视线。需要一进来就开 DevTools 调试时设 WEBUI_DEVTOOLS=1。
     headless_run = selftest or bool(gate_mode)
-    _devtools = (not headless_run) and os.environ.get('WEBUI_DEVTOOLS') == '1'
+    webview.settings['OPEN_DEVTOOLS_IN_DEBUG'] = os.environ.get('WEBUI_DEVTOOLS') == '1'
     _icon = _asset_path('icon.ico')
     webview.start(
         gui='edgechromium',
-        debug=_devtools,
+        debug=not headless_run,
         icon=_icon if os.path.isfile(_icon) else None,
     )
 
