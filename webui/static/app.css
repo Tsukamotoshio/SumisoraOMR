@@ -284,21 +284,43 @@ button { font-family: inherit; cursor: default; }
 /* ── 移调页 ─────────────────────────────────────────────────────────────── */
 .content.transpose { grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0,1fr); }
 .card.span { grid-column: 1 / -1; }
-.tp-controls {
-  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+/* 控制卡收成一条紧凑工具栏：header + 单行 tp-bar（字段横排，标签在左、下拉在右），
+   进度改为卡片底缘发丝线。三段（header+控制+foot）压成两段，省下的高度全部让给
+   预览行——A4 画框宽度由可用高度决定，控制卡越矮，两个竖版预览就越大。 */
+.content.transpose .card.span > header { padding: 6px 15px; }
+.content.transpose .card.span > header .chipbtn { padding: 4px 9px; }
+.content.transpose .card.span > header .count { margin-left: 0; max-width: 30%; }
+.content.transpose .card.span > header .ghost.slim { width: auto; padding: 5px 11px; font-size: 12px; }
+.hsep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
+.tp-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 11px; padding: 8px 15px;
 }
-.tp-controls .field { min-width: 128px; }
-.tp-controls .checkrow { padding-bottom: 8px; }
-.tp-controls .primary.tp-go { width: auto; padding: 10px 22px; }
+.tp-bar .tpf { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tp-bar .tpf .lbl { white-space: nowrap; text-transform: none; letter-spacing: .01em; font-size: 11px; }
+.tp-bar .selectwrap select { padding: 5px 26px 5px 10px; font-size: 12.5px; }
+.tp-bar .selectwrap::after { right: 10px; }
+.tp-bar .selectwrap { width: 104px; }
+.tp-bar .selectwrap.wide { width: 150px; }
+.tp-bar .selectwrap.key { width: 82px; }
+.tp-bar .checkrow { padding: 0; font-size: 12px; white-space: nowrap; }
+.tp-bar .checkrow .cbx { width: 17px; height: 17px; }
+.tp-bar .primary.tp-go { width: auto; padding: 6px 14px; font-size: 12.5px; }
+.tp-bar .primary.tp-go svg { width: 16px; height: 16px; }
+.tp-bar .msg.small { white-space: nowrap; color: var(--muted); font-size: 11.5px; }
+.tp-bar .minibtn { font-size: 10px; padding: 3px 7px; }
 .minibtn {
   border: 1px solid var(--border); background: var(--card-2); color: var(--muted);
-  border-radius: 6px; font-size: 10.5px; padding: 1px 8px; margin-left: 6px;
+  border-radius: 6px; font-size: 10.5px; padding: 3px 8px; margin: 0;
   letter-spacing: normal; text-transform: none;
 }
 .minibtn:hover { border-color: var(--accent); color: var(--accent); }
-.tp-foot { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--border); }
-.tp-foot .ghost.slim { width: auto; padding: 7px 14px; font-size: 12.5px; }
-.tp-foot .msg { min-width: 180px; }
+/* 进度发丝线：贴控制卡底缘，仅移调时有宽度 */
+.tp-progline {
+  display: block; height: 2px; width: 0; margin: 0 15px 2px;
+  background: var(--accent); border-radius: 2px; transition: width .2s ease;
+}
+.content.transpose .stage.pdfstage { padding: 12px; }
+.content.transpose .stage.pdfstage { padding: 12px; }
 
 /* ── 简谱编辑页 ─────────────────────────────────────────────────────────── */
 .tabgroup .tab { width: auto; padding: 0 14px; font-size: 12.5px; }

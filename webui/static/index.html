@@ -201,42 +201,47 @@
 
       <!-- ════ 移调页（从五线谱预览进入） ════ -->
       <div class="content transpose hidden" id="page-transpose">
-        <section class="card span" aria-label="移调控制">
+        <section class="card span tp-panel" aria-label="移调控制">
           <header>
             <button class="chipbtn" id="tp-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
             <h2 data-i18n="w.tp.title">移调</h2>
+            <span class="count" id="tp-name"></span>
+            <span class="spring"></span>
+            <button class="ghost slim" id="tp-export-orig" data-i18n="w.tp.export_orig">导出原谱 PDF</button>
+            <button class="ghost slim" id="tp-export-trans" disabled data-i18n="w.tp.export_trans">导出移调 PDF</button>
+            <span class="hsep"></span>
             <button class="chipbtn" id="tp-open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="common.open_score">打开乐谱</span></button>
             <button class="chipbtn" id="tp-xmldir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5" stroke-linecap="round"/></svg><span data-i18n="transposer.button_open_score_dir">打开乐谱目录</span></button>
-            <span class="count" id="tp-name"></span>
           </header>
-          <div class="pad tp-controls">
-            <div class="field">
+          <div class="pad tp-bar">
+            <div class="tpf">
               <span class="lbl" data-i18n="w.tp.mode">模式</span>
-              <div class="selectwrap"><select id="tp-mode">
+              <div class="selectwrap wide"><select id="tp-mode">
                 <option value="key" selected data-i18n="w.tp.mode_key">按调（如 C → G）</option>
                 <option value="interval" data-i18n="w.tp.mode_interval">按音程（半音级）</option>
                 <option value="diatonic" data-i18n="w.tp.mode_diatonic">按度数（全音级）</option>
               </select></div>
             </div>
-            <div class="field tp-key">
-              <span class="lbl"><span data-i18n="w.tp.from">原调</span> <button class="minibtn" id="tp-detect" title="从乐谱检测原调" data-i18n-title="w.tp.detect_tip"><span data-i18n="w.tp.detect">检测</span></button></span>
-              <div class="selectwrap"><select id="tp-from"></select></div>
+            <div class="tpf tp-key">
+              <span class="lbl" data-i18n="w.tp.from">原调</span>
+              <div class="selectwrap key"><select id="tp-from"></select></div>
+              <button class="minibtn" id="tp-detect" title="从乐谱检测原调" data-i18n-title="w.tp.detect_tip"><span data-i18n="w.tp.detect">检测</span></button>
             </div>
-            <div class="field tp-key">
+            <div class="tpf tp-key">
               <span class="lbl" data-i18n="w.tp.to">目标调</span>
-              <div class="selectwrap"><select id="tp-to"></select></div>
+              <div class="selectwrap key"><select id="tp-to"></select></div>
             </div>
-            <div class="field tp-interval hidden">
+            <div class="tpf tp-interval hidden">
               <span class="lbl" data-i18n="w.tp.interval">音程</span>
               <div class="selectwrap"><select id="tp-interval"></select></div>
             </div>
-            <div class="field tp-diatonic hidden">
+            <div class="tpf tp-diatonic hidden">
               <span class="lbl" data-i18n="w.tp.degree">度数</span>
               <div class="selectwrap"><select id="tp-degree"></select></div>
             </div>
-            <div class="field">
+            <div class="tpf">
               <span class="lbl" data-i18n="w.tp.dir">方向</span>
-              <div class="selectwrap"><select id="tp-dir">
+              <div class="selectwrap key"><select id="tp-dir">
                 <option value="closest" selected data-i18n="w.tp.dir_closest">就近</option>
                 <option value="up" data-i18n="w.tp.dir_up">向上</option>
                 <option value="down" data-i18n="w.tp.dir_down">向下</option>
@@ -247,13 +252,10 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span data-i18n="w.tp.run">开始移调</span>
             </button>
-          </div>
-          <div class="pad tp-foot">
-            <div class="meter thin" style="flex:1"><i id="tp-progress"></i></div>
+            <span class="spring"></span>
             <span class="msg small" id="tp-status"></span>
-            <button class="ghost slim" id="tp-export-orig" data-i18n="w.tp.export_orig">导出原谱 PDF</button>
-            <button class="ghost slim" id="tp-export-trans" disabled data-i18n="w.tp.export_trans">导出移调 PDF</button>
           </div>
+          <i class="tp-progline" id="tp-progress"></i>
         </section>
 
         <section class="card preview" aria-label="原调预览">
