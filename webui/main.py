@@ -20,6 +20,7 @@ from webview.dom import DOMEventHandler
 
 from .bridge import Bridge
 from .conversion import ConversionService
+from .editor import EditorService
 from .events import EventPusher
 from .models import ModelsService
 from .outputs import OutputsService, ScoresService
@@ -218,7 +219,8 @@ def main() -> None:
     outputs = OutputsService(pusher, whitelist)
     scores = ScoresService(pusher, whitelist)
     transpose = TransposeService(pusher, whitelist)
-    bridge = Bridge(pusher, conversion, models, outputs, scores, transpose)
+    editor = EditorService(pusher, whitelist)
+    bridge = Bridge(pusher, conversion, models, outputs, scores, transpose, editor)
     # selftest / gate 驱动跑在 M1 测试台（harness.html）上，正式 UI 在 index.html
     page = 'harness.html' if (selftest or gate_mode) else 'index.html'
     window = webview.create_window(

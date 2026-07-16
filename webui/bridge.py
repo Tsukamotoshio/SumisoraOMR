@@ -23,6 +23,7 @@ import webview
 
 from .conversion import ConversionService
 from .events import EventPusher
+from .editor import EditorService
 from .models import ModelsService
 from .outputs import OutputsService, ScoresService
 from .transpose import TransposeService
@@ -35,13 +36,15 @@ class Bridge:
                  models: Optional[ModelsService] = None,
                  outputs: Optional[OutputsService] = None,
                  scores: Optional[ScoresService] = None,
-                 transpose: Optional[TransposeService] = None) -> None:
+                 transpose: Optional[TransposeService] = None,
+                 editor: Optional[EditorService] = None) -> None:
         self._pusher = pusher
         self._conversion = conversion
         self._models = models
         self._outputs = outputs
         self._scores = scores
         self._transpose = transpose
+        self._editor = editor
         self._window: Optional[webview.Window] = None
         self._maximized = False
 
@@ -230,6 +233,37 @@ class Bridge:
             return {'ok': False, 'error': 'cancelled'}
         dest = result[0] if isinstance(result, (list, tuple)) else result
         return self._transpose.export_to(which, str(dest))
+
+    # ── 简谱编辑器 ───────────────────────────────────────────────────────────
+    def editor_load(self, txt_path: str) -> dict:
+        return self._editor.load(txt_path) if self._editor else {'ok': False}
+
+    def editor_load_for_pdf(self, pdf_path: str) -> dict:
+        return self._editor.load_for_pdf(pdf_path) if self._editor else {'ok': False}
+
+    def editor_save(self, body: str) -> dict:
+        return self._editor.save(body) if self._editor else {'ok': False}
+
+    def editor_render_preview(self, body: Optional[str] = None) -> dict:
+        return self._editor.render_preview(body) if self._editor else {'ok': False}
+
+    def editor_export_to_output(self) -> dict:
+        return self._editor.export_to_output() if self._editor else {'ok': False}
+
+    def editor_pick_open(self) -> dict:
+        """Native open dialog for a .jianpu.txt → load it."""
+        if self._editor is None or self._window is None:
+            return {'ok': False, 'error': 'no service'}
+        from core.app.backend import editor_workspace_dir
+        result = self._window.create_file_dialog(
+            webview.FileDialog.OPEN, allow_multiple=False,
+            directory=str(editor_workspace_dir()),
+            file_types=('简谱文本 (*.jianpu.txt;*.txt)', 'All files (*.*)'),
+        )
+        if not result:
+            return {'ok': False, 'error': 'cancelled'}
+        path = result[0] if isinstance(result, (list, tuple)) else result
+        return self._editor.load(str(path))
 
     # ── 系统集成 ─────────────────────────────────────────────────────────────
     def shell_open_output_dir(self) -> dict:

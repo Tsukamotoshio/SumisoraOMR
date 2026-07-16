@@ -202,6 +202,31 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.model.del_piano_confirm": {"zh": "删除钢琴转录模型？可随时重新下载。",
                                   "en": "Delete the piano transcription model? You can re-download anytime."},
     "w.drop.error": {"zh": "拖拽处理异常：{e}", "en": "Drag-and-drop failed: {e}"},
+
+    # ── 简谱编辑器 ───────────────────────────────────────────────────────────
+    "w.ed.title": {"zh": "简谱编辑", "en": "Jianpu Editor"},
+    "w.ed.open": {"zh": "打开", "en": "Open"},
+    "w.ed.save": {"zh": "保存", "en": "Save"},
+    "w.ed.save_tip": {"zh": "保存 (Ctrl+S)", "en": "Save (Ctrl+S)"},
+    "w.ed.render": {"zh": "渲染预览", "en": "Render Preview"},
+    "w.ed.render_tip": {"zh": "保存并渲染简谱预览（LilyPond）", "en": "Save and render the jianpu preview (LilyPond)"},
+    "w.ed.export": {"zh": "导出到输出", "en": "Export to Output"},
+    "w.ed.export_tip": {"zh": "把当前预览 PDF 覆写回 Output/", "en": "Overwrite the Output/ PDF with the current preview"},
+    "w.ed.symbols": {"zh": "符号参考", "en": "Symbols"},
+    "w.ed.ref_tab": {"zh": "参考图", "en": "Reference"},
+    "w.ed.preview_tab": {"zh": "简谱预览", "en": "Preview"},
+    "w.ed.empty": {"zh": "从「简谱预览」页对某个文件点「编辑」进入，\n或点上方「打开」选择 .jianpu.txt",
+                   "en": "Enter via \"Edit\" on a file in the Jianpu page,\nor click \"Open\" to pick a .jianpu.txt"},
+    "w.ed.no_source": {"zh": "未找到参考图（原始乐谱图像）", "en": "No reference image found"},
+    "w.ed.no_preview_yet": {"zh": "点「渲染预览」查看当前文本的排版效果", "en": "Click \"Render Preview\" to typeset the current text"},
+    "w.ed.saved": {"zh": "已保存 {name}", "en": "Saved {name}"},
+    "w.ed.save_failed": {"zh": "保存失败：{e}", "en": "Save failed: {e}"},
+    "w.ed.exported": {"zh": "已导出：{dest}", "en": "Exported: {dest}"},
+    "w.ed.export_need_preview": {"zh": "先「渲染预览」成功后才能导出", "en": "Render a preview first, then export"},
+    "w.ed.line_col": {"zh": "行 {l} · 列 {c}", "en": "Ln {l} · Col {c}"},
+    "w.ed.dirty": {"zh": "未保存", "en": "Unsaved"},
+    "w.ed.unsaved_confirm": {"zh": "有未保存的修改，离开将丢失。确定离开？",
+                             "en": "You have unsaved changes that will be lost. Leave anyway?"},
 }
 
 
