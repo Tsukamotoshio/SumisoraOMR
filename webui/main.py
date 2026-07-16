@@ -203,6 +203,11 @@ def _selftest(window: webview.Window) -> None:
 
 
 def main() -> None:
+    # SSL：走系统证书库（truststore），修复 MITM 代理 / 本地根证书验证失败。
+    # 必须在任何下载（模型权重等）创建 SSL 上下文之前注入。
+    from core.app.ssl_setup import setup_system_ssl
+    setup_system_ssl()
+
     selftest = '--selftest' in sys.argv
     gate_mode = next((a for a in sys.argv if a in ('--happy', '--gate2', '--gate3', '--gate4')), None)
     gate_file = sys.argv[sys.argv.index(gate_mode) + 1] if gate_mode else None

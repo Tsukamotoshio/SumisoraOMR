@@ -111,6 +111,11 @@ if __name__ == '__main__' and '--worker' in sys.argv:
     import os as _os
     _os._exit(0)   # 强制退出：绕过 onnxruntime 等库遗留的非 daemon 线程
 
+# SSL：走系统证书库（truststore），修复 MITM 代理 / 本地根证书验证失败。
+# certifi 的 SSL_CERT_FILE env（上方 frozen 分支）保留为回退。
+from core.app.ssl_setup import setup_system_ssl
+setup_system_ssl()
+
 import flet as ft
 
 from gui.app_state import AppState, Event

@@ -162,6 +162,11 @@ def run_worker() -> None:
 
     _restore_stdio_fds()
 
+    # ── SSL：走系统证书库（truststore），修复 MITM 代理 / 本地根证书验证失败 ──
+    # 必须在任何下载（HOMR / 钢琴模型权重）创建 SSL 上下文之前注入。
+    from core.app.ssl_setup import setup_system_ssl  # noqa: PLC0415
+    setup_system_ssl()
+
     # ── 保存 IPC 管道引用，然后把 stdout 重定向到 stderr
     # 防止 pipeline 中残余的 print() / sys.stdout.write() 污染 JSON 流
     stdout_obj = getattr(sys.stdout, 'buffer', None) or getattr(sys.__stdout__, 'buffer', None)

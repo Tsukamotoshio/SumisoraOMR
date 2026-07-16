@@ -90,6 +90,7 @@ setuptools==82.0.1
 shapely==2.1.2
 six==1.17.0
 tqdm==4.68.1
+truststore==0.10.4
 typing_extensions==4.15.0
 urllib3==2.7.0
 webcolors==25.10.0
