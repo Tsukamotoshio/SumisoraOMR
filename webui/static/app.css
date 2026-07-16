@@ -279,16 +279,6 @@ button { font-family: inherit; cursor: default; }
 }
 .a4frame:has(> canvas.hidden) { display: none; }
 .a4frame canvas { display: block; }
-.file .act {
-  margin-left: auto; display: none; gap: 2px; flex: none;
-}
-.file:hover .act { display: flex; }
-.file .act button {
-  width: 22px; height: 22px; border-radius: 5px; border: 0; background: transparent;
-  color: var(--faint); display: grid; place-items: center;
-}
-.file .act button:hover { background: var(--inset); color: var(--text); }
-.file .act svg { width: 13px; height: 13px; }
 
 /* ── 移调页 ─────────────────────────────────────────────────────────────── */
 .content.transpose { grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0,1fr); }

@@ -78,30 +78,65 @@ function toast(text) {
 }
 
 // ═══ 窗口边缘 resize 把手（frameless 窗口任意调整大小） ═══════════════════════
-// pointerdown → Python 发 SC_SIZE，进入 Windows 原生 resize 循环（原生手感）。
+// pointerdown 记录起点 → pointermove 用屏幕位移调 Python 直接 resize（rAF 节流）。
 (function initResizeGrips() {
   const DIRS = {
     n: 'top', s: 'bottom', e: 'right', w: 'left',
     ne: 'topright', nw: 'topleft', se: 'bottomright', sw: 'bottomleft',
   };
+  let drag = null;      // {dir, sx, sy, pid}
+  let pending = null;   // 待发送的最新 delta（rAF 合并）
+  let rafId = 0;
+  function flush() {
+    rafId = 0;
+    if (drag && pending) {
+      window.pywebview.api.window_resize_edge(drag.dir, pending.dx, pending.dy);
+      pending = null;
+    }
+  }
   for (const [k, dir] of Object.entries(DIRS)) {
     const g = document.createElement('div');
     g.className = `resize-grip grip-${k}`;
-    g.addEventListener('pointerdown', (e) => {
+    g.addEventListener('pointerdown', async (e) => {
       e.preventDefault();
-      window.pywebview.api.window_start_resize(dir);
+      g.setPointerCapture(e.pointerId);
+      drag = { dir, sx: e.screenX, sy: e.screenY, pid: e.pointerId };
+      const r = await window.pywebview.api.window_resize_begin();
+      if (r && r.maximized === false) updateMaxIcon(false);
     });
+    g.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.pid) return;
+      pending = { dx: e.screenX - drag.sx, dy: e.screenY - drag.sy };
+      if (!rafId) rafId = requestAnimationFrame(flush);
+    });
+    const end = (e) => {
+      if (drag && e.pointerId === drag.pid) {
+        try { g.releasePointerCapture(drag.pid); } catch (_e) {}
+        drag = null;
+      }
+    };
+    g.addEventListener('pointerup', end);
+    g.addEventListener('pointercancel', end);
     document.body.appendChild(g);
   }
 })();
 
 // ═══ 标题栏 ══════════════════════════════════════════════════════════════════
+const MAX_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg>';
+const RESTORE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8.5 8.5V7A1.5 1.5 0 0 1 10 5.5h7A1.5 1.5 0 0 1 18.5 7v7a1.5 1.5 0 0 1-1.5 1.5h-1.5" stroke-linecap="round"/><rect x="5.5" y="8.5" width="10" height="10" rx="1.5"/></svg>';
+function updateMaxIcon(maxed) {
+  $('btn-max').innerHTML = maxed ? RESTORE_ICON : MAX_ICON;
+}
+async function toggleMax() {
+  const m = await api().window_toggle_maximize();
+  updateMaxIcon(m);
+}
 $('btn-min').addEventListener('click', () => api().window_minimize());
-$('btn-max').addEventListener('click', () => api().window_toggle_maximize());
+$('btn-max').addEventListener('click', toggleMax);
 $('btn-close').addEventListener('click', () => api().window_close());
 document.querySelector('.titlebar').addEventListener('dblclick', (e) => {
   if (e.target.closest('.wc') || e.target.closest('.iconbtn')) return;
-  api().window_toggle_maximize();
+  toggleMax();
 });
 
 // ═══ 文件托盘（分视图渲染；Python 端共享一份托盘） ═══════════════════════════
@@ -502,6 +537,16 @@ class PdfView {
     this.pageNo = 1;
     this.scale = null;      // null = fit-width
     this._renderToken = 0;
+    // A4 画框随窗口尺寸变化（窗口化↔最大化、任意 resize）→ fit 模式下重渲当前页，
+    // 让页面始终恰好填满新的画框（业界惯用做法：观察容器尺寸，防抖重排）。
+    this._resizeTimer = 0;
+    const frame = this.canvas.parentElement || this.stage;
+    this._ro = new ResizeObserver(() => {
+      if (!this.doc || this.scale !== null) return;   // 仅 fit 模式自动重排
+      clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => { if (this.doc) this.render(); }, 120);
+    });
+    this._ro.observe(frame);
   }
 
   async open(url) {
@@ -603,21 +648,12 @@ function jpRenderList() {
     nm.textContent = e.name;
     nm.title = e.path;
     li.append(cb, nm);
-    if (e.has_txt) {
-      const act = document.createElement('div');
-      act.className = 'act';
-      const edit = document.createElement('button');
-      edit.title = t('common.jianpu_edit');
-      edit.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20h4L19 9l-4-4L4 16v4z M13 7l4 4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      edit.addEventListener('click', (ev) => { ev.stopPropagation(); edOpenForPdf(e.path); });
-      act.appendChild(edit);
-      li.appendChild(act);
-    }
     li.addEventListener('click', () => { jpSel = e.path; jpRenderList(); jpOpenSelected(); });
     list.appendChild(li);
   }
   $('jp-count').textContent = jpEntries.length ? t('w.list.checked_count', { n: jpChecked.size, t: jpEntries.length }) : '';
   const cur = jpEntries.find((e) => e.path === jpSel);
+  $('jp-edit').disabled = !(cur && cur.has_txt);
   $('jp-midi').disabled = !(cur && cur.has_midi);
   $('jp-rerender').disabled = !(cur && cur.has_txt);
 }
@@ -674,6 +710,7 @@ window.addEventListener('rerender_done', (e) => {
     toast(t('w.jp.rerender_failed', { e: d.error }));
   }
 });
+$('jp-edit').addEventListener('click', () => { if (jpSel) edOpenForPdf(jpSel); });
 $('jp-prev').addEventListener('click', () => jpView.prev());
 $('jp-next').addEventListener('click', () => jpView.next());
 $('jp-zoomin').addEventListener('click', () => jpView.zoom(1.2));

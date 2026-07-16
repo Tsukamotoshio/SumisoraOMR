@@ -309,38 +309,55 @@ class Bridge:
             self._window.minimize()
 
     def window_toggle_maximize(self) -> bool:
+        """Toggle maximize; returns new maximized state (前端据此换图标)."""
         if self._window is None:
             return False
-        if self._maximized:
-            self._window.restore()
-        else:
+        self._set_maximized(not self._maximized)
+        return self._maximized
+
+    def _set_maximized(self, maxed: bool) -> None:
+        if self._window is None or maxed == self._maximized:
+            return
+        if maxed:
             self._window.maximize()
-        self._maximized = not self._maximized
+        else:
+            self._window.restore()
+        self._maximized = maxed
+
+    def window_is_maximized(self) -> bool:
         return self._maximized
 
     def window_close(self) -> None:
         if self._window is not None:
             self._window.destroy()
 
-    # frameless 窗口边缘拖拽调整大小：SC_SIZE + WMSZ_* 让 Windows 进入原生
-    # resize 模态循环（与系统窗口边缘完全一致的手感，含最小尺寸与贴边）。
-    _RESIZE_EDGES = {
-        'left': 1, 'right': 2, 'top': 3, 'topleft': 4,
-        'topright': 5, 'bottom': 6, 'bottomleft': 7, 'bottomright': 8,
-    }
+    # ── frameless 边缘拖拽调整大小 ──────────────────────────────────────────
+    # WinForms 的 FormBorderStyle=None 无边框窗口**不响应** WM_SYSCOMMAND SC_SIZE，
+    # 所以改为直接调 pywebview 线程安全的 resize()，用 fix_point 固定与拖动边相对的
+    # 角 → 单次 resize 完成，无需 move()、无闪烁。begin 记录起始矩形，move 传屏幕位移。
+    def window_resize_begin(self) -> dict:
+        if self._window is None:
+            return {}
+        if self._maximized:
+            self._set_maximized(False)   # 最大化态下开始拖拽 → 先还原
+        # 逻辑（DIP）尺寸——与 window.resize() 和 JS screenX/Y 同单位。误用
+        # native.Width（物理像素）会在高 DPI 下按缩放比放大（150% → 1.5×）。
+        self._resize_start = {'w': int(self._window.width), 'h': int(self._window.height)}
+        return {'maximized': False}
 
-    def window_start_resize(self, direction: str) -> None:
-        if self._window is None or self._maximized:
+    def window_resize_edge(self, direction: str, dx: int, dy: int) -> None:
+        if self._window is None or getattr(self, '_resize_start', None) is None:
             return
-        edge = self._RESIZE_EDGES.get(direction)
-        if edge is None:
-            return
+        from webview.window import FixPoint as FP
+        r = self._resize_start
+        min_w, min_h = 760, 520
+        w = r['w'] - dx if 'left' in direction else (r['w'] + dx if 'right' in direction else r['w'])
+        h = r['h'] - dy if 'top' in direction else (r['h'] + dy if 'bottom' in direction else r['h'])
+        w = max(min_w, int(w))
+        h = max(min_h, int(h))
+        fp = (FP.EAST if 'left' in direction else FP.WEST) \
+            | (FP.SOUTH if 'top' in direction else FP.NORTH)
         try:
-            import ctypes
-            handle = self._window.native.Handle  # type: ignore[union-attr]  # WinForms Form 句柄
-            hwnd = int(handle) if isinstance(handle, int) else handle.ToInt64()
-            WM_SYSCOMMAND, SC_SIZE = 0x0112, 0xF000
-            ctypes.windll.user32.ReleaseCapture()
-            ctypes.windll.user32.SendMessageW(hwnd, WM_SYSCOMMAND, SC_SIZE + edge, 0)
+            self._window.resize(w, h, fix_point=fp)
         except Exception:
-            pass  # 非 Windows / 后端变更时静默忽略，不破坏其它功能
+            pass
