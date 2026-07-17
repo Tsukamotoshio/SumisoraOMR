@@ -47,15 +47,16 @@ window.__omrEvents = (events) => {
 })();
 
 // ═══ 导航 ════════════════════════════════════════════════════════════════════
-const PAGES = ['score', 'audio', 'jianpu', 'staff', 'transpose', 'about', 'editor'];
+const PAGES = ['score', 'audio', 'jianpu', 'staff', 'transpose', 'about', 'editor', 'notedigger'];
 let activePage = 'score';
 const pageEnterHooks = {};   // page → () => void（进入页面时触发，如刷新列表）
 
 function showPage(name) {
   activePage = name;
   for (const p of PAGES) $(`page-${p}`).classList.toggle('hidden', name !== p);
-  // 移调/编辑页分别是五线谱/简谱预览的子流程，导航栏保持父页高亮
-  const navName = name === 'transpose' ? 'staff' : (name === 'editor' ? 'jianpu' : name);
+  // 移调/编辑/高级修正是各自父页的子流程，导航栏保持父页高亮
+  const navName = name === 'transpose' ? 'staff'
+    : (name === 'editor' ? 'jianpu' : (name === 'notedigger' ? 'audio' : name));
   document.querySelectorAll('.nav').forEach((x) => x.removeAttribute('aria-current'));
   const nav = document.querySelector(`.nav[data-page='${navName}']`);
   if (nav) nav.setAttribute('aria-current', 'true');
@@ -361,6 +362,15 @@ $('audio-melody').addEventListener('click', (e) => {
   b.classList.toggle('on');
   b.setAttribute('aria-checked', b.classList.contains('on') ? 'true' : 'false');
 });
+
+// ═══ noteDigger 高级修正（钢琴卷帘）：iframe 懒加载 ══════════════════════════
+// 首次进入才设 src——noteDigger 会初始化 ONNX/GPU，避免拖慢主界面启动。
+$('audio-notedigger').addEventListener('click', () => showPage('notedigger'));
+$('nd-back').addEventListener('click', () => showPage('audio'));
+pageEnterHooks.notedigger = () => {
+  const f = $('nd-frame');
+  if (!f.getAttribute('src')) f.setAttribute('src', './vendor/notedigger/index.html');
+};
 
 window.addEventListener('progress_update', (e) => {
   window.__uiFlags.progressEvents += 1;

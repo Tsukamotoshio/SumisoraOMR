@@ -330,6 +330,11 @@
               <span data-i18n="w.score.outdir">打开输出目录</span>
             </button>
             <div class="rule"></div>
+            <button class="chipbtn accent" id="audio-notedigger" title="用钢琴卷帘编辑器手动扒谱/校正，导出 MIDI 回流识别管线" data-i18n-title="w.audio.notedigger_tip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M13 4v16" stroke-linecap="round"/></svg>
+              <span data-i18n="w.audio.notedigger">高级修正（钢琴卷帘）</span>
+            </button>
+            <div class="rule"></div>
             <span class="lbl" data-i18n="w.audio.piano_label">钢琴转录模型</span>
             <div class="status" id="piano-status"><span class="led"></span><span id="piano-status-text">检查中…</span></div>
             <div class="modelbtns">
@@ -337,6 +342,19 @@
               <button class="ghost" id="piano-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.delete">删除</span></button>
             </div>
           </div>
+        </section>
+      </div>
+
+      <!-- ════ noteDigger 高级修正页（从音频识别进入，iframe 懒加载） ════ -->
+      <div class="content nd hidden" id="page-notedigger">
+        <section class="card span ndcard" aria-label="高级修正">
+          <header>
+            <button class="chipbtn" id="nd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
+            <h2 data-i18n="w.nd.title">高级修正 · 钢琴卷帘（noteDigger）</h2>
+            <span class="spring"></span>
+            <span class="count muted" data-i18n="w.nd.hint">导出的 MIDI 可回流识别管线</span>
+          </header>
+          <iframe id="nd-frame" class="nd-frame" title="noteDigger" allow="cross-origin-isolated; autoplay"></iframe>
         </section>
       </div>
 

@@ -57,6 +57,13 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.audio.listen_ph": {"zh": "选中音频后在此试听\n（识别引擎仅支持钢琴独奏）",
                           "en": "Select audio to play it here\n(the engine supports solo piano only)"},
     "w.audio.melody_only": {"zh": "仅主旋律", "en": "Melody only"},
+    "w.audio.notedigger": {"zh": "高级修正（钢琴卷帘）", "en": "Advanced correction (piano roll)"},
+    "w.audio.notedigger_tip": {
+        "zh": "用钢琴卷帘编辑器手动扒谱 / 校正，导出 MIDI 回流识别管线",
+        "en": "Manually transcribe / correct in a piano-roll editor; export MIDI back into the pipeline",
+    },
+    "w.nd.title": {"zh": "高级修正 · 钢琴卷帘（noteDigger）", "en": "Advanced correction · Piano roll (noteDigger)"},
+    "w.nd.hint": {"zh": "导出的 MIDI 可回流识别管线", "en": "Exported MIDI can flow back into the pipeline"},
     "w.audio.piano_label": {"zh": "钢琴转录模型", "en": "Piano Transcription Model"},
     "w.audio.piano_ready": {"zh": "钢琴转录模型 · 已就绪", "en": "Piano transcription model · ready"},
     "w.audio.piano_missing": {"zh": "未下载（约 172 MB，按需）", "en": "Not downloaded (~172 MB, on demand)"},

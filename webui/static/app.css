@@ -320,7 +320,12 @@ button { font-family: inherit; cursor: default; }
   background: var(--accent); border-radius: 2px; transition: width .2s ease;
 }
 .content.transpose .stage.pdfstage { padding: 12px; }
-.content.transpose .stage.pdfstage { padding: 12px; }
+
+/* ── noteDigger 高级修正页：单卡填满，iframe 铺满卡片主体 ─────────────────── */
+.content.nd { grid-template-columns: 1fr; grid-template-rows: minmax(0,1fr); overflow: hidden; }
+.ndcard { min-height: 0; overflow: hidden; }
+.ndcard > header .count.muted { color: var(--faint); }
+.nd-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; display: block; }
 
 /* ── 简谱编辑页 ─────────────────────────────────────────────────────────── */
 .tabgroup .tab { width: auto; padding: 0 14px; font-size: 12.5px; }
