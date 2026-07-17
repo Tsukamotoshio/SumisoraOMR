@@ -192,16 +192,21 @@ button { font-family: inherit; cursor: default; }
 .content.audio { grid-template-columns: minmax(300px, 340px) minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
 .audiobar { border-top: 1px solid var(--border); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; flex: none; }
 .audiobar > .count { font-size: 12px; color: var(--muted); min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.audiostage { min-height: 46px; display: grid; place-items: center; padding: 0; }
+.audiostage { min-height: 42px; max-height: 88px; display: grid; place-items: center; padding: 0; overflow: hidden; }
 .audiostage audio { width: 100%; height: 38px; }
-.audiostage .placeholder.mini { color: var(--faint); font-size: 12px; display: flex; align-items: center; gap: 8px; }
-.audiostage .placeholder.mini svg { width: 18px; height: 18px; opacity: .6; flex: none; }
-.audio-actions { display: grid; grid-template-rows: auto auto; gap: 16px; align-content: start; min-height: 0; }
+.audiostage .placeholder { color: var(--faint); font-size: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 4px; text-align: left; }
+.audiostage .placeholder svg { width: 20px; height: 20px; opacity: .55; flex: none; }
+.audio-actions { display: grid; grid-template-rows: auto minmax(0,1fr); gap: 16px; min-height: 0; }
+.card.focus { min-height: 0; }
 .card.focus > header { gap: 10px; }
 .card.focus .focus-ico { width: 19px; height: 19px; color: var(--accent); flex: none; }
 .card.focus .pad p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
-.card.focus-alt { border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); }
-.primary.alt { background: var(--accent-tint-2); color: var(--accent-strong); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: none; }
+.card.focus-alt { border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--card)), var(--card)); }
+/* 扒谱卡填满右栏剩余高度、内容垂直居中 → 醒目的入口面板，消除右栏下方留白 */
+.card.focus-alt .pad { flex: 1; justify-content: center; align-items: center; text-align: center; gap: 14px; }
+.card.focus-alt .pad p { max-width: 34ch; }
+.primary.alt { background: var(--accent-tint-2); color: var(--accent-strong); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: none; padding: 11px 22px; }
 .primary.alt:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 
 /* ── 浮层（进度 / 弹层公共） ───────────────────────────────────────────── */
