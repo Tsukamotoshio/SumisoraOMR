@@ -276,15 +276,24 @@ class Bridge:
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
 
-    def shell_pick_files(self) -> list:
-        """Native file-open dialog → add selections to the tray. Returns added paths."""
+    def shell_pick_files(self, kind: Optional[str] = None) -> list:
+        """Native file-open dialog → add selections to the tray. Returns added paths.
+
+        kind: 'score' → 图片/PDF；'audio' → 音频；否则两者合并。
+        注意：pywebview 的 file_types 描述必须匹配 ``^[\\w ]+\\(...\\)$``——描述里不能
+        含 ``/`` 等非 \\w 字符，否则 create_file_dialog 抛 ValueError、对话框根本不弹。
+        """
         if self._window is None:
             return []
+        if kind == 'score':
+            file_types = ('图片乐谱 (*.pdf;*.png;*.jpg;*.jpeg)', 'All files (*.*)')
+        elif kind == 'audio':
+            file_types = ('音频 (*.mp3;*.wav;*.flac;*.ogg)', 'All files (*.*)')
+        else:
+            file_types = ('乐谱与音频 (*.pdf;*.png;*.jpg;*.jpeg;*.mp3;*.wav;*.flac;*.ogg)',
+                          'All files (*.*)')
         result = self._window.create_file_dialog(
-            webview.FileDialog.OPEN, allow_multiple=True,
-            file_types=('乐谱/音频 (*.pdf;*.png;*.jpg;*.jpeg;*.mp3;*.wav;*.flac;*.ogg)',
-                        'All files (*.*)'),
-        )
+            webview.FileDialog.OPEN, allow_multiple=True, file_types=file_types)
         paths = [str(Path(p)) for p in (result or [])]
         if paths:
             self._conversion.files_add(paths)

@@ -251,8 +251,8 @@ window.addEventListener('files_changed', (e) => {
   renderView('audio');
 });
 
-$('score-add').addEventListener('click', () => api().shell_pick_files());
-$('audio-add').addEventListener('click', () => api().shell_pick_files());
+$('score-add').addEventListener('click', () => api().shell_pick_files('score'));
+$('audio-add').addEventListener('click', () => api().shell_pick_files('audio'));
 
 // ═══ 转换流程 + 进度浮层 ═════════════════════════════════════════════════════
 let cancelling = false;
