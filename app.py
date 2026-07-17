@@ -19,42 +19,11 @@ warnings.filterwarnings(
     category=RuntimeWarning,
 )
 
-# ─── SSL certificates: fix cert-validation failures in packaged builds ───────
-# 在所有网络请求（flet / urllib / requests / httpx）之前设置，
-# 强制使用随包附带的 certifi 证书，避免旧版 Windows 根证书缺失或 SSL 中间人干扰。
-#   SSL_CERT_FILE    — Python ssl 模块 / urllib / httpx
-#   REQUESTS_CA_BUNDLE — requests 库
-#   CURL_CA_BUNDLE   — libcurl 系库
-if getattr(sys, 'frozen', False):
-    _meipass = getattr(sys, '_MEIPASS', None)
-    if _meipass is not None:
-        _internal_cert = os.path.join(_meipass, 'certifi', 'cacert.pem')
-        if os.path.exists(_internal_cert):
-            os.environ['SSL_CERT_FILE'] = _internal_cert
-            os.environ['REQUESTS_CA_BUNDLE'] = _internal_cert
-            os.environ['CURL_CA_BUNDLE'] = _internal_cert
-    # console=False 时 sys.stdout/stderr 为 None，所有 print() 会崩溃
-    # 替换为 null 流，将输出静默丢弃（日志仍写入 logs/ 文件）
-    # 注意：Worker 子进程需要保留 stdout 作为 IPC 管道，不能重定向到 devnull
-    _is_worker_process = '--worker' in sys.argv
-    if not _is_worker_process:
-        if sys.stdout is None:
-            sys.stdout = open(os.devnull, 'w', encoding='utf-8', errors='replace')
-        if sys.stderr is None:
-            sys.stderr = open(os.devnull, 'w', encoding='utf-8', errors='replace')
-
-# ─── ONNX / OpenMP thread cap: reserve CPU headroom for asyncio event loop ───
-# homr 使用 ONNX Runtime 进行神经网络推理，默认会占满所有 CPU 核心。
-# 在打包版中，CPU 满载导致 asyncio 事件循环长时间得不到调度，
-# Flet WebSocket 心跳超时，Flutter 端显示 "Working..." 重连画面。
-# 在首次 import onnxruntime / 初始化 OpenMP 线程池之前设置，保留 1 个核心给 asyncio。
-_cpu_count = os.cpu_count() or 4
-_onnx_threads = str(max(1, _cpu_count - 1))
-os.environ.setdefault('OMP_NUM_THREADS',          _onnx_threads)
-os.environ.setdefault('OPENBLAS_NUM_THREADS',     _onnx_threads)
-os.environ.setdefault('MKL_NUM_THREADS',          _onnx_threads)
-os.environ.setdefault('VECLIB_MAXIMUM_THREADS',   _onnx_threads)
-os.environ.setdefault('NUMEXPR_NUM_THREADS',      _onnx_threads)
+# ─── 打包版早期环境/stdio 设置（与 webui 壳共用同一实现）─────────────────────
+# certifi SSL 回退（frozen）+ console=False 的 null 流保护（非 worker）+
+# ONNX/OpenMP 线程封顶。必须在 import flet / onnxruntime 之前。
+from core.app.startup import early_frozen_setup
+early_frozen_setup()
 
 # ─── Bootstrap: ensure correct virtual environment ───────────────────────────
 def _bootstrap_venv() -> None:
@@ -1051,8 +1020,9 @@ if __name__ == '__main__':
 
     if sys.platform == 'win32' and '--worker' not in sys.argv:
         import ctypes as _ctypes
-        _ctypes.windll.kernel32.CreateMutexW(None, False, 'SumisoraOMR_RunningMutex')
-        if _ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        # 单实例：与 webui 壳共用同一互斥量实现
+        from core.app.startup import acquire_single_instance
+        if not acquire_single_instance():
             _ctypes.windll.user32.MessageBoxW(
                 0,
                 t('app.single_instance_body'),

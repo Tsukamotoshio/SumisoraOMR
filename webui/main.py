@@ -58,6 +58,11 @@ def _bootstrap_venv() -> None:
 if __name__ == '__main__':
     _bootstrap_venv()
 
+# frozen 启动：certifi SSL 回退 + console=False 的 null 流保护 + ONNX/OpenMP 线程封顶。
+# 必须在 import webview / onnxruntime 之前（与 app.py 的打包版行为一致）。
+from core.app.startup import early_frozen_setup
+early_frozen_setup()
+
 import json
 import threading
 import time
@@ -294,8 +299,18 @@ def main() -> None:
 
     # 启动时恢复持久化语言（与 Flet 版共用 ui-settings.json / gui.strings 状态）
     from gui.settings import get_saved_language
-    from gui.strings import set_language
+    from gui.strings import set_language, t
     set_language(get_saved_language())
+
+    # 单实例：已有实例在运行则提示并退出（selftest/gate 自动化不受此限）
+    if not (selftest or gate_mode):
+        from core.app.startup import acquire_single_instance
+        if not acquire_single_instance():
+            if sys.platform == 'win32':
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(
+                    0, t('app.single_instance_body'), t('app.single_instance_title'), 0x30)
+            sys.exit(0)
 
     _httpd, base_url, whitelist = start_server()
     pusher = EventPusher()
