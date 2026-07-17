@@ -13,7 +13,6 @@ Listed PDFs are whitelisted for the /file endpoint so pdf.js can fetch them.
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import threading
 from pathlib import Path
@@ -111,11 +110,9 @@ class OutputsService:
         midi = output_dir(None) / f'{stem}.mid'
         if not midi.exists():
             return {'ok': False, 'error': 'not_found', 'name': midi.name}
-        try:
-            os.startfile(str(midi))  # noqa: S606 — 用系统默认播放器打开自家输出
-            return {'ok': True}
-        except OSError as exc:
-            return {'ok': False, 'error': str(exc)}
+        # 内置播放器：白名单放行，返回路径供前端经 /file 取字节 → WebAudioTinySynth 播放
+        self._whitelist.allow(midi)
+        return {'ok': True, 'path': str(midi), 'name': midi.name}
 
     # ── 从 .jianpu.txt 重渲（后台线程；结果推 rerender_done）─────────────────
 
@@ -258,13 +255,13 @@ class ScoresService:
                     ok = bool(render_midi_from_musicxml(mxl, midi)) and midi.exists()
             except Exception as exc:  # noqa: BLE001
                 error = str(exc)
+            path = None
             if ok:
-                try:
-                    os.startfile(str(midi))  # noqa: S606
-                except OSError as exc:
-                    ok, error = False, str(exc)
+                # 内置播放器：白名单放行，路径随事件回前端 → /file → WebAudioTinySynth
+                self._whitelist.allow(midi)
+                path = str(midi)
             self._pusher.push('score_midi_done', {
-                'mxl': str(mxl), 'ok': ok, 'error': error, 'name': midi.name,
+                'mxl': str(mxl), 'ok': ok, 'error': error, 'name': midi.name, 'path': path,
             })
 
         threading.Thread(target=_work, daemon=True, name='midi-gen').start()
