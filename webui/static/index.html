@@ -297,62 +297,76 @@
         </section>
       </div>
 
-      <!-- ════ 音频识别页 ════ -->
-      <div class="content hidden" id="page-audio">
-        <section class="card" aria-label="音频文件">
+      <!-- ════ 音频识别页（左：文件+试听；右：双焦点 自动识别 / 扒谱编辑器） ════ -->
+      <div class="content audio hidden" id="page-audio">
+        <section class="card audio-files-card" aria-label="音频文件">
           <header><h2 data-i18n="w.audio.files_title">音频文件</h2><span class="count num" id="audio-count">已选 0 / 0</span></header>
           <div class="toolrow">
             <button class="chipbtn" id="audio-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span data-i18n="w.score.add">添加文件</span></button>
           </div>
           <ul class="filelist" id="audio-files"><li class="empty" data-i18n="w.audio.empty">拖入 MP3 / WAV / FLAC / OGG，或点「添加文件」</li></ul>
-        </section>
-
-        <section class="card preview" aria-label="试听">
-          <header><h2 data-i18n="w.audio.listen_title">试听</h2><span class="count" id="audio-preview-name"></span></header>
-          <div class="stage" id="audio-stage">
-            <div class="placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>
-              <span data-i18n="w.audio.listen_ph">选中音频后在此试听（识别引擎仅支持钢琴独奏）</span>
+          <div class="audiobar">
+            <span class="count" id="audio-preview-name"></span>
+            <div class="stage audiostage" id="audio-stage">
+              <div class="placeholder mini">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>
+                <span data-i18n="w.audio.listen_ph">选中音频后在此试听（识别引擎仅支持钢琴独奏）</span>
+              </div>
             </div>
           </div>
         </section>
 
-        <section class="card" aria-label="识别选项">
-          <header><h2 data-i18n="w.score.opts_title">识别选项</h2></header>
-          <div class="pad stack">
-            <label class="checkrow"><button class="cbx" id="audio-melody" role="checkbox" aria-checked="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="w.audio.melody_only">仅主旋律</span></label>
-            <button class="primary" id="audio-start">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-              <span data-i18n="w.score.start">开始识别</span>
-            </button>
-            <button class="ghost" id="audio-outdir">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-              <span data-i18n="w.score.outdir">打开输出目录</span>
-            </button>
-            <div class="rule"></div>
-            <button class="chipbtn accent" id="audio-notedigger" title="用钢琴卷帘编辑器手动扒谱/校正，导出 MIDI 回流识别管线" data-i18n-title="w.audio.notedigger_tip">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M13 4v16" stroke-linecap="round"/></svg>
-              <span data-i18n="w.audio.notedigger">高级修正（钢琴卷帘）</span>
-            </button>
-            <div class="rule"></div>
-            <span class="lbl" data-i18n="w.audio.piano_label">钢琴转录模型</span>
-            <div class="status" id="piano-status"><span class="led"></span><span id="piano-status-text">检查中…</span></div>
-            <div class="modelbtns">
-              <button class="ghost" id="piano-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.download">下载</span></button>
-              <button class="ghost" id="piano-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.delete">删除</span></button>
+        <div class="audio-actions">
+          <section class="card focus" aria-label="自动识别">
+            <header>
+              <svg class="focus-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke-linecap="round"/></svg>
+              <h2 data-i18n="w.audio.auto_title">自动识别</h2>
+            </header>
+            <div class="pad stack">
+              <p class="muted small" data-i18n="w.audio.auto_desc">用钢琴转录模型把音频自动识别为简谱 / MIDI（仅支持钢琴独奏）。</p>
+              <label class="checkrow"><button class="cbx" id="audio-melody" role="checkbox" aria-checked="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="w.audio.melody_only">仅主旋律</span></label>
+              <button class="primary" id="audio-start">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <span data-i18n="w.score.start">开始识别</span>
+              </button>
+              <button class="ghost" id="audio-outdir">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span data-i18n="w.score.outdir">打开输出目录</span>
+              </button>
+              <div class="rule"></div>
+              <span class="lbl" data-i18n="w.audio.piano_label">钢琴转录模型</span>
+              <div class="status" id="piano-status"><span class="led"></span><span id="piano-status-text">检查中…</span></div>
+              <div class="modelbtns">
+                <button class="ghost" id="piano-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.download">下载</span></button>
+                <button class="ghost" id="piano-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.delete">删除</span></button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+          <section class="card focus focus-alt" aria-label="音频扒谱编辑器">
+            <header>
+              <svg class="focus-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M13 4v16" stroke-linecap="round"/></svg>
+              <h2 data-i18n="w.audio.notedigger">音频扒谱编辑器</h2>
+            </header>
+            <div class="pad stack">
+              <p class="muted small" data-i18n="w.audio.notedigger_desc">在钢琴卷帘上按音频手动扒谱 / 校正，AI 辅助，导出 MIDI。自动识别不理想时用它精修。</p>
+              <button class="primary alt" id="audio-notedigger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="w.audio.notedigger_open">打开扒谱编辑器</span>
+              </button>
+            </div>
+          </section>
+        </div>
       </div>
 
-      <!-- ════ noteDigger 高级修正页（从音频识别进入，iframe 懒加载） ════ -->
+      <!-- ════ noteDigger 音频扒谱编辑器页（从音频识别进入，iframe 懒加载） ════ -->
       <div class="content nd hidden" id="page-notedigger">
-        <section class="card span ndcard" aria-label="高级修正">
+        <section class="card span ndcard" aria-label="音频扒谱编辑器">
           <header>
             <button class="chipbtn" id="nd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
-            <h2 data-i18n="w.nd.title">高级修正 · 钢琴卷帘（noteDigger）</h2>
+            <h2 data-i18n="w.nd.title">音频扒谱编辑器（noteDigger）</h2>
             <span class="spring"></span>
-            <span class="count muted" data-i18n="w.nd.hint">导出的 MIDI 可回流识别管线</span>
+            <span class="count muted" data-i18n="w.nd.hint">在钢琴卷帘上按音频扒谱，导出 MIDI</span>
           </header>
           <iframe id="nd-frame" class="nd-frame" title="noteDigger" allow="cross-origin-isolated; autoplay"></iframe>
         </section>

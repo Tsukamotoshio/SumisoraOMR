@@ -188,6 +188,22 @@ button { font-family: inherit; cursor: default; }
 .modelbtns .ghost { padding: 8px 10px; font-size: 12.5px; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 
+/* ── 音频识别页：左 文件+底部紧凑试听条，右 双焦点（自动识别 / 扒谱编辑器） ── */
+.content.audio { grid-template-columns: minmax(300px, 340px) minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
+.audiobar { border-top: 1px solid var(--border); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.audiobar > .count { font-size: 12px; color: var(--muted); min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audiostage { min-height: 46px; display: grid; place-items: center; padding: 0; }
+.audiostage audio { width: 100%; height: 38px; }
+.audiostage .placeholder.mini { color: var(--faint); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.audiostage .placeholder.mini svg { width: 18px; height: 18px; opacity: .6; flex: none; }
+.audio-actions { display: grid; grid-template-rows: auto auto; gap: 16px; align-content: start; min-height: 0; }
+.card.focus > header { gap: 10px; }
+.card.focus .focus-ico { width: 19px; height: 19px; color: var(--accent); flex: none; }
+.card.focus .pad p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.card.focus-alt { border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); }
+.primary.alt { background: var(--accent-tint-2); color: var(--accent-strong); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: none; }
+.primary.alt:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
 /* ── 浮层（进度 / 弹层公共） ───────────────────────────────────────────── */
 .scrim {
   position: fixed; inset: 0; z-index: 40;
