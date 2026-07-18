@@ -476,14 +476,71 @@ $('audio-melody').addEventListener('click', (e) => {
   b.setAttribute('aria-checked', b.classList.contains('on') ? 'true' : 'false');
 });
 
-// ═══ noteDigger 高级修正（钢琴卷帘）：iframe 懒加载 ══════════════════════════
+// ═══ noteDigger 音频扒谱编辑器：iframe 懒加载 + MIDI 导出→简谱 桥接（③-3）══════
 // 首次进入才设 src——noteDigger 会初始化 ONNX/GPU，避免拖慢主界面启动。
 $('audio-notedigger').addEventListener('click', () => showPage('notedigger'));
 $('nd-back').addEventListener('click', () => showPage('audio'));
+
+let ndMidi = null;   // 捕获的最近一次导出 {b64, name}
+// 劫持 noteDigger（同源 iframe）统一的保存出口 window.bSaver.saveArrayBuffer：
+// 用户走 noteDigger 原生「导出 MIDI」流程时透明捕获字节（不改 noteDigger）。
+function ndHook(frame) {
+  try {
+    const cw = frame.contentWindow;
+    if (!cw || !cw.bSaver || cw.__ndHooked) return !!(cw && cw.__ndHooked);
+    const orig = cw.bSaver.saveArrayBuffer.bind(cw.bSaver);
+    cw.bSaver.saveArrayBuffer = (arrayBuffer, filename) => {
+      if (/\.mid$/i.test(filename || '')) ndCapture(arrayBuffer, filename);
+      return orig(arrayBuffer, filename);   // 仍触发原生下载，用户也能拿到 .mid
+    };
+    cw.__ndHooked = true;
+    return true;
+  } catch (_e) { return false; }
+}
+function ndCapture(arrayBuffer, filename) {
+  const bytes = new Uint8Array(arrayBuffer);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  ndMidi = { b64: btoa(bin), name: filename };
+  $('nd-gen').disabled = false;
+  $('nd-status').textContent = t('w.nd.captured', { name: filename });
+}
 pageEnterHooks.notedigger = () => {
   const f = $('nd-frame');
-  if (!f.getAttribute('src')) f.setAttribute('src', './vendor/notedigger/index.html');
+  if (f.getAttribute('src')) return;
+  f.addEventListener('load', () => {
+    // bSaver 由 noteDigger 的经典脚本同步注册，但保险起见重试若干次
+    let tries = 0;
+    const tryHook = () => { if (ndHook(f) || ++tries > 40) return; setTimeout(tryHook, 150); };
+    tryHook();
+  });
+  f.setAttribute('src', './vendor/notedigger/index.html');
 };
+$('nd-gen').addEventListener('click', async () => {
+  if (!ndMidi) return;
+  $('nd-gen').disabled = true;
+  $('nd-status').textContent = t('w.nd.generating');
+  const r = await api().notedigger_generate_jianpu(ndMidi.name, ndMidi.b64);
+  if (!r.started) {
+    $('nd-status').textContent = t('w.nd.gen_failed', { e: r.error || '' });
+    $('nd-gen').disabled = false;
+  }
+});
+window.addEventListener('nd_jianpu_progress', (e) => {
+  if (e.detail && e.detail.message) $('nd-status').textContent = e.detail.message;
+});
+window.addEventListener('nd_jianpu_done', (e) => {
+  const d = e.detail || {};
+  if (!d.ok) {
+    $('nd-status').textContent = t('w.nd.gen_failed', { e: d.error || '' });
+    $('nd-gen').disabled = false;
+    return;
+  }
+  $('nd-status').textContent = t('w.nd.export_hint');
+  $('nd-gen').disabled = false;
+  toast(t('w.nd.gen_done', { name: d.name }));
+  showPage('jianpu');   // pageEnterHooks.jianpu 会刷新列表 → 新 PDF 出现
+});
 
 window.addEventListener('progress_update', (e) => {
   window.__uiFlags.progressEvents += 1;

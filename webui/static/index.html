@@ -368,7 +368,8 @@
             <button class="chipbtn" id="nd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
             <h2 data-i18n="w.nd.title">音频扒谱编辑器（noteDigger）</h2>
             <span class="spring"></span>
-            <span class="count muted" data-i18n="w.nd.hint">在钢琴卷帘上按音频扒谱，导出 MIDI</span>
+            <span class="count muted" id="nd-status" data-i18n="w.nd.export_hint">在 noteDigger 里导出 MIDI 后即可一键生成简谱</span>
+            <button class="chipbtn accent" id="nd-gen" disabled title="用刚导出的 MIDI 生成简谱" data-i18n-title="w.nd.gen_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg><span data-i18n="w.nd.gen">生成简谱</span></button>
           </header>
           <iframe id="nd-frame" class="nd-frame" title="noteDigger" allow="cross-origin-isolated; autoplay"></iframe>
         </section>
