@@ -303,7 +303,7 @@ button { font-family: inherit; cursor: default; }
   border-color: var(--danger); color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
-.stage.pdfstage { display: flex; padding: 16px; }
+.stage.pdfstage { display: flex; align-items: center; justify-content: center; padding: 16px; }
 /* A4 画框：预览视口固定 A4 比例（按可用高度定宽），fit 缩放即恰好整页；
    放大超出后在画框内滚动，画框本身不变形。 */
 .a4frame {

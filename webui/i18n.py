@@ -195,6 +195,33 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.about.author": {"zh": "作者", "en": "Author"},
     "w.about.homepage": {"zh": "项目主页", "en": "Project Homepage"},
     "w.about.license": {"zh": "开源许可证 (AGPL-3.0)", "en": "Open Source License (AGPL-3.0)"},
+    "w.about.license_text": {
+        "zh": (
+            "GNU Affero General Public License v3.0\n\n"
+            "Copyright (c) 2026 Tsukamotoshio\n\n"
+            "本程序是自由软件：您可以根据自由软件基金会发布的 GNU Affero 通用公共许可证\n"
+            "（第 3 版或更高版本）重新分发或修改它。\n\n"
+            "本程序的发布是希望它有用，但不提供任何担保；甚至不提供对适销性或特定用途\n"
+            "适用性的隐含担保。详情请参阅 GNU Affero 通用公共许可证。\n\n"
+            "您应该已收到 GNU Affero 通用公共许可证的副本；如未收到，请访问：\n"
+            "https://www.gnu.org/licenses/agpl-3.0.html"
+        ),
+        "en": (
+            "GNU Affero General Public License v3.0\n\n"
+            "Copyright (c) 2026 Tsukamotoshio\n\n"
+            "This program is free software: you can redistribute it and/or modify it\n"
+            "under the terms of the GNU Affero General Public License as published by\n"
+            "the Free Software Foundation, either version 3 of the License, or (at your\n"
+            "option) any later version.\n\n"
+            "This program is distributed in the hope that it will be useful, but WITHOUT\n"
+            "ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or\n"
+            "FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License\n"
+            "for more details.\n\n"
+            "You should have received a copy of the GNU Affero General Public License\n"
+            "along with this program. If not, see:\n"
+            "https://www.gnu.org/licenses/agpl-3.0.html"
+        ),
+    },
     "w.about.diag": {"zh": "诊断信息", "en": "Diagnostics"},
     "w.about.diag_hint": {"zh": "报告问题时，请点击下方按钮复制环境信息一并附上。",
                           "en": "When reporting an issue, click below to copy your environment info and include it."},
