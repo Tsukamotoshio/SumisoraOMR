@@ -1,0 +1,62 @@
+/* webui tokens.css — 设计令牌，取自已定稿的卡片式 UI 小样（artifact 3659a84f），逐字保留。
+   主题机制：@media prefers-color-scheme 提供系统默认；:root[data-theme=…] 显式切换双向覆盖。 */
+:root {
+  --ground: #EDF2FB;
+  --card: #FFFFFF;
+  --card-2: #F1F5FD;
+  --inset: #E7EEF9;
+  --text: #0A1929;
+  --muted: #405A7C;
+  --faint: #6E86A6;
+  --border: #DCE6F2;
+  --border-strong: #C3D3E6;
+  --accent: #2979FF;
+  --accent-strong: #1565C0;
+  --accent-tint: rgba(41,121,255,.09);
+  --accent-tint-2: rgba(41,121,255,.14);
+  --success: #2E9E5B;
+  --warning: #C67A00;
+  --danger: #C62828;
+  --shadow: 0 1px 2px rgba(20,50,90,.05), 0 6px 16px rgba(20,50,90,.06);
+  --shadow-sm: 0 1px 2px rgba(20,50,90,.06);
+  --titlebar: #E4EBF7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0A1420;
+    --card: #142032;
+    --card-2: #182740;
+    --inset: #101C2E;
+    --text: #E0ECFF;
+    --muted: #93AECD;
+    --faint: #67809F;
+    --border: #21344E;
+    --border-strong: #33506F;
+    --accent: #3B86FF;
+    --accent-strong: #6BA6FF;
+    --accent-tint: rgba(59,134,255,.14);
+    --accent-tint-2: rgba(59,134,255,.22);
+    --success: #58C877;
+    --warning: #F0A63C;
+    --danger: #F26B6B;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.34);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.35);
+    --titlebar: #0D1826;
+  }
+}
+:root[data-theme="light"] {
+  --ground:#EDF2FB; --card:#FFFFFF; --card-2:#F1F5FD; --inset:#E7EEF9;
+  --text:#0A1929; --muted:#405A7C; --faint:#6E86A6; --border:#DCE6F2; --border-strong:#C3D3E6;
+  --accent:#2979FF; --accent-strong:#1565C0; --accent-tint:rgba(41,121,255,.09); --accent-tint-2:rgba(41,121,255,.14);
+  --success:#2E9E5B; --warning:#C67A00; --danger:#C62828;
+  --shadow:0 1px 2px rgba(20,50,90,.05),0 6px 16px rgba(20,50,90,.06); --shadow-sm:0 1px 2px rgba(20,50,90,.06);
+  --titlebar:#E4EBF7;
+}
+:root[data-theme="dark"] {
+  --ground:#0A1420; --card:#142032; --card-2:#182740; --inset:#101C2E;
+  --text:#E0ECFF; --muted:#93AECD; --faint:#67809F; --border:#21344E; --border-strong:#33506F;
+  --accent:#3B86FF; --accent-strong:#6BA6FF; --accent-tint:rgba(59,134,255,.14); --accent-tint-2:rgba(59,134,255,.22);
+  --success:#58C877; --warning:#F0A63C; --danger:#F26B6B;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 22px rgba(0,0,0,.34); --shadow-sm:0 1px 2px rgba(0,0,0,.35);
+  --titlebar:#0D1826;
+}

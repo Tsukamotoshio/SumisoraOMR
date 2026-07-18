@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SumisoraOMR</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <!-- ── 标题栏（frameless 自绘；pywebview-drag-region = 可拖动） ── -->
+  <div class="titlebar pywebview-drag-region">
+    <img class="logo" src="icon.png" alt="" width="18" height="18" draggable="false">
+    <span class="name">SumisoraOMR</span>
+    <span class="ver num" id="ver">webui</span>
+    <span class="spring"></span>
+    <button class="iconbtn" id="themeBtn" title="切换明暗主题" data-i18n-title="w.tb.theme" aria-label="切换明暗主题">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke-linecap="round"/></svg>
+    </button>
+    <button class="iconbtn" id="langBtn" title="切换语言" data-i18n-title="w.tb.lang" aria-label="切换语言">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.4 3.8 5.6 3.8 9s-1.3 6.6-3.8 9c-2.5-2.4-3.8-5.6-3.8-9S9.5 5.4 12 3z"/></svg>
+    </button>
+    <span style="width:8px"></span>
+    <button class="wc" id="btn-min" data-i18n-title="w.tb.min" aria-label="最小化"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+    <button class="wc" id="btn-max" data-i18n-title="w.tb.max" aria-label="最大化"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/></svg></button>
+    <button class="wc close" id="btn-close" data-i18n-title="w.tb.close" aria-label="关闭"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg></button>
+  </div>
+
+  <div class="body">
+    <!-- ── 导航栏 ── -->
+    <nav class="rail" aria-label="主导航">
+      <button class="nav" data-page="score" aria-current="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke-linecap="round"/></svg>
+        <span data-i18n="w.nav.score">乐谱识别</span>
+      </button>
+      <button class="nav" data-page="audio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>
+        <span data-i18n="w.nav.audio">音频识别</span>
+      </button>
+      <button class="nav" data-page="jianpu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg>
+        <span data-i18n="w.nav.jianpu">简谱预览</span>
+      </button>
+      <button class="nav" data-page="staff">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18M3 11h18M3 15h18" opacity=".55"/><path d="M8 5c-1.5 4-1.5 10 0 14M13 5c-1.2 4-1.2 10 0 14" stroke-linecap="round"/></svg>
+        <span data-i18n="w.nav.staff">五线谱预览</span>
+      </button>
+      <button class="nav" data-page="about">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01" stroke-linecap="round"/></svg>
+        <span data-i18n="w.nav.about">关于</span>
+      </button>
+    </nav>
+
+    <div class="page-host">
+      <!-- ════ 乐谱识别页 ════ -->
+      <div class="content" id="page-score">
+        <section class="card" aria-label="输入文件">
+          <header><h2 data-i18n="w.score.files_title">输入文件</h2><span class="count num" id="score-count">已选 0 / 0</span></header>
+          <div class="toolrow">
+            <button class="chipbtn" id="score-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span data-i18n="w.score.add">添加文件</span></button>
+          </div>
+          <ul class="filelist" id="score-files"><li class="empty" data-i18n="w.score.empty">拖入 PDF / PNG / JPG，或点「添加文件」</li></ul>
+        </section>
+
+        <section class="card preview" aria-label="预览">
+          <header><h2 data-i18n="w.score.preview_title">预览</h2><span class="count" id="score-preview-name"></span></header>
+          <div class="stage" id="score-stage">
+            <div class="placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span data-i18n="w.score.preview_ph">选中文件后在此预览（PDF 预览将在 M3 接入 pdf.js）</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-label="识别选项">
+          <header><h2 data-i18n="w.score.opts_title">识别选项</h2></header>
+          <div class="pad stack">
+            <div class="field">
+              <span class="lbl" data-i18n="w.score.engine">OMR 引擎</span>
+              <div class="selectwrap"><select id="score-engine">
+                <option value="auto" selected data-i18n="w.score.engine_auto">自动选择（推荐）</option>
+                <option value="audiveris">Audiveris</option>
+                <option value="homr">Homr</option>
+              </select></div>
+            </div>
+            <div class="field">
+              <span class="lbl" data-i18n="landing.label_sr_engine">超分辨率算法</span>
+              <div class="selectwrap"><select id="score-sr" title="" data-i18n-title="landing.tooltip_sr_engine">
+                <option value="realesrgan" selected data-i18n="landing.option_realesrgan">Real-ESRGAN（anime，默认）</option>
+                <option value="waifu2x" data-i18n="landing.option_waifu2x">waifu2x（线条画）</option>
+              </select></div>
+            </div>
+            <div class="field">
+              <span class="lbl" data-i18n="w.score.parallel">并发处理</span>
+              <div class="selectwrap"><select id="score-parallel" title="" data-i18n-title="landing.tooltip_concurrency">
+                <option value="auto" selected data-i18n="landing.option_concurrency_auto">自动（按 CPU 核数）</option>
+                <option value="1" data-i18n="w.score.parallel_1">单文件顺序</option>
+                <option value="2" data-i18n="w.score.parallel_2">2 并发</option>
+                <option value="4" data-i18n="w.score.parallel_4">4 并发</option>
+              </select></div>
+            </div>
+            <button class="primary" id="score-start">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <span data-i18n="w.score.start">开始识别</span>
+            </button>
+            <button class="ghost" id="score-outdir">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              <span data-i18n="w.score.outdir">打开输出目录</span>
+            </button>
+            <div class="rule"></div>
+            <span class="lbl" data-i18n="w.score.homr_label">HOMR 模型</span>
+            <div class="status" id="homr-status"><span class="led"></span><span id="homr-status-text">检查中…</span></div>
+            <div class="modelbtns">
+              <button class="ghost" id="homr-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.download">下载</span></button>
+              <button class="ghost" id="homr-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.delete">删除</span></button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════ 简谱预览页 ════ -->
+      <div class="content two hidden" id="page-jianpu">
+        <section class="card" aria-label="简谱文件">
+          <header><h2 data-i18n="w.jp.title">简谱文件</h2><span class="count num" id="jp-count"></span></header>
+          <div class="toolrow">
+            <div class="chipgroup">
+              <button class="chipbtn" id="jp-refresh" title="刷新列表" data-i18n-title="w.list.refresh_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.refresh">刷新</span></button>
+              <button class="chipbtn" id="jp-selall" title="全选/全不选" data-i18n-title="w.list.selall_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.selall">全选</span></button>
+              <button class="chipbtn" id="jp-export" title="导出勾选到文件夹" data-i18n-title="w.jp.export_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.export">导出</span></button>
+              <button class="chipbtn danger" id="jp-delete" title="删除勾选（含 MIDI 与编辑文本）" data-i18n-title="w.jp.delete_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.delete">删除</span></button>
+            </div>
+          </div>
+          <ul class="filelist" id="jp-files"><li class="empty" data-i18n="w.jp.empty">Output/ 中还没有简谱 PDF</li></ul>
+        </section>
+
+        <section class="card preview" aria-label="简谱预览">
+          <header>
+            <h2 data-i18n="w.score.preview_title">预览</h2><span class="count" id="jp-preview-name"></span>
+          </header>
+          <div class="stage pdfstage" id="jp-stage">
+            <div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg><span data-i18n="w.jp.preview_ph">选中左侧文件预览简谱</span></div>
+            <div class="a4frame"><canvas id="jp-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="previewbar">
+            <button class="chipbtn accent" id="jp-edit" title="编辑当前简谱文本" data-i18n-title="common.jianpu_edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20h4L19 9l-4-4L4 16v4z M13 7l4 4" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="common.jianpu_edit">简谱编辑</span></button>
+            <button class="chipbtn" id="jp-midi" title="播放 MIDI" data-i18n-title="w.jp.midi_tip"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>MIDI</button>
+            <button class="chipbtn" id="jp-rerender" title="从简谱文本重新渲染" data-i18n-title="w.jp.rerender_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.jp.rerender">重渲</span></button>
+            <span class="lbl num" id="jp-pageinfo"></span>
+            <div class="btngroup">
+              <button class="pvbtn" id="jp-prev" title="上一页" data-i18n-title="w.pv.prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="pvbtn" id="jp-next" title="下一页" data-i18n-title="w.pv.next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div class="zoom btngroup">
+              <button class="pvbtn" id="jp-zoomout" title="缩小" data-i18n-title="w.pv.zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="jp-zoomfit" title="适应宽度" data-i18n-title="w.pv.zoomfit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="jp-zoomin" title="放大" data-i18n-title="w.pv.zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+          <div class="midislot" id="jp-midislot"></div>
+        </section>
+      </div>
+
+      <!-- ════ 五线谱预览页 ════ -->
+      <div class="content two hidden" id="page-staff">
+        <section class="card" aria-label="五线谱文件">
+          <header><h2 data-i18n="w.st.title">五线谱（MusicXML）</h2><span class="count num" id="st-count"></span></header>
+          <div class="toolrow">
+            <div class="chipgroup">
+              <button class="chipbtn" id="st-refresh" title="刷新列表" data-i18n-title="w.list.refresh_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.refresh">刷新</span></button>
+              <button class="chipbtn" id="st-selall" title="全选/全不选" data-i18n-title="w.list.selall_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.selall">全选</span></button>
+              <button class="chipbtn" id="st-export" title="导出勾选为五线谱 PDF" data-i18n-title="w.st.export_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.export">导出</span></button>
+              <button class="chipbtn danger" id="st-delete" title="删除勾选的 MusicXML" data-i18n-title="w.st.delete_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.delete">删除</span></button>
+            </div>
+          </div>
+          <ul class="filelist" id="st-files"><li class="empty" data-i18n="w.st.empty">xml-scores/ 中还没有 MusicXML</li></ul>
+        </section>
+
+        <section class="card preview" aria-label="五线谱预览">
+          <header>
+            <h2 data-i18n="w.score.preview_title">预览</h2><span class="count" id="st-preview-name"></span>
+          </header>
+          <div class="stage pdfstage" id="st-stage">
+            <div class="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h18M3 11h18M3 15h18" opacity=".55"/><path d="M8 5c-1.5 4-1.5 10 0 14M13 5c-1.2 4-1.2 10 0 14" stroke-linecap="round"/></svg><span id="st-placeholder-text">选中左侧文件预览五线谱</span></div>
+            <div class="a4frame"><canvas id="st-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="previewbar">
+            <button class="chipbtn accent" id="st-transpose" title="对当前乐谱移调（按调 / 音程 / 度数）" data-i18n-title="w.st.transpose_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.st.transpose">移调</span></button>
+            <button class="chipbtn" id="st-midi" title="播放 MIDI（缺失时可生成）" data-i18n-title="w.st.midi_tip"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>MIDI</button>
+            <span class="lbl num" id="st-pageinfo"></span>
+            <div class="btngroup">
+              <button class="pvbtn" id="st-prev" title="上一页" data-i18n-title="w.pv.prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="pvbtn" id="st-next" title="下一页" data-i18n-title="w.pv.next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div class="zoom btngroup">
+              <button class="pvbtn" id="st-zoomout" title="缩小" data-i18n-title="w.pv.zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="st-zoomfit" title="适应宽度" data-i18n-title="w.pv.zoomfit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="st-zoomin" title="放大" data-i18n-title="w.pv.zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+          <div class="midislot" id="st-midislot"></div>
+        </section>
+      </div>
+
+      <!-- ════ 移调页（从五线谱预览进入） ════ -->
+      <div class="content transpose hidden" id="page-transpose">
+        <section class="card span tp-panel" aria-label="移调控制">
+          <header>
+            <button class="chipbtn" id="tp-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
+            <h2 data-i18n="w.tp.title">移调</h2>
+            <span class="count" id="tp-name"></span>
+            <span class="spring"></span>
+            <button class="ghost slim" id="tp-export-orig" data-i18n="w.tp.export_orig">导出原谱 PDF</button>
+            <button class="ghost slim" id="tp-export-trans" disabled data-i18n="w.tp.export_trans">导出移调 PDF</button>
+            <span class="hsep"></span>
+            <button class="chipbtn" id="tp-open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="common.open_score">打开乐谱</span></button>
+            <button class="chipbtn" id="tp-xmldir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5h5" stroke-linecap="round"/></svg><span data-i18n="transposer.button_open_score_dir">打开乐谱目录</span></button>
+          </header>
+          <div class="pad tp-bar">
+            <div class="tpf">
+              <span class="lbl" data-i18n="w.tp.mode">模式</span>
+              <div class="selectwrap wide"><select id="tp-mode">
+                <option value="key" selected data-i18n="w.tp.mode_key">按调（如 C → G）</option>
+                <option value="interval" data-i18n="w.tp.mode_interval">按音程（半音级）</option>
+                <option value="diatonic" data-i18n="w.tp.mode_diatonic">按度数（全音级）</option>
+              </select></div>
+            </div>
+            <div class="tpf tp-key">
+              <span class="lbl" data-i18n="w.tp.from">原调</span>
+              <div class="selectwrap key"><select id="tp-from"></select></div>
+              <button class="minibtn" id="tp-detect" title="从乐谱检测原调" data-i18n-title="w.tp.detect_tip"><span data-i18n="w.tp.detect">检测</span></button>
+            </div>
+            <div class="tpf tp-key">
+              <span class="lbl" data-i18n="w.tp.to">目标调</span>
+              <div class="selectwrap key"><select id="tp-to"></select></div>
+            </div>
+            <div class="tpf tp-interval hidden">
+              <span class="lbl" data-i18n="w.tp.interval">音程</span>
+              <div class="selectwrap"><select id="tp-interval"></select></div>
+            </div>
+            <div class="tpf tp-diatonic hidden">
+              <span class="lbl" data-i18n="w.tp.degree">度数</span>
+              <div class="selectwrap"><select id="tp-degree"></select></div>
+            </div>
+            <div class="tpf">
+              <span class="lbl" data-i18n="w.tp.dir">方向</span>
+              <div class="selectwrap key"><select id="tp-dir">
+                <option value="closest" selected data-i18n="w.tp.dir_closest">就近</option>
+                <option value="up" data-i18n="w.tp.dir_up">向上</option>
+                <option value="down" data-i18n="w.tp.dir_down">向下</option>
+              </select></div>
+            </div>
+            <label class="checkrow tp-keysig"><button class="cbx on" id="tp-keysig" role="checkbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="w.tp.keysig">同时移调号</span></label>
+            <button class="primary tp-go" id="tp-run">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span data-i18n="w.tp.run">开始移调</span>
+            </button>
+            <span class="spring"></span>
+            <span class="msg small" id="tp-status"></span>
+          </div>
+          <i class="tp-progline" id="tp-progress"></i>
+        </section>
+
+        <section class="card preview" aria-label="原调预览">
+          <header><h2 data-i18n="w.tp.orig_title">原调</h2><span class="count num" id="tp-orig-pageinfo"></span></header>
+          <div class="stage pdfstage" id="tp-orig-stage">
+            <div class="placeholder"><span id="tp-orig-ph" data-i18n="w.tp.orig_ph">从五线谱预览页选择乐谱进入</span></div>
+            <div class="a4frame"><canvas id="tp-orig-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="previewbar">
+            <div class="btngroup">
+              <button class="pvbtn" id="tp-orig-prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="pvbtn" id="tp-orig-next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div class="zoom btngroup">
+              <button class="pvbtn" id="tp-orig-zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-orig-zoomfit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-orig-zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card preview" aria-label="移调后预览">
+          <header><h2 data-i18n="w.tp.trans_title">移调后</h2><span class="count num" id="tp-trans-pageinfo"></span></header>
+          <div class="stage pdfstage" id="tp-trans-stage">
+            <div class="placeholder"><span id="tp-trans-ph" data-i18n="w.tp.trans_ph">移调后在此预览</span></div>
+            <div class="a4frame"><canvas id="tp-trans-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="previewbar">
+            <div class="btngroup">
+              <button class="pvbtn" id="tp-trans-prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="pvbtn" id="tp-trans-next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div class="zoom btngroup">
+              <button class="pvbtn" id="tp-trans-zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-trans-zoomfit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="tp-trans-zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════ 音频识别页（左：文件+试听；右：双焦点 自动识别 / 扒谱编辑器） ════ -->
+      <div class="content audio hidden" id="page-audio">
+        <section class="card audio-files-card" aria-label="音频文件">
+          <header><h2 data-i18n="w.audio.files_title">音频文件</h2><span class="count num" id="audio-count">已选 0 / 0</span></header>
+          <div class="toolrow">
+            <button class="chipbtn" id="audio-add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span data-i18n="w.score.add">添加文件</span></button>
+          </div>
+          <ul class="filelist" id="audio-files"><li class="empty" data-i18n="w.audio.empty">拖入 MP3 / WAV / FLAC / OGG，或点「添加文件」</li></ul>
+          <div class="audiobar">
+            <span class="count" id="audio-preview-name"></span>
+            <div class="stage audiostage" id="audio-stage">
+              <div class="placeholder mini">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>
+                <span data-i18n="w.audio.listen_ph">选中音频后在此试听（识别引擎仅支持钢琴独奏）</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="audio-actions">
+          <section class="card focus" aria-label="自动识别">
+            <header>
+              <svg class="focus-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4v4a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke-linecap="round"/></svg>
+              <h2 data-i18n="w.audio.auto_title">自动识别</h2>
+            </header>
+            <div class="pad stack">
+              <p class="muted small" data-i18n="w.audio.auto_desc">用钢琴转录模型把音频自动识别为简谱 / MIDI（仅支持钢琴独奏）。</p>
+              <label class="checkrow"><button class="cbx" id="audio-melody" role="checkbox" aria-checked="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="w.audio.melody_only">仅主旋律</span></label>
+              <button class="primary" id="audio-start">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <span data-i18n="w.score.start">开始识别</span>
+              </button>
+              <button class="ghost" id="audio-outdir">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span data-i18n="w.score.outdir">打开输出目录</span>
+              </button>
+              <div class="rule"></div>
+              <span class="lbl" data-i18n="w.audio.piano_label">钢琴转录模型</span>
+              <div class="status" id="piano-status"><span class="led"></span><span id="piano-status-text">检查中…</span></div>
+              <div class="modelbtns">
+                <button class="ghost" id="piano-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.download">下载</span></button>
+                <button class="ghost" id="piano-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.model.delete">删除</span></button>
+              </div>
+            </div>
+          </section>
+
+          <section class="card focus focus-alt" aria-label="音频扒谱编辑器">
+            <header>
+              <svg class="focus-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11M13 4v16" stroke-linecap="round"/></svg>
+              <h2 data-i18n="w.audio.notedigger">音频扒谱编辑器</h2>
+            </header>
+            <div class="pad stack">
+              <p class="muted small" data-i18n="w.audio.notedigger_desc">在钢琴卷帘上按音频手动扒谱 / 校正，AI 辅助，导出 MIDI。自动识别不理想时用它精修。</p>
+              <button class="primary alt" id="audio-notedigger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="w.audio.notedigger_open">打开扒谱编辑器</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ════ noteDigger 音频扒谱编辑器页（从音频识别进入，iframe 懒加载） ════ -->
+      <div class="content nd hidden" id="page-notedigger">
+        <section class="card span ndcard" aria-label="音频扒谱编辑器">
+          <header>
+            <button class="chipbtn" id="nd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
+            <h2 data-i18n="w.nd.title">音频扒谱编辑器（noteDigger）</h2>
+            <span class="spring"></span>
+            <span class="count muted" id="nd-status" data-i18n="w.nd.export_hint">在 noteDigger 里导出 MIDI 后即可一键生成简谱</span>
+            <button class="chipbtn accent" id="nd-gen" disabled title="用刚导出的 MIDI 生成简谱" data-i18n-title="w.nd.gen_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg><span data-i18n="w.nd.gen">生成简谱</span></button>
+          </header>
+          <iframe id="nd-frame" class="nd-frame" title="noteDigger" allow="cross-origin-isolated; autoplay"></iframe>
+        </section>
+      </div>
+
+      <!-- ════ 简谱编辑页（从简谱预览进入） ════ -->
+      <div class="content two hidden" id="page-editor">
+        <section class="card preview" aria-label="参考与预览">
+          <header>
+            <div class="btngroup tabgroup">
+              <button class="pvbtn tab" id="ed-tab-ref" aria-selected="true" data-i18n="w.ed.ref_tab">参考图</button>
+              <button class="pvbtn tab" id="ed-tab-pv" aria-selected="false" data-i18n="w.ed.preview_tab">简谱预览</button>
+            </div>
+            <span class="count" id="ed-left-name"></span>
+          </header>
+          <div class="stage pdfstage" id="ed-ref-stage">
+            <div class="placeholder"><span id="ed-ref-ph" data-i18n="w.ed.no_source">未找到参考图（原始乐谱图像）</span></div>
+            <img id="ed-ref-img" class="hidden" alt="">
+            <div class="a4frame"><canvas id="ed-ref-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="stage pdfstage hidden" id="ed-pv-stage">
+            <div class="placeholder"><span id="ed-pv-ph" data-i18n="w.ed.no_preview_yet">点「渲染预览」查看当前文本的排版效果</span></div>
+            <div class="a4frame"><canvas id="ed-pv-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="previewbar">
+            <span class="lbl num" id="ed-pv-pageinfo"></span>
+            <div class="btngroup">
+              <button class="pvbtn" id="ed-pv-prev" title="上一页" data-i18n-title="w.pv.prev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="pvbtn" id="ed-pv-next" title="下一页" data-i18n-title="w.pv.next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div class="zoom btngroup">
+              <button class="pvbtn" id="ed-pv-zoomout" title="缩小" data-i18n-title="w.pv.zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="ed-pv-zoomfit" title="适应页面" data-i18n-title="w.pv.zoomfit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="7" width="14" height="10" rx="1.5"/><path d="M9 12h6" stroke-linecap="round"/></svg></button>
+              <button class="pvbtn" id="ed-pv-zoomin" title="放大" data-i18n-title="w.pv.zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-label="简谱文本编辑">
+          <header>
+            <button class="chipbtn" id="ed-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
+            <h2 data-i18n="w.ed.title">简谱编辑</h2>
+            <span class="count" id="ed-name"></span>
+            <span class="dirty-dot hidden" id="ed-dirty" title="未保存" data-i18n-title="w.ed.dirty"></span>
+          </header>
+          <div class="toolrow">
+            <button class="chipbtn" id="ed-open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="w.ed.open">打开</span></button>
+            <button class="chipbtn" id="ed-save" title="保存 (Ctrl+S)" data-i18n-title="w.ed.save_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h11l3 3v11H5z M8 5v5h7V5 M8 20v-6h8v6" stroke-linejoin="round"/></svg><span data-i18n="w.ed.save">保存</span></button>
+            <button class="chipbtn accent" id="ed-render" title="" data-i18n-title="w.ed.render_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.ed.render">渲染预览</span></button>
+            <button class="chipbtn" id="ed-export" title="" data-i18n-title="w.ed.export_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.ed.export">导出到输出</span></button>
+            <button class="chipbtn" id="ed-symbols"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01" stroke-linecap="round"/></svg><span data-i18n="w.ed.symbols">符号参考</span></button>
+          </div>
+          <div class="ed-body">
+            <div class="ed-editor" id="ed-editor-wrap">
+              <div class="ed-gutter" id="ed-gutter"></div>
+              <textarea id="ed-text" class="ed-text" spellcheck="false" wrap="off" disabled></textarea>
+            </div>
+            <aside class="ed-symbols hidden" id="ed-symbols-panel"></aside>
+          </div>
+          <div class="ed-status">
+            <span class="muted small" id="ed-hint" data-i18n="w.ed.empty">从「简谱预览」页对某个文件点「编辑」进入，或点上方「打开」选择 .jianpu.txt</span>
+            <span class="muted small num" id="ed-linecol"></span>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════ 关于页 ════ -->
+      <div class="content about hidden" id="page-about">
+        <section class="card about-card">
+          <div class="pad stack">
+            <div class="about-head">
+              <img class="about-logo" src="icon.png" alt="" width="44" height="44" draggable="false">
+              <div>
+                <div class="about-title">SumisoraOMR <span class="num muted" id="about-ver"></span></div>
+                <div class="muted" data-i18n="w.about.subtitle">五线谱识别与简谱生成工具</div>
+              </div>
+            </div>
+            <div class="rule"></div>
+            <div class="about-row"><span class="lbl" data-i18n="w.about.author">作者</span><span>Tsukamotoshio</span></div>
+            <div class="about-row"><span class="lbl" data-i18n="w.about.homepage">项目主页</span>
+              <a href="#" id="about-github">github.com/Tsukamotoshio/SumisoraOMR</a></div>
+            <div class="rule"></div>
+            <span class="lbl" data-i18n="w.about.license">开源许可证 (AGPL-3.0)</span>
+            <pre class="license" data-i18n="w.about.license_text">GNU Affero General Public License v3.0
+
+Copyright (c) 2026 Tsukamotoshio
+
+本程序是自由软件：您可以根据自由软件基金会发布的 GNU Affero 通用公共许可证
+（第 3 版或更高版本）重新分发或修改它。
+
+本程序的发布是希望它有用，但不提供任何担保；甚至不提供对适销性或特定用途
+适用性的隐含担保。详情请参阅 GNU Affero 通用公共许可证。
+
+您应该已收到 GNU Affero 通用公共许可证的副本；如未收到，请访问：
+https://www.gnu.org/licenses/agpl-3.0.html</pre>
+            <div class="rule"></div>
+            <span class="lbl" data-i18n="w.about.diag">诊断信息</span>
+            <p class="muted small" style="margin:0" data-i18n="w.about.diag_hint">报告问题时，请点击下方按钮复制环境信息一并附上。</p>
+            <button class="ghost" id="about-diag" style="width:auto;align-self:flex-start" data-i18n="w.about.diag_copy">复制诊断信息</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 进度浮层 ── -->
+<div class="scrim hidden" id="progress-overlay">
+  <div class="sheet">
+    <h3 id="prog-title">正在识别…</h3>
+    <div class="msg num" id="prog-msg"></div>
+    <div class="meter"><i id="prog-main"></i></div>
+    <div class="meter thin"><i id="prog-sub"></i></div>
+    <div class="msg" id="prog-submsg" style="font-size:12px"></div>
+    <div class="logtail" id="prog-log"></div>
+    <div class="btnrow"><button class="ghost" id="prog-cancel" data-i18n="w.conv.cancel">取消</button></div>
+  </div>
+</div>
+
+<!-- ── 结果弹层 ── -->
+<div class="scrim hidden" id="result-overlay">
+  <div class="sheet">
+    <h3 id="result-title">识别结果</h3>
+    <div class="result-summary" id="result-pills"></div>
+    <div class="result-list" id="result-list"></div>
+    <div class="btnrow">
+      <button class="ghost" id="result-outdir" data-i18n="w.score.outdir">打开输出目录</button>
+      <button class="ghost hidden" id="result-jianpu" data-i18n="landing.button_view_jianpu">查看简谱</button>
+      <button class="primary" id="result-close" data-i18n="w.result.close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 转换确认弹层（含重复输出警告 + 跳过复选） ── -->
+<div class="scrim hidden" id="confirm-overlay">
+  <div class="sheet">
+    <h3 id="confirm-title"></h3>
+    <div class="msg" id="confirm-warn"></div>
+    <div class="result-list" id="confirm-list"></div>
+    <label class="checkrow"><button class="cbx on" id="confirm-skip" role="checkbox" aria-checked="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span data-i18n="landing.checkbox_skip_duplicates">跳过重复文件（不重新识别）</span></label>
+    <div class="btnrow">
+      <button class="ghost" id="confirm-cancel" data-i18n="w.conv.cancel">取消</button>
+      <button class="primary" id="confirm-go" data-i18n="w.score.start">开始识别</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 模型下载弹层 ── -->
+<div class="scrim hidden" id="model-overlay">
+  <div class="sheet">
+    <h3 id="model-title">下载模型</h3>
+    <div class="msg num" id="model-msg"></div>
+    <div class="meter"><i id="model-bar"></i></div>
+    <div class="btnrow"><button class="ghost" id="model-cancel" data-i18n="w.conv.cancel">取消</button></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

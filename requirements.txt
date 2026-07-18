@@ -31,6 +31,9 @@ onnxruntime-gpu>=1.26.0
 musicxml==1.4
 rapidocr>=3.7.0          # 标题 OCR；会拉入 opencv-python（完整版）
 requests>=2.32.5
+# SSL：走 Windows/macOS 系统证书库，修复国内网络 MITM 根证书不在 certifi 时的
+# 下载验证失败（core/app/ssl_setup.py 在各进程入口注入；certifi 为回退）。
+truststore>=0.10.0      # 需 Python 3.10+
 
 # ── 音频识别引擎（core/omr/audio_runner.py，ByteDance piano_transcription_inference）──
 # torch 需指定 CPU wheel index（否则会拉完整 CUDA 版，体积暴涨），不适合写成普通

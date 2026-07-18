@@ -248,6 +248,37 @@ def process_single_input_to_jianpu(
             editor_workspace_dir=editor_workspace_dir,
         )
 
+    # ── MIDI inputs → music21 → MusicXML → jianpu（noteDigger 扒谱导出回流）──────
+    # MIDI 无 OMR 概念：music21 直接解析为 MusicXML，复用与音频同一条简谱尾链；无源图。
+    if source_file.suffix.lower() in {'.mid', '.midi'}:
+        from music21 import converter  # noqa: PLC0415
+
+        log_message(f'  [引擎] {source_file.name} 为 MIDI → music21 直转 MusicXML。')
+        _report_subprogress(0.15, '正在将 MIDI 转换为 MusicXML…')
+        mxl_file = file_temp_dir / f'{source_file.stem}.musicxml'
+        try:
+            score = converter.parse(str(source_file))
+            score.write('musicxml', fp=str(mxl_file))
+        except Exception as exc:  # noqa: BLE001
+            log_message(f'  ✗ MIDI → MusicXML 失败：{exc}，跳过 {source_file.name}。', logging.WARNING)
+            return False
+
+        _report_subprogress(0.55, '正在生成简谱 PDF…')
+        preferred_title = source_file.stem
+        if xml_scores_dir is not None and _ARCHIVE_AUDIO_TO_XML_SCORES:
+            _archive_mxl_to_xml_scores(
+                mxl_file, source_file.stem, xml_scores_dir, title=preferred_title,
+            )
+        return generate_jianpu_pdf_from_mxl(
+            mxl_file,
+            output_pdf,
+            file_temp_dir,
+            output_midi,
+            preferred_title=preferred_title,
+            source_path=None,  # MIDI 无源图，编辑器隐藏参考图
+            editor_workspace_dir=editor_workspace_dir,
+        )
+
     is_image = source_file.suffix.lower() in {'.png', '.jpg', '.jpeg'}
     _is_auto = engine is OMREngine.AUTO
 

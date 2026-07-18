@@ -13,3 +13,6 @@
 [submodule "omr_engine/audiveris"]
 	path = omr_engine/audiveris
 	url = https://github.com/audiveris/audiveris.git
+[submodule "webui/static/vendor/notedigger"]
+	path = webui/static/vendor/notedigger
+	url = https://github.com/Tsukamotoshio/noteDigger
