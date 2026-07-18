@@ -515,14 +515,32 @@ function ndStopPlayback() {
     if (cw && cw.app && cw.app.AudioPlayer) cw.app.AudioPlayer.stop();
   } catch (_e) { /* iframe 未加载或结构变化时忽略 */ }
 }
+// 从我们这边注入覆盖样式隐藏 noteDigger 顶栏的作者推广链接（GitHub/Bilibili）。
+// 用注入而非改 fork：合规上等价于删除，且 noteDigger 一个字节不改（零 GPL 修改义务）。
+function ndInjectStyle(frame) {
+  try {
+    const d = frame.contentDocument;
+    if (!d || !d.head) return false;
+    if (d.getElementById('__omrStyle')) return true;
+    const s = d.createElement('style');
+    s.id = '__omrStyle';
+    s.textContent = 'a.logo2,a.logo3{display:none !important;}';
+    d.head.appendChild(s);
+    return true;
+  } catch (_e) { return false; }
+}
 pageEnterHooks.notedigger = () => {
   const f = $('nd-frame');
   if (f.getAttribute('src')) return;
   f.addEventListener('load', () => {
-    // bSaver 由 noteDigger 的经典脚本同步注册，但保险起见重试若干次
+    // bSaver / document.head 可能晚于 load 事件就绪，重试直到 hook + 样式都装上
     let tries = 0;
-    const tryHook = () => { if (ndHook(f) || ++tries > 40) return; setTimeout(tryHook, 150); };
-    tryHook();
+    const setup = () => {
+      const done = ndHook(f) && ndInjectStyle(f);
+      if (done || ++tries > 40) return;
+      setTimeout(setup, 150);
+    };
+    setup();
   });
   f.setAttribute('src', './vendor/notedigger/index.html');
 };
