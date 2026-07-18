@@ -25,6 +25,7 @@ from .conversion import ConversionService
 from .events import EventPusher
 from .editor import EditorService
 from .models import ModelsService
+from .notedigger import NoteDiggerService
 from .outputs import OutputsService, ScoresService
 from .transpose import TransposeService
 
@@ -37,7 +38,8 @@ class Bridge:
                  outputs: Optional[OutputsService] = None,
                  scores: Optional[ScoresService] = None,
                  transpose: Optional[TransposeService] = None,
-                 editor: Optional[EditorService] = None) -> None:
+                 editor: Optional[EditorService] = None,
+                 notedigger: Optional[NoteDiggerService] = None) -> None:
         self._pusher = pusher
         self._conversion = conversion
         self._models = models
@@ -45,6 +47,7 @@ class Bridge:
         self._scores = scores
         self._transpose = transpose
         self._editor = editor
+        self._notedigger = notedigger
         self._window: Optional[webview.Window] = None
         self._maximized = False
 
@@ -155,6 +158,12 @@ class Bridge:
 
     def outputs_rerender(self, pdf_path: str) -> dict:
         return self._outputs.rerender(pdf_path) if self._outputs else {'ok': False}
+
+    # ── noteDigger 扒谱编辑器：导出 MIDI → 简谱（M5-③-3）────────────────────────
+    def notedigger_generate_jianpu(self, name: str, b64: str) -> dict:
+        if self._notedigger is None:
+            return {'started': False, 'error': 'unavailable'}
+        return self._notedigger.generate_jianpu(name, b64)
 
     # ── 五线谱（xml-scores）──────────────────────────────────────────────────
     def scores_list(self) -> list:

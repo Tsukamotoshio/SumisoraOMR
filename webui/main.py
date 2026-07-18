@@ -75,6 +75,7 @@ from .conversion import ConversionService
 from .editor import EditorService
 from .events import EventPusher
 from .models import ModelsService
+from .notedigger import NoteDiggerService
 from .outputs import OutputsService, ScoresService
 from .server import start_server
 from .transpose import TransposeService
@@ -320,7 +321,8 @@ def main() -> None:
     scores = ScoresService(pusher, whitelist)
     transpose = TransposeService(pusher, whitelist)
     editor = EditorService(pusher, whitelist)
-    bridge = Bridge(pusher, conversion, models, outputs, scores, transpose, editor)
+    notedigger = NoteDiggerService(pusher)
+    bridge = Bridge(pusher, conversion, models, outputs, scores, transpose, editor, notedigger)
     # selftest / gate 驱动跑在 M1 测试台（harness.html）上，正式 UI 在 index.html
     page = 'harness.html' if (selftest or gate_mode) else 'index.html'
     window = webview.create_window(
