@@ -667,6 +667,6 @@ def wait_for_exit_key(prompt: str = '按任意键退出...') -> None:
 
 
 def main() -> None:
-    """命令行入口（已废弃）。请使用 GUI：python app.py"""
-    print('此命令行入口已停用，请运行 python app.py 启动 GUI。')
+    """命令行入口（已废弃）。请使用 GUI：python -m webui.main"""
+    print('此命令行入口已停用，请运行 python -m webui.main 启动 GUI。')
     sys.exit(0)

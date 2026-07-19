@@ -1,8 +1,8 @@
 # core/app/startup.py — Framework-independent frozen startup steps.
-"""Startup steps shared by the Flet shell (app.py) and the pywebview shell
-(webui/main.py), so the packaged build behaves identically whichever shell is the
-entry point. Nothing here touches a GUI toolkit — each shell owns its own UX
-(message boxes, i18n) and calls these for the plumbing.
+"""Startup steps shared by the pywebview entry points — the GUI shell
+(webui/main.py) and the frozen entry stub / worker (run_webui.py). Nothing here
+touches a GUI toolkit — each caller owns its own UX (message boxes, i18n) and
+calls these for the plumbing, so the dev and packaged builds behave identically.
 """
 from __future__ import annotations
 

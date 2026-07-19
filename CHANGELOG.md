@@ -5,6 +5,45 @@ All notable changes to SumisoraOMR are documented here. Format follows
 `APP_VERSION` in `core/config.py` (the single source of truth — run
 `python scripts/sync_version.py` after bumping it).
 
+## [0.5.0] - 2026-07-19
+
+Major release: the GUI is rebuilt from Flet to a pywebview shell
+(HTML/CSS/JS + WebView2), unlocking a rich web front-end. The conversion
+pipeline (`core/`) and the worker subprocess are unchanged. Adds the
+noteDigger audio transcription editor, a built-in MIDI player, and MIDI
+file input.
+
+### Added
+- **New GUI shell (`webui/`, pywebview + WebView2)** replacing the Flet UI:
+  frameless custom titlebar, card-style pages, pdf.js preview, file
+  drag-and-drop with real filesystem paths, and true CJK font weights.
+- **noteDigger audio transcription editor** — an embedded piano-roll
+  transcription/correction tool (vendored GPL-3.0 fork), reached from the
+  audio page. Export a MIDI in noteDigger and generate jianpu in one click
+  (MIDI → MusicXML → jianpu, reusing the pipeline).
+- **Built-in MIDI player** in the jianpu/staff preview pages
+  (WebAudioTinySynth): play/pause, stop, volume, and a seekable progress
+  bar with current/total time — replaces the external OS player.
+- **MIDI file input** to the conversion pipeline (`.mid`/`.midi` → music21
+  → MusicXML → jianpu).
+- **System trust store SSL** via truststore, fixing download failures
+  behind MITM proxies whose root CA is absent from certifi's bundle.
+
+### Changed
+- Audio page redesigned into two focal cards (automatic recognition +
+  transcription editor); transposer control bar compacted to a single row;
+  the about page fully localizes (including the license text).
+- Windows packaging switched to the pywebview entry (`run_webui.py`,
+  PyInstaller). The installer detects the WebView2 Evergreen runtime and
+  silently installs it when missing (Windows 11 ships it built in).
+
+### Removed
+- The legacy Flet GUI (`app.py`, `gui/pages/`, `gui/components/`,
+  `gui/theme.py`, `core/app/win_exe_patch.py`) — the pywebview shell fully
+  replaces it, and the Flet runtime (~40 MB) is dropped from the build. The
+  shared `gui/` modules the new shell reuses (strings, settings, app_state,
+  worker_launcher) are kept.
+
 ## [0.4.2] - 2026-07-10
 
 Fixes an intermittent hang in packaged-build audio recognition. Rolls up

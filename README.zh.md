@@ -111,14 +111,11 @@ pip install -r requirements.txt
 **运行**
 
 ```bash
-python app.py
+python -m webui.main
 ```
 
-开发模式（热重载）：
-
-```bash
-flet run app.py
-```
+前端用 `Ctrl+R` 刷新；VS Code 里按 `F5` 运行/调试 Python 侧（见
+`.vscode/launch.json`）。
 
 ---
 

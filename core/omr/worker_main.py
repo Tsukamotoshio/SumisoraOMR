@@ -1,7 +1,7 @@
 # core/omr/worker_main.py — Subprocess worker entry point.
 # Reads one JSON task from stdin, runs the OMR conversion pipeline,
 # and writes JSON progress/log/result messages to stdout (one per line).
-# Launched by app.py with "--worker"; no Flet dependency.
+# Launched by run_webui.py with "--worker"; no GUI-toolkit dependency.
 
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def _restore_stdio_fds() -> None:
 
 
 def run_worker() -> None:
-    """Main function for the worker process; called by app.py in --worker mode."""
+    """Main function for the worker process; called by run_webui.py in --worker mode."""
     global _ipc_out
 
     _restore_stdio_fds()

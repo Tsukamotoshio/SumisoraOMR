@@ -65,7 +65,7 @@ from core.app.pipeline import main
 
 _DEPRECATION_NOTICE = (
     "\n[弃用提示] 命令行(TUI)入口已正式弃用，不再主动维护，功能可能落后于 GUI。\n"
-    "           请改用图形界面：python app.py\n"
+    "           请改用图形界面：python -m webui.main\n"
 )
 
 if __name__ == '__main__':
