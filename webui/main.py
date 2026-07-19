@@ -113,6 +113,61 @@ def _setup_windows_identity() -> None:
         pass  # 身份设置失败不应阻断启动
 
 
+def _setup_native_script_dialogs(window: 'webview.Window') -> None:
+    """Route WebView2 JS confirm/alert dialogs to native Windows message boxes.
+
+    Mainly for the embedded noteDigger iframe, whose confirm()/alert() would
+    otherwise show the Chromium ``127.0.0.1:<port> 显示 …`` origin banner. A native
+    WinForms MessageBox has no origin and matches pywebview's own dialog look.
+    (noteDigger's alert() is separately routed to our in-page toast from JS; this
+    also covers confirm() and any alert that slips through.)
+
+    CoreWebView2 may only be touched on the WinForms UI thread, so the setup is
+    marshalled there via ``form.Invoke``. Fully guarded — on any failure WebView2
+    keeps its default dialogs, so the app still works (just with the origin).
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        from webview.platforms.winforms import BrowserView  # noqa: PLC0415
+        from System import Action  # noqa: PLC0415
+        import System.Windows.Forms as WinForms  # noqa: PLC0415
+        from Microsoft.Web.WebView2.Core import CoreWebView2ScriptDialogKind  # noqa: PLC0415
+
+        form = BrowserView.instances.get(window.uid)
+        if form is None:
+            return
+        title = APP_USER_MODEL_ID.split('.')[-1]
+
+        def _on_dialog(_sender, args) -> None:
+            try:
+                msg = str(args.Message)
+                if args.Kind == CoreWebView2ScriptDialogKind.Confirm:
+                    if WinForms.MessageBox.Show(
+                            msg, title, WinForms.MessageBoxButtons.OKCancel,
+                            WinForms.MessageBoxIcon.Question) == WinForms.DialogResult.OK:
+                        args.Accept()
+                elif args.Kind == CoreWebView2ScriptDialogKind.Beforeunload:
+                    args.Accept()   # 静默允许离开，不弹框
+                else:  # Alert / Prompt
+                    WinForms.MessageBox.Show(msg, title)
+                    args.Accept()
+            except Exception:
+                pass
+
+        def _apply() -> None:
+            try:
+                core = form.browser.webview.CoreWebView2
+                core.ScriptDialogOpening += _on_dialog
+                core.Settings.AreDefaultScriptDialogsEnabled = False
+            except Exception:
+                pass
+
+        form.Invoke(Action(_apply))
+    except Exception:
+        pass  # 失败则保持 WebView2 默认对话框（带 origin），不影响功能
+
+
 def _on_drop(bridge: Bridge, conversion: ConversionService, e: dict) -> None:
     """DOM drop handler (Python side): real filesystem paths → file tray.
 
@@ -349,6 +404,7 @@ def main() -> None:
         _loaded_once.set()
         pusher.start()
         _bind_dom(window, bridge, conversion)
+        _setup_native_script_dialogs(window)  # confirm/alert 去 origin（form.Invoke 到 UI 线程）
         if selftest:
             threading.Thread(target=_selftest, args=(window,), daemon=True).start()
         elif gate_mode:
