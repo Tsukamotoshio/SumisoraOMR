@@ -529,6 +529,23 @@ function ndInjectStyle(frame) {
     return true;
   } catch (_e) { return false; }
 }
+// 屏蔽 noteDigger 里两个在本项目中失效的扒谱功能（我们外部已有音频识别），
+// 并把它的 alert 弹窗接到我们的 toast（去掉 WebView2 "127.0.0.1 显示" 的 origin）。
+function ndPatch(frame) {
+  try {
+    const cw = frame.contentWindow;
+    const d = frame.contentDocument;
+    if (!cw || !d) return false;
+    // alert → 我们的 UI toast（幂等；alert 无返回值，非阻塞替换安全）
+    if (!cw.__omrAlert) { cw.alert = (msg) => toast(String(msg)); cw.__omrAlert = true; }
+    // 隐藏两个失效扒谱按钮（#analysePannel 里按文本精确匹配，稳过位置变化）
+    const items = d.querySelectorAll('#analysePannel li');
+    if (!items.length) return false;   // 分析面板尚未渲染 → 重试
+    const dead = ['人工智障扒谱', '音色分离扒谱'];
+    items.forEach((li) => { if (dead.includes(li.textContent.trim())) li.style.display = 'none'; });
+    return true;
+  } catch (_e) { return false; }
+}
 pageEnterHooks.notedigger = () => {
   const f = $('nd-frame');
   if (f.getAttribute('src')) return;
@@ -536,7 +553,7 @@ pageEnterHooks.notedigger = () => {
     // bSaver / document.head 可能晚于 load 事件就绪，重试直到 hook + 样式都装上
     let tries = 0;
     const setup = () => {
-      const done = ndHook(f) && ndInjectStyle(f);
+      const done = ndHook(f) && ndInjectStyle(f) && ndPatch(f);
       if (done || ++tries > 40) return;
       setTimeout(setup, 150);
     };
