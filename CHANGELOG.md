@@ -37,9 +37,12 @@ file input.
   PyInstaller). The installer detects the WebView2 Evergreen runtime and
   silently installs it when missing (Windows 11 ships it built in).
 
-### Notes
-- The legacy Flet GUI (`app.py`, `gui/pages/`) is retained for this release
-  and will be removed in a later version.
+### Removed
+- The legacy Flet GUI (`app.py`, `gui/pages/`, `gui/components/`,
+  `gui/theme.py`, `core/app/win_exe_patch.py`) — the pywebview shell fully
+  replaces it, and the Flet runtime (~40 MB) is dropped from the build. The
+  shared `gui/` modules the new shell reuses (strings, settings, app_state,
+  worker_launcher) are kept.
 
 ## [0.4.2] - 2026-07-10
 

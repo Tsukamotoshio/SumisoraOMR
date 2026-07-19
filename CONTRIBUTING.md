@@ -55,7 +55,7 @@ flet run app.py          # GUI with hot-reload
 python convert.py        # DEPRECATED headless/CLI entry — debugging/CI only, may lag the GUI
 ```
 
-The GUI spawns `python app.py --worker` subprocesses for each conversion batch and
+The GUI spawns `python run_webui.py --worker` subprocesses for each conversion batch and
 talks to them via JSON-over-stdout. Heavy ML deps (onnxruntime, music21) load only in
 the worker — keep them out of the GUI-process startup path.
 

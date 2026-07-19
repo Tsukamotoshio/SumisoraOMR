@@ -28,7 +28,7 @@ def build_worker_cmd() -> list[str]:
     """Return the command line that launches a conversion worker subprocess."""
     if getattr(sys, 'frozen', False):
         return [sys.executable, '--worker']
-    return [sys.executable, str(Path(__file__).parent.parent / 'app.py'), '--worker']
+    return [sys.executable, str(Path(__file__).parent.parent / 'run_webui.py'), '--worker']
 
 
 def split_file_chunks(files: list, n: int) -> list[list]:

@@ -119,14 +119,11 @@ pip install -r requirements.txt
 **Run**
 
 ```bash
-python app.py
+python -m webui.main
 ```
 
-For hot-reload during development:
-
-```bash
-flet run app.py
-```
+The frontend reloads with `Ctrl+R`; press `F5` in VS Code to run/debug the
+Python side (see `.vscode/launch.json`).
 
 ---
 
