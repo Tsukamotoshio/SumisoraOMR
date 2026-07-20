@@ -46,6 +46,10 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.score.checking": {"zh": "检查中…", "en": "Checking…"},
     "w.score.homr_ready": {"zh": "OMR 引擎 “Homr” · 已就绪", "en": "OMR engine \"Homr\" · ready"},
     "w.score.homr_missing": {"zh": "未就绪（{p}/{t} 个权重）", "en": "Not ready ({p}/{t} weights)"},
+    "w.score.homr_missing_guard": {
+        "zh": "HOMR 模型权重尚未下载，请先下载，或将引擎切换为 Audiveris。",
+        "en": "HOMR weights aren't downloaded yet — download them first, or switch the engine to Audiveris.",
+    },
     "w.model.download": {"zh": "下载", "en": "Download"},
     "w.model.delete": {"zh": "删除", "en": "Delete"},
 

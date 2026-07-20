@@ -409,6 +409,10 @@ async function doStart(opts) {
     if (r.error === 'no_files') alert(t('w.conv.no_files'));
     else if (r.error === 'busy') alert(t('w.conv.busy'));
     else if (r.error === 'duplicates') showDupConfirm(opts, r.existing || []);
+    else if (r.error === 'homr_missing') {
+      toast(t('w.score.homr_missing_guard'));
+      startModelDownload('homr', t('w.model.dl_title_homr'));
+    }
     return;
   }
   converting = true;

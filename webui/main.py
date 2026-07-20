@@ -370,8 +370,8 @@ def main() -> None:
 
     _httpd, base_url, whitelist = start_server()
     pusher = EventPusher()
-    conversion = ConversionService(pusher, whitelist)
     models = ModelsService(pusher)
+    conversion = ConversionService(pusher, whitelist, models)
     outputs = OutputsService(pusher, whitelist)
     scores = ScoresService(pusher, whitelist)
     transpose = TransposeService(pusher, whitelist)

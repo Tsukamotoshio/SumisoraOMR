@@ -29,6 +29,7 @@ from gui.app_state import AppState, Event
 from gui.worker_launcher import ConversionOptions, ConversionRunner
 
 from .events import EventPusher
+from .models import ModelsService
 from .server import FileWhitelist
 
 _ACCEPTED_SUFFIXES = SUPPORTED_INPUT_SUFFIXES | SUPPORTED_AUDIO_SUFFIXES
@@ -62,9 +63,11 @@ class ConversionService:
     """File tray + conversion lifecycle, reported to the page via EventPusher."""
 
     def __init__(self, pusher: EventPusher,
-                 whitelist: Optional[FileWhitelist] = None) -> None:
+                 whitelist: Optional[FileWhitelist] = None,
+                 models: Optional[ModelsService] = None) -> None:
         self._pusher = pusher
         self._whitelist = whitelist  # /file 预览端点的白名单（托盘内文件才可读）
+        self._models = models        # HOMR 权重就绪检查（转换前守卫）
         self._state = AppState()
         self._runner = ConversionRunner(
             self._state,
@@ -140,15 +143,47 @@ class ConversionService:
         return entries
 
     def files_add(self, paths: list[str]) -> dict:
-        """Add files to the tray (dedup; unsupported suffixes rejected)."""
+        """Add files to the tray (dedup; unsupported suffixes rejected).
+
+        Files outside ``Input/`` are copied in first (matching the legacy
+        Flet ``file_sidebar._import_with_progress`` behaviour) so the tray
+        always mirrors ``Input/`` contents and survives the startup rescan.
+        Name conflicts are resolved by appending ``_1``, ``_2``, … to the stem.
+        """
+        import shutil
+
+        from core.app.backend import app_base_dir
+
+        input_dir = app_base_dir() / 'Input'
+        input_dir_resolved = input_dir.resolve() if input_dir.is_dir() else None
+
         added, rejected = [], []
         with self._tray_lock:
             known = {e['path'] for e in self._tray}
             for raw in paths or []:
-                p = Path(raw).resolve()
-                if p.suffix.lower() not in _ACCEPTED_SUFFIXES or not p.is_file():
-                    rejected.append(str(p))
+                src = Path(raw)
+                if src.suffix.lower() not in _ACCEPTED_SUFFIXES or not src.is_file():
+                    rejected.append(str(src))
                     continue
+                src = src.resolve()
+
+                if input_dir_resolved is not None and src.parent == input_dir_resolved:
+                    p = src
+                else:
+                    input_dir.mkdir(parents=True, exist_ok=True)
+                    input_dir_resolved = input_dir.resolve()
+                    dest = input_dir / src.name
+                    stem, suffix = src.stem, src.suffix
+                    j = 1
+                    while dest.exists():
+                        dest = input_dir / f'{stem}_{j}{suffix}'
+                        j += 1
+                    try:
+                        shutil.copy2(str(src), str(dest))
+                        p = dest.resolve()
+                    except Exception:
+                        p = src  # fallback: keep the original path
+
                 if p in known:
                     continue
                 self._tray.append({'path': p, 'checked': True})
@@ -193,6 +228,14 @@ class ConversionService:
             ]
         if not files:
             return {'ok': False, 'error': 'no_files'}
+
+        # HOMR 权重缺失守卫：默认引擎 auto 会用到 HOMR，用户可能从未看过状态区。
+        # 与 Flet landing 版一致——权重不在就拦住，不让前端悄悄跑一批注定失败/回退
+        # 到纯 Audiveris 的转换。
+        engine = opts.get('engine', 'auto')
+        if view == 'score' and engine in ('auto', 'homr') and self._models is not None:
+            if not self._models.status().get('homr', {}).get('available'):
+                return {'ok': False, 'error': 'homr_missing'}
 
         # 重复输出检测（与 Flet landing 一致：Output/<stem>_jianpu.pdf 已存在）。
         # 首次调用发现重复 → 返回清单让前端弹确认；前端带 dup_resolved 重新调用。
