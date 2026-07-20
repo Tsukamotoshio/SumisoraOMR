@@ -374,6 +374,15 @@ $('audio-add').addEventListener('click', () => api().shell_pick_files('audio'));
 let cancelling = false;
 let converting = false;
 
+let progTimer = null;
+let progStart = 0;
+function _tickElapsed() {
+  const s = Math.floor((Date.now() - progStart) / 1000);
+  const mm = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  $('prog-elapsed').textContent = `${mm}:${ss}`;
+}
+
 function showOverlay(title) {
   $('prog-title').textContent = title;
   $('prog-msg').textContent = '';
@@ -382,8 +391,16 @@ function showOverlay(title) {
   $('prog-sub').style.width = '0%';
   $('prog-log').replaceChildren();
   $('progress-overlay').classList.remove('hidden');
+  progStart = Date.now();
+  _tickElapsed();
+  clearInterval(progTimer);
+  progTimer = setInterval(_tickElapsed, 1000);
 }
-function hideOverlay() { $('progress-overlay').classList.add('hidden'); }
+function hideOverlay() {
+  $('progress-overlay').classList.add('hidden');
+  clearInterval(progTimer);
+  progTimer = null;
+}
 
 async function doStart(opts) {
   cancelling = false;
