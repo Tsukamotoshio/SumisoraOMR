@@ -261,6 +261,9 @@ button { font-family: inherit; cursor: default; }
 
 /* ── 预览页（简谱/五线谱）─────────────────────────────────────────────── */
 .content.two { grid-template-columns: 320px minmax(0,1fr); }
+/* 编辑页：参考图/简谱预览 与 文本编辑 各占一半（对应旧 Flet 版两侧 expand=True
+   等权重的 Row 布局），不该用 .content.two 那套「窄侧栏 + 主区」的文件列表比例。 */
+.content.editor { grid-template-columns: 1fr 1fr; }
 .previewbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
 .previewbar .lbl { margin-left: auto; }
 
@@ -454,7 +457,7 @@ pre.license {
 .toast.show { opacity: 1; }
 
 @media (max-width: 880px) {
-  .content, .content.two { grid-template-columns: 1fr; }
+  .content, .content.two, .content.editor { grid-template-columns: 1fr; }
   .preview .stage { min-height: 260px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
