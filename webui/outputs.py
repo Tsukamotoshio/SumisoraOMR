@@ -211,19 +211,25 @@ class ScoresService:
         def _work() -> None:
             error = None
             with self._render_lock:
+                td = None
                 try:
                     import shutil as _sh
                     import tempfile
                     from core.render.lilypond_runner import render_musicxml_staff_pdf
-                    with tempfile.TemporaryDirectory(
-                            prefix=f'_score_preview_{mxl.stem}_', dir=str(build_dir())) as td:
-                        pdf = render_musicxml_staff_pdf(mxl, Path(td))
-                        if pdf and pdf.exists():
-                            _sh.copy2(str(pdf), str(flat))
-                        else:
-                            error = '五线谱渲染失败'
+                    from core.utils import safe_remove_tree
+                    td = tempfile.mkdtemp(prefix=f'_score_preview_{mxl.stem}_', dir=str(build_dir()))
+                    pdf = render_musicxml_staff_pdf(mxl, Path(td))
+                    if pdf and pdf.exists():
+                        _sh.copy2(str(pdf), str(flat))
+                    else:
+                        error = '五线谱渲染失败'
                 except Exception as exc:  # noqa: BLE001
                     error = str(exc)
+                finally:
+                    # 清理失败（Windows 上偶发的临时文件句柄未及时释放）不该掩盖已经成功
+                    # 拷贝出去的渲染结果——见 webui/transpose.py 同类注释。
+                    if td is not None:
+                        safe_remove_tree(Path(td))
             if error is None:
                 self._whitelist.allow(flat)
             self._pusher.push('score_preview_ready', {
@@ -304,13 +310,18 @@ class ScoresService:
                     import shutil as _sh
                     import tempfile
                     from core.render.lilypond_runner import render_musicxml_staff_pdf
-                    with self._render_lock, tempfile.TemporaryDirectory(
-                            prefix=f'_score_export_{mxl.stem}_', dir=str(build_dir())) as td:
-                        pdf = render_musicxml_staff_pdf(mxl, Path(td))
-                        if not (pdf and pdf.exists()):
-                            failed.append({'file': mxl.name, 'error': '渲染失败'})
-                            continue
-                        _sh.copy2(str(pdf), str(flat))
+                    from core.utils import safe_remove_tree
+                    with self._render_lock:
+                        td = tempfile.mkdtemp(prefix=f'_score_export_{mxl.stem}_', dir=str(build_dir()))
+                        try:
+                            pdf = render_musicxml_staff_pdf(mxl, Path(td))
+                            if not (pdf and pdf.exists()):
+                                failed.append({'file': mxl.name, 'error': '渲染失败'})
+                                continue
+                            _sh.copy2(str(pdf), str(flat))
+                        finally:
+                            # 清理失败不该掩盖已经成功的渲染——见 webui/transpose.py 同类注释。
+                            safe_remove_tree(Path(td))
                 shutil.copy2(str(flat), str(out_pdf))
                 copied.append(out_pdf.name)
             except Exception as exc:  # noqa: BLE001

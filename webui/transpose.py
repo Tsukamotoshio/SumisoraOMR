@@ -103,18 +103,26 @@ class TransposeService:
         def _work() -> None:
             error = None
             with self._render_lock:
+                td = None
                 try:
                     import tempfile
                     from core.render.lilypond_runner import render_musicxml_staff_pdf
-                    with tempfile.TemporaryDirectory(
-                            prefix=f'_trans_render_{mxl.stem}_', dir=str(build_dir())) as td:
-                        pdf = render_musicxml_staff_pdf(mxl, Path(td))
-                        if pdf and pdf.exists():
-                            shutil.copy2(str(pdf), str(flat))
-                        else:
-                            error = '五线谱渲染失败'
+                    from core.utils import safe_remove_tree
+                    td = tempfile.mkdtemp(prefix=f'_trans_render_{mxl.stem}_', dir=str(build_dir()))
+                    pdf = render_musicxml_staff_pdf(mxl, Path(td))
+                    if pdf and pdf.exists():
+                        shutil.copy2(str(pdf), str(flat))
+                    else:
+                        error = '五线谱渲染失败'
                 except Exception as exc:  # noqa: BLE001
                     error = str(exc)
+                finally:
+                    # 手动清理而非 TemporaryDirectory 的自动清理：Windows 上偶发有子进程
+                    # （musicxml2ly/LilyPond）刚释放文件句柄，rmtree 抢跑会报 PermissionError；
+                    # 此时 PDF 其实已经渲染成功并拷贝到 flat 了，清理失败不该反过来把这次
+                    # 渲染判定为失败（safe_remove_tree 静默忽略清理错误，不影响上面的结果）。
+                    if td is not None:
+                        safe_remove_tree(Path(td))
             if token != self._file_gen:
                 return  # 页面已切换文件，丢弃
             if error is None:
@@ -203,15 +211,20 @@ class TransposeService:
         try:
             import tempfile
             from core.render.lilypond_runner import render_musicxml_staff_pdf
+            from core.utils import safe_remove_tree
             suffix = '_orig_preview' if which == 'orig' else '_trans_preview'
             flat = build_dir() / f'{mxl.stem}{suffix}.pdf'
             if not (flat.exists() and flat.stat().st_mtime >= mxl.stat().st_mtime):
-                with self._render_lock, tempfile.TemporaryDirectory(
-                        prefix=f'_trans_export_{mxl.stem}_', dir=str(build_dir())) as td:
-                    pdf = render_musicxml_staff_pdf(mxl, Path(td))
-                    if not (pdf and pdf.exists()):
-                        return {'ok': False, 'error': '渲染失败'}
-                    shutil.copy2(str(pdf), str(flat))
+                with self._render_lock:
+                    td = tempfile.mkdtemp(prefix=f'_trans_export_{mxl.stem}_', dir=str(build_dir()))
+                    try:
+                        pdf = render_musicxml_staff_pdf(mxl, Path(td))
+                        if not (pdf and pdf.exists()):
+                            return {'ok': False, 'error': '渲染失败'}
+                        shutil.copy2(str(pdf), str(flat))
+                    finally:
+                        # 见 render_preview() 的同类注释：清理失败不该掩盖已经成功的渲染。
+                        safe_remove_tree(Path(td))
             shutil.copy2(str(flat), dest_path)
             return {'ok': True, 'dest': dest_path}
         except Exception as exc:  # noqa: BLE001

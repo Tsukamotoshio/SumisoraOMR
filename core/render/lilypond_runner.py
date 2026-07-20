@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -1005,6 +1006,18 @@ def render_musicxml_staff_pdf(mxl_path: Path, out_dir: Path) -> Optional[Path]:
     # as polyphonic layers on the same staff.  For independent voice lines (e.g.
     # canons), splitting ensures each voice gets its own staff.
     mxl_for_ly = _split_multivoice_parts_in_mxl(mxl_for_ly, out_dir)
+
+    # Step 0d: 上面几步刚把 mxl_for_ly 写到磁盘（music21 .write() / Path.write_text()），
+    # 紧接着就要用子进程（musicxml2ly）打开它读取。在部分 Windows 环境下（尤其是杀毒
+    # 软件对新建文件做实时扫描时）子进程偶发看不到刚落盘的文件——不是逻辑 bug，是
+    # 写入完成到对其他进程可见之间的一个短暂窗口。短轮询等它出现，避免整个渲染因为
+    # 这个时序问题被判失败。
+    for _ in range(20):
+        if mxl_for_ly.exists() and mxl_for_ly.stat().st_size > 0:
+            break
+        time.sleep(0.1)
+    else:
+        log_message(f'musicxml2ly 输入文件迟迟未就绪：{mxl_for_ly}', logging.WARNING)
 
     # Step 1: musicxml2ly → .ly
     try:
