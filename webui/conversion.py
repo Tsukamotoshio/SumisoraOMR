@@ -76,6 +76,28 @@ class ConversionService:
         self._run_thread: Optional[threading.Thread] = None
         for name in _FORWARDED_EVENTS:
             self._state.on(name, self._make_forwarder(name))
+        threading.Thread(target=self._scan_input_on_startup, daemon=True).start()
+
+    def _scan_input_on_startup(self) -> None:
+        """Pre-populate the tray from Input/ on launch (score + audio).
+
+        Mirrors the legacy Flet shell's ``landing_page.did_mount`` scan, which
+        was dropped when the Flet GUI was removed and never replaced here.
+        """
+        try:
+            from core.app.backend import app_base_dir
+
+            input_dir = app_base_dir() / 'Input'
+            if not input_dir.is_dir():
+                return
+            found = sorted(
+                p for p in input_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in _ACCEPTED_SUFFIXES
+            )
+            if found:
+                self.files_add([str(p) for p in found])
+        except Exception:
+            pass
 
     # ── AppState → 前端 ──────────────────────────────────────────────────────
 
