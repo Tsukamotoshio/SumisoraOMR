@@ -27,7 +27,8 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
 
     # ── 乐谱识别页 ───────────────────────────────────────────────────────────
     "w.score.files_title": {"zh": "输入文件", "en": "Input Files"},
-    "w.score.add": {"zh": "添加文件", "en": "Add Files"},
+    "w.score.add": {"zh": "添加", "en": "Add"},
+    "w.score.add_tip": {"zh": "添加文件", "en": "Add Files"},
     "w.score.empty": {"zh": "拖入 PDF / PNG / JPG，或点「添加文件」",
                       "en": "Drop PDF / PNG / JPG here, or click \"Add Files\""},
     "w.score.preview_title": {"zh": "预览", "en": "Preview"},
@@ -106,7 +107,7 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.list.pick_first_delete": {"zh": "先勾选要删除的文件", "en": "Check some files to delete first"},
 
     # ── 输入文件托盘（乐谱识别/音频识别共用）───────────────────────────────────
-    "w.tray.add_folder": {"zh": "添加文件夹", "en": "Add Folder"},
+    "w.tray.add_folder": {"zh": "文件夹", "en": "Folder"},
     "w.tray.add_folder_tip": {"zh": "导入整个文件夹", "en": "Import an entire folder"},
     "w.tray.delete_tip": {"zh": "删除勾选的文件（Input 内的会从磁盘删除）",
                            "en": "Delete checked files (files in Input/ are removed from disk)"},
