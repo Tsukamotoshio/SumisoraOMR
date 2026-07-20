@@ -275,6 +275,7 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.model.dl_title_piano": {"zh": "下载钢琴转录模型（约 172 MB）", "en": "Download Piano Model (~172 MB)"},
     "w.model.connecting": {"zh": "连接中…", "en": "Connecting…"},
     "w.model.dl_failed": {"zh": "模型下载失败：{e}", "en": "Model download failed: {e}"},
+    "w.model.retry": {"zh": "重试", "en": "Retry"},
     "w.model.del_homr_confirm": {"zh": "删除 HOMR 模型权重？删除后图片识别将不可用，可随时重新下载。",
                                  "en": "Delete the HOMR weights? Image OMR will be unavailable until re-downloaded."},
     "w.model.del_piano_confirm": {"zh": "删除钢琴转录模型？可随时重新下载。",

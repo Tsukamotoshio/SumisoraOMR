@@ -760,13 +760,19 @@ function startModelDownload(kind, title) {
   modelKind = kind;
   $('model-title').textContent = title;
   $('model-msg').textContent = t('w.model.connecting');
+  $('model-msg').classList.remove('err');
   $('model-bar').style.width = '0%';
+  $('model-close').classList.add('hidden');
+  $('model-retry').classList.add('hidden');
+  $('model-cancel').classList.remove('hidden');
   $('model-overlay').classList.remove('hidden');
   api().models_download(kind);
 }
 $('homr-download').addEventListener('click', () => startModelDownload('homr', t('w.model.dl_title_homr')));
 $('piano-download').addEventListener('click', () => startModelDownload('piano', t('w.model.dl_title_piano')));
 $('model-cancel').addEventListener('click', () => { if (modelKind) api().models_cancel_download(modelKind); });
+$('model-close').addEventListener('click', () => { $('model-overlay').classList.add('hidden'); modelKind = null; });
+$('model-retry').addEventListener('click', () => { if (modelKind) startModelDownload(modelKind, $('model-title').textContent); });
 $('homr-delete').addEventListener('click', async () => {
   if (confirm(t('w.model.del_homr_confirm'))) await api().models_delete('homr');
 });
@@ -783,9 +789,17 @@ window.addEventListener('model_download_progress', (e) => {
 window.addEventListener('model_download_done', (e) => {
   const d = e.detail || {};
   if (d.kind !== modelKind) return;
+  if (!d.ok && d.error !== 'cancelled') {
+    // 保持浮层开着，切到"失败"态：提示 + 重试/关闭，而不是弹 alert 关掉了事
+    $('model-msg').textContent = t('w.model.dl_failed', { e: d.error });
+    $('model-msg').classList.add('err');
+    $('model-cancel').classList.add('hidden');
+    $('model-close').classList.remove('hidden');
+    $('model-retry').classList.remove('hidden');
+    return;
+  }
   $('model-overlay').classList.add('hidden');
   modelKind = null;
-  if (!d.ok && d.error !== 'cancelled') alert(t('w.model.dl_failed', { e: d.error }));
 });
 window.addEventListener('models_changed', (e) => renderModels(e.detail && e.detail.status));
 

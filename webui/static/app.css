@@ -227,6 +227,7 @@ button { font-family: inherit; cursor: default; }
 .prog-titlerow h3 { flex: 1; min-width: 0; }
 .elapsed { flex: none; font: 12.5px/1 Consolas, monospace; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sheet .msg { font-size: 13px; color: var(--muted); min-height: 1.4em; word-break: break-all; }
+.sheet .msg.err { color: var(--danger); }
 .meter { height: 8px; background: var(--inset); border-radius: 4px; overflow: hidden; }
 .meter.thin { height: 5px; }
 .meter > i { display: block; height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width .18s; }
