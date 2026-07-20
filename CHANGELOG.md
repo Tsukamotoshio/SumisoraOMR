@@ -37,28 +37,6 @@ file input.
   PyInstaller). The installer detects the WebView2 Evergreen runtime and
   silently installs it when missing (Windows 11 ships it built in).
 
-### Fixed
-- Restored several behaviors that regressed in the Flet → pywebview
-  rewrite before they shipped:
-  - The file tray no longer starts empty — `Input/` is rescanned on
-    launch, now covering audio files as well as scores (the legacy scan
-    only covered scores).
-  - The conversion progress overlay shows an elapsed `MM:SS` timer again,
-    for both OMR and audio (piano transcription) runs.
-  - Files added from outside `Input/` are copied in (with `_1`/`_2`
-    conflict resolution) instead of silently vanishing from the tray on
-    the next launch.
-  - Starting a conversion with the HOMR engine selected but its weights
-    not downloaded is blocked with a prompt instead of quietly failing
-    per file.
-  - The score/audio input trays regained select-all, batch delete, and
-    folder import — previously only available on the output preview
-    pages.
-  - Transposer parameter changes (interval/key/degree/direction/key
-    signature) auto-preview again instead of requiring an extra click.
-  - A failed model download now offers Retry/Close instead of just an
-    alert that discards progress.
-
 ### Removed
 - The legacy Flet GUI (`app.py`, `gui/pages/`, `gui/components/`,
   `gui/theme.py`, `core/app/win_exe_patch.py`) — the pywebview shell fully
