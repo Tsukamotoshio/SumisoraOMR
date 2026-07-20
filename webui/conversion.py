@@ -210,6 +210,53 @@ class ConversionService:
                     e['checked'] = not e['checked']
         self._push_tray()
 
+    def files_select_all(self, view: Optional[str] = None) -> None:
+        """Toggle select-all, scoped to *view* ('score'|'audio') like the legacy
+        Flet sidebar — doesn't touch the other page's checked state."""
+        with self._tray_lock:
+            scoped = [
+                e for e in self._tray
+                if view not in ('score', 'audio') or _kind_of(e['path']) == view
+            ]
+            all_checked = bool(scoped) and all(e['checked'] for e in scoped)
+            for e in scoped:
+                e['checked'] = not all_checked
+        self._push_tray()
+
+    def files_delete_checked(self, view: Optional[str] = None, dry_run: bool = False) -> dict:
+        """Remove checked files (scoped to *view*) from the tray.
+
+        Files resident in ``Input/`` are also unlinked from disk (matching the
+        legacy ``file_sidebar._on_batch_delete_click``); files added from
+        elsewhere are only dropped from the tray. ``dry_run`` just reports
+        counts so the caller can build a confirmation message first.
+        """
+        from core.app.backend import app_base_dir
+
+        input_dir = (app_base_dir() / 'Input').resolve()
+        with self._tray_lock:
+            to_delete = [
+                e for e in self._tray
+                if e['checked'] and (view not in ('score', 'audio') or _kind_of(e['path']) == view)
+            ]
+            in_input = sum(1 for e in to_delete if e['path'].parent == input_dir)
+            if dry_run:
+                return {'n': len(to_delete), 'in_input': in_input}
+
+            deleted_paths = {e['path'] for e in to_delete}
+            for e in to_delete:
+                p = e['path']
+                if p.parent == input_dir:
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                if self._whitelist is not None:
+                    self._whitelist.revoke(p)
+            self._tray = [e for e in self._tray if e['path'] not in deleted_paths]
+        self._push_tray()
+        return {'n': len(deleted_paths), 'in_input': in_input}
+
     def convert_start(self, opts: Optional[dict] = None) -> dict:
         """Start converting the checked files on a background thread.
 

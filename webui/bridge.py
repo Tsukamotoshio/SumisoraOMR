@@ -21,6 +21,8 @@ from typing import Any, Optional
 
 import webview
 
+from core.config import SUPPORTED_AUDIO_SUFFIXES, SUPPORTED_INPUT_SUFFIXES
+
 from .conversion import ConversionService
 from .events import EventPusher
 from .editor import EditorService
@@ -113,6 +115,37 @@ class Bridge:
 
     def files_toggle_check(self, path: str) -> None:
         self._conversion.files_toggle_check(path)
+
+    def files_select_all(self, view: Optional[str] = None) -> None:
+        self._conversion.files_select_all(view)
+
+    def files_checked_count(self, view: Optional[str] = None) -> dict:
+        return self._conversion.files_delete_checked(view, dry_run=True)
+
+    def files_delete_checked(self, view: Optional[str] = None) -> dict:
+        return self._conversion.files_delete_checked(view)
+
+    def shell_pick_folder_import(self, kind: Optional[str] = None) -> dict:
+        """Native folder-open dialog → glob matching suffixes → add to tray.
+
+        kind: 'score' → 图片/PDF；'audio' → 音频；否则两者合并。
+        """
+        if self._window is None:
+            return {'added': [], 'rejected': [], 'error': 'no_window'}
+        result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+        if not result:
+            return {'added': [], 'rejected': [], 'error': 'cancelled'}
+        folder = Path(result[0] if isinstance(result, (list, tuple)) else result)
+        if kind == 'score':
+            suffixes = SUPPORTED_INPUT_SUFFIXES
+        elif kind == 'audio':
+            suffixes = SUPPORTED_AUDIO_SUFFIXES
+        else:
+            suffixes = SUPPORTED_INPUT_SUFFIXES | SUPPORTED_AUDIO_SUFFIXES
+        paths = [str(p) for suf in sorted(suffixes) for p in folder.glob(f'*{suf}')]
+        if not paths:
+            return {'added': [], 'rejected': [], 'error': 'empty'}
+        return self._conversion.files_add(paths)
 
     # ── 转换 ─────────────────────────────────────────────────────────────────
     def convert_start(self, opts: Optional[dict] = None) -> dict:

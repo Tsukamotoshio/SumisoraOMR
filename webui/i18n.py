@@ -105,6 +105,25 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.list.pick_first_export": {"zh": "先勾选要导出的文件", "en": "Check some files to export first"},
     "w.list.pick_first_delete": {"zh": "先勾选要删除的文件", "en": "Check some files to delete first"},
 
+    # ── 输入文件托盘（乐谱识别/音频识别共用）───────────────────────────────────
+    "w.tray.add_folder": {"zh": "添加文件夹", "en": "Add Folder"},
+    "w.tray.add_folder_tip": {"zh": "导入整个文件夹", "en": "Import an entire folder"},
+    "w.tray.delete_tip": {"zh": "删除勾选的文件（Input 内的会从磁盘删除）",
+                           "en": "Delete checked files (files in Input/ are removed from disk)"},
+    "w.tray.folder_empty": {"zh": "所选文件夹内没有支持的文件", "en": "No supported files found in that folder"},
+    "w.tray.delete_confirm_mixed": {
+        "zh": "将永久删除 {m} 个 Input 文件夹中的文件，另有 {n} 个仅从列表移除。",
+        "en": "This will permanently delete {m} file(s) in the Input folder; {n} more will only be removed from the list.",
+    },
+    "w.tray.delete_confirm_all_input": {
+        "zh": "将永久删除 {n} 个 Input 文件夹中的文件。",
+        "en": "This will permanently delete {n} file(s) in the Input folder.",
+    },
+    "w.tray.delete_confirm_list_only": {
+        "zh": "将从列表移除 {n} 个文件（不删除磁盘文件）。",
+        "en": "This will remove {n} file(s) from the list (no files will be deleted from disk).",
+    },
+
     # ── 简谱预览页 ───────────────────────────────────────────────────────────
     "w.jp.title": {"zh": "简谱文件", "en": "Jianpu Files"},
     "w.jp.export_tip": {"zh": "导出勾选到文件夹", "en": "Export checked files to a folder"},

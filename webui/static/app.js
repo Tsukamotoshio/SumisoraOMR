@@ -370,6 +370,31 @@ window.addEventListener('files_changed', (e) => {
 $('score-add').addEventListener('click', () => api().shell_pick_files('score'));
 $('audio-add').addEventListener('click', () => api().shell_pick_files('audio'));
 
+async function trayAddFolder(view) {
+  const r = await api().shell_pick_folder_import(view);
+  if (r.error === 'empty') toast(t('w.tray.folder_empty'));
+}
+$('score-addfolder').addEventListener('click', () => trayAddFolder('score'));
+$('audio-addfolder').addEventListener('click', () => trayAddFolder('audio'));
+
+for (const view of ['score', 'audio']) {
+  $(`${view}-selall`).addEventListener('click', () => api().files_select_all(view));
+}
+
+async function trayDeleteChecked(view) {
+  const info = await api().files_checked_count(view);
+  if (!info.n) { toast(t('w.list.pick_first_delete')); return; }
+  const msg = info.in_input === info.n
+    ? t('w.tray.delete_confirm_all_input', { n: info.n })
+    : info.in_input === 0
+      ? t('w.tray.delete_confirm_list_only', { n: info.n })
+      : t('w.tray.delete_confirm_mixed', { m: info.in_input, n: info.n - info.in_input });
+  if (!confirm(msg)) return;
+  await api().files_delete_checked(view);
+}
+$('score-delete').addEventListener('click', () => trayDeleteChecked('score'));
+$('audio-delete').addEventListener('click', () => trayDeleteChecked('audio'));
+
 // ═══ 转换流程 + 进度浮层 ═════════════════════════════════════════════════════
 let cancelling = false;
 let converting = false;
@@ -1196,6 +1221,7 @@ $('tp-mode').addEventListener('change', () => {
     dir.appendChild(op);
   }
   dir.value = opts.some(([v]) => v === cur) ? cur : opts[0][0];
+  tpAutoRun();
 });
 
 $('tp-keysig').addEventListener('click', (e) => {
@@ -1203,6 +1229,7 @@ $('tp-keysig').addEventListener('click', (e) => {
   const b = $('tp-keysig');
   b.classList.toggle('on');
   b.setAttribute('aria-checked', b.classList.contains('on') ? 'true' : 'false');
+  tpAutoRun();
 });
 
 $('tp-detect').addEventListener('click', (e) => {
@@ -1220,8 +1247,7 @@ $('tp-open').addEventListener('click', async () => {
 });
 $('tp-xmldir').addEventListener('click', () => api().shell_open_xml_dir());
 
-$('tp-run').addEventListener('click', async () => {
-  if (tpBusy) return;
+async function tpDoRun() {
   const mode = $('tp-mode').value;
   const params = {
     direction: $('tp-dir').value,
@@ -1237,7 +1263,21 @@ $('tp-run').addEventListener('click', async () => {
   $('tp-run').disabled = true;
   $('tp-status').textContent = t('w.tp.running');
   $('tp-progress').style.width = '0%';
-});
+}
+$('tp-run').addEventListener('click', () => { if (!tpBusy) tpDoRun(); });
+
+// 参数变化自动预览（与旧 Flet 版一致）：debounce 250ms 避免连续调参时逐次触发；
+// 不用 tpBusy 早退——后端 transpose.py 自带 run token，新调用会让旧任务的结果
+// 作废，允许渲染中途再改参数、以最新一次为准，而不是把改动悄悄丢掉。
+let tpAutoTimer = null;
+function tpAutoRun() {
+  if (!tpCurrentPath) return;  // 尚未加载文件：安静跳过，不弹提示（与旧版一致）
+  clearTimeout(tpAutoTimer);
+  tpAutoTimer = setTimeout(tpDoRun, 250);
+}
+for (const id of ['tp-dir', 'tp-from', 'tp-to', 'tp-interval', 'tp-degree']) {
+  $(id).addEventListener('change', tpAutoRun);
+}
 
 window.addEventListener('transpose_progress', (e) => {
   $('tp-progress').style.width = `${Math.round(((e.detail && e.detail.value) || 0) * 100)}%`;
