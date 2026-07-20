@@ -326,38 +326,55 @@ function renderView(view) {
 }
 
 function updatePreview(view, file) {
-  const stage = $(view === 'score' ? 'score-stage' : 'audio-stage');
   const nameEl = $(view === 'score' ? 'score-preview-name' : 'audio-preview-name');
   nameEl.textContent = file ? file.name : '';
   const url = file ? `/file?path=${encodeURIComponent(file.path)}` : null;
-  stage.replaceChildren();
-  if (!file) {
-    const phKey = view === 'score' ? 'w.score.preview_ph' : 'w.audio.listen_ph';
-    const phIcon = view === 'score'
-      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.6"/><path d="M4 17l5-4 4 3 3-2 4 3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>';
-    stage.innerHTML = `<div class="placeholder">${phIcon}<span data-i18n="${phKey}"></span></div>`;
-    stage.querySelector('[data-i18n]').textContent = t(phKey);
-    return;
-  }
+
   if (view === 'audio') {
+    const stage = $('audio-stage');
+    stage.replaceChildren();
+    if (!file) {
+      const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 12v0M8 8v8M12 5v14M16 9v6M20 12v0"/></svg>';
+      stage.innerHTML = `<div class="placeholder">${icon}<span data-i18n="w.audio.listen_ph"></span></div>`;
+      stage.querySelector('[data-i18n]').textContent = t('w.audio.listen_ph');
+      return;
+    }
     const au = document.createElement('audio');
     au.controls = true;
     au.src = url;
     stage.appendChild(au);
-  } else if (/\.(png|jpe?g)$/i.test(file.name)) {
+    return;
+  }
+
+  // view === 'score'：静态 placeholder + a4frame/canvas（PDF，PdfView 管理）常驻
+  // 在 DOM 里；不能用 stage.replaceChildren()，那会把 PdfView 绑定的 canvas 也删掉。
+  // 图片走独立动态创建的 .a4frame.imgframe，每次切换文件时先移除旧的。
+  const stage = $('score-stage');
+  const ph = stage.querySelector('.placeholder');
+  const oldImgFrame = stage.querySelector('.a4frame.imgframe');
+  if (oldImgFrame) oldImgFrame.remove();
+  scoreImgZoom = null;
+
+  if (!file) {
+    scoreView.close();
+    ph.classList.remove('hidden');
+    return;
+  }
+  ph.classList.add('hidden');
+
+  if (/\.(png|jpe?g)$/i.test(file.name)) {
+    scoreView.close();
+    const frame = document.createElement('div');
+    frame.className = 'a4frame imgframe';
     const img = document.createElement('img');
     img.src = url;
     img.alt = file.name;
-    stage.appendChild(img);
+    frame.appendChild(img);
+    stage.appendChild(frame);
+    attachFrameDrag(frame);
+    scoreImgZoom = makeImageZoom(frame, img);
   } else {
-    const ph = document.createElement('div');
-    ph.className = 'placeholder';
-    ph.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 13h6M9 17h4" stroke-linecap="round"/></svg>';
-    const span = document.createElement('span');
-    span.textContent = `${file.name} — ${t('w.score.preview_ph')}`;
-    ph.appendChild(span);
-    stage.appendChild(ph);
+    scoreView.open(url).catch((e) => toast(t('w.pv.open_failed', { e })));
   }
 }
 
@@ -816,6 +833,31 @@ async function loadPdfjs() {
   return _pdfjs;
 }
 
+// 通用画框拖拽平移：原 Flet InteractiveViewer 的 pan_enabled 能力，pywebview 版
+// 迁移时漏掉了，这里用鼠标按下+移动直接改画框 scrollLeft/scrollTop 补回来（对
+// canvas/img 内容一视同仁，只操心画框本身的滚动位置，不关心里面渲染的是什么）。
+function attachFrameDrag(frame) {
+  let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  frame.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    startLeft = frame.scrollLeft; startTop = frame.scrollTop;
+    frame.classList.add('dragging');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    frame.scrollLeft = startLeft - (e.clientX - startX);
+    frame.scrollTop = startTop - (e.clientY - startY);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    frame.classList.remove('dragging');
+  });
+}
+
 class PdfView {
   constructor(canvas, stage, pageInfoEl) {
     this.canvas = canvas;
@@ -835,6 +877,13 @@ class PdfView {
       this._resizeTimer = setTimeout(() => { if (this.doc) this.render(); }, 120);
     });
     this._ro.observe(frame);
+    // 滚轮缩放 + 拖拽平移
+    frame.addEventListener('wheel', (e) => {
+      if (!this.doc) return;
+      e.preventDefault();
+      this.zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }, { passive: false });
+    attachFrameDrag(frame);
   }
 
   async open(url) {
@@ -895,6 +944,34 @@ class PdfView {
   }
   zoomFit() { this.scale = null; this.render(); }
 }
+
+// 图片画框的缩放控制器（乐谱识别页的 PNG/JPG 预览用——不经 PdfView，独立维护一个
+// scale 状态，用 CSS transform 缩放；拖拽平移复用 attachFrameDrag）。返回的对象
+// 供下方缩放按钮在图片模式下调用，滚轮事件也走同一套。
+function makeImageZoom(frame, img) {
+  let scale = 1;
+  const apply = () => { img.style.transform = scale === 1 ? '' : `scale(${scale})`; };
+  const controller = {
+    zoom(f) { scale = Math.min(6, Math.max(1, scale * f)); apply(); },
+    zoomFit() { scale = 1; apply(); },
+  };
+  frame.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    controller.zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+  }, { passive: false });
+  return controller;
+}
+
+// ═══ 乐谱识别页：预览（PDF 走 PdfView，PNG/JPG 走独立 .a4frame + <img>）═══════
+const scoreView = new PdfView($('score-canvas'), $('score-stage'), $('score-pageinfo'));
+let scoreImgZoom = null;   // 当前图片模式的缩放控制器；PDF 模式或无文件时为 null
+$('score-prev').addEventListener('click', () => scoreView.prev());
+$('score-next').addEventListener('click', () => scoreView.next());
+// 缩放按钮：图片模式走 scoreImgZoom，PDF 模式走 scoreView——此前只接了 scoreView，
+// 选中图片时点缩放按钮完全没反应。
+$('score-zoomin').addEventListener('click', () => { if (scoreImgZoom) scoreImgZoom.zoom(1.2); else scoreView.zoom(1.2); });
+$('score-zoomout').addEventListener('click', () => { if (scoreImgZoom) scoreImgZoom.zoom(1 / 1.2); else scoreView.zoom(1 / 1.2); });
+$('score-zoomfit').addEventListener('click', () => { if (scoreImgZoom) scoreImgZoom.zoomFit(); else scoreView.zoomFit(); });
 
 // ═══ 简谱预览页 ══════════════════════════════════════════════════════════════
 const jpView = new PdfView($('jp-canvas'), $('jp-stage'), $('jp-pageinfo'));

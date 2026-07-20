@@ -76,7 +76,7 @@ button { font-family: inherit; cursor: default; }
 .page-host { flex: 1; min-width: 0; display: flex; }
 .content {
   flex: 1; min-width: 0; display: grid;
-  grid-template-columns: 300px minmax(0,1fr) 288px;
+  grid-template-columns: 320px minmax(0,1fr) 288px;
   gap: 16px; padding: 16px;
   overflow: auto;
 }
@@ -140,7 +140,7 @@ button { font-family: inherit; cursor: default; }
   background: radial-gradient(120% 90% at 50% 0%, var(--card-2), var(--card));
   border-radius: 0 0 14px 14px; min-height: 320px; overflow: auto;
 }
-.preview .stage img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: var(--shadow); background: #fff; }
+.a4frame img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
 .preview .placeholder { color: var(--faint); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .preview .placeholder svg { width: 40px; height: 40px; opacity: .7; }
 .preview .stage audio { width: min(420px, 90%); }
@@ -189,7 +189,7 @@ button { font-family: inherit; cursor: default; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 
 /* ── 音频识别页：左 文件+底部紧凑试听条，右 双焦点（自动识别 / 扒谱编辑器） ── */
-.content.audio { grid-template-columns: 300px minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
+.content.audio { grid-template-columns: 320px minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
 .audiobar { border-top: 1px solid var(--border); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; flex: none; }
 .audiobar > .count { font-size: 12px; color: var(--muted); min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .audiostage { min-height: 42px; max-height: 88px; display: grid; place-items: center; padding: 0; overflow: hidden; }
@@ -260,7 +260,7 @@ button { font-family: inherit; cursor: default; }
 .result-item .why { color: var(--faint); word-break: break-all; }
 
 /* ── 预览页（简谱/五线谱）─────────────────────────────────────────────── */
-.content.two { grid-template-columns: 300px minmax(0,1fr); }
+.content.two { grid-template-columns: 320px minmax(0,1fr); }
 .previewbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
 .previewbar .lbl { margin-left: auto; }
 
@@ -298,9 +298,10 @@ button { font-family: inherit; cursor: default; }
 .chipgroup .chipbtn {
   flex: 1; justify-content: center; min-width: 0;
   border-radius: 0; margin-left: -1px; position: relative;
-  padding-left: 6px; padding-right: 6px;
+  padding-left: 4px; padding-right: 4px;
 }
-.chipgroup .chipbtn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chipgroup .chipbtn svg { width: 14px; height: 14px; flex: none; }
+.chipgroup .chipbtn span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chipgroup .chipbtn:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
 .chipgroup .chipbtn:last-child { border-radius: 0 8px 8px 0; }
 .chipgroup .chipbtn:hover:not(:disabled) { z-index: 1; }
@@ -316,7 +317,9 @@ button { font-family: inherit; cursor: default; }
   max-width: 100%;
   margin: auto; overflow: auto;
   background: #fff; border-radius: 8px; box-shadow: var(--shadow);
+  cursor: grab;
 }
+.a4frame.dragging { cursor: grabbing; }
 .a4frame:has(> canvas.hidden) { display: none; }
 .a4frame canvas { display: block; }
 
