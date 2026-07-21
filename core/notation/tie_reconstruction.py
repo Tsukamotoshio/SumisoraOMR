@@ -1,13 +1,22 @@
 # core/notation/tie_reconstruction.py — 延音线（tie）后处理重建
 """针对 homr 等不输出 tie 符号的 OMR 引擎，在 MusicXML 后处理阶段重建延音线。
 
+核心信号（Homr 特有）：Homr 的两条训练数据链路都把延音线编码成了 slur token —
+  - Lieder 数据集: training/datasets/music_xml_parser.py 把 <tied type=X> 编码为 "slurX"
+  - GrandStaff kern: humdrum_kern_parser.py 把 kern 的 tie 记号 [ / ] 映射为 slurStart/slurStop
+因此模型看到谱面上的延音线时，输出的就是 <slur>。对相邻同音高对而言，
+"a 有 slurStart 且 b 有 slurStop" 就是模型在说"我看到一条曲线连接这两个音"——
+传统记谱中连接相邻同音高音符的曲线几乎必然是延音线（Audiveris 判别 tie 用的
+也是同一规则：slur 两端音高相同 → tie）。
+
 算法分两层：
   1. 确定性规则（优先级最高，按序匹配即停）
      A. explicit_tie_flag       → 必然延音
      B. 不同声部               → 必然非延音
+     E. a 有 slurStart 且 b 有 slurStop → 必然延音（曲线即延音线；优先于 C/D，
+        写入 tie 时同时移除这对 slur 元素，避免 PDF 上曲线与延音线重叠绘制）
      C. 断音装饰（staccato/accent 在第二音符上）→ 必然非延音
      D. 歌词对齐（第二音符带歌词）→ 必然非延音
-     E. slur 存在但无 tie 符号  → 计入启发式（权重 0，同音高对不构成证据），不作为硬规则
 
   2. 启发式加权评分（剩余对）
      跨小节:              +3
@@ -15,7 +24,9 @@
      同声部无装饰:         +1
      第二音符有装饰/动态:   -3
      beam 组边界:         -2
-     slur 存在:            0（_W_SLUR_PRESENT；同音高对场景下不构成证据）
+     完全无曲线证据:       -6（a 无 slurStart 且 b 无 slurStop —— 模型没看到
+                              任何曲线；相邻同音重复音远多于漏检的延音线）
+     单侧曲线:             0（换行悬挂或半漏检，不加分不扣分）
      阈值: score>=2 → tie; score<=-2 → no_tie; else → ambiguous（保守不写）
 
 公开 API
@@ -59,12 +70,15 @@ _W_BEAT_ALIGN      =  2   # 合并时值对齐半音符边界
 _W_CLEAN_CONTEXT   =  1   # 同声部且无任何装饰
 _W_ARTICULATION    = -3   # 第二音符含装饰或动态
 _W_BEAM_BOUNDARY   = -2   # beam 组边界（独立发音证据）
-# 候选对已被预过滤为同音高、首尾紧贴（见 _decide 调用处的 groups 分组），
-# 对这类对画连线在传统记谱里几乎只会是延音线，极少是乐句连奏记号
-# （连奏记号通常连接不同音高）；保留惩罚会导致同小节延音线
-# （只能靠 align+clean 的 +3，扛不住 -2）被系统性漏判，只有跨小节
-# （+3 起步）才能越过阈值。故对此场景设为中性而非惩罚。
-_W_SLUR_PRESENT    =  0   # slur 存在（同音高对场景下不构成证据）
+# Homr 把训练数据中的 tie 编码成 slur（见模块 docstring），模型看到延音线
+# 必然输出曲线。因此"两端都没有任何曲线"是强负证据：相邻同音高重复音
+# （伴奏音型、旋律重复音）在真实谱面中远多于被模型漏检的延音线。
+# -6 使无曲线对即使集齐全部正向证据（跨小节+时值对齐+无装饰 = +6）也无法
+# 过阈——启发式层实际只对"单侧曲线"对（换行悬挂/半漏检）保留判定能力。
+# 金样退化评测（Audiveris 金样 tie→slur，9 个真实谱面）：
+#   -6: 曲线全检出 P=1.000 R=0.930；70% 检出 P=1.000 R=0.814
+#   -4: 曲线全检出 P=0.748（同音重复音被误连），旧算法 P=0.448
+_W_NO_CURVE        = -6   # a 无 slurStart 且 b 无 slurStop（模型未看到曲线）
 
 _THRESHOLD_TIE     =  2   # score >= 2 → 必然延音
 _THRESHOLD_NON_TIE = -2   # score <= -2 → 必然非延音
@@ -99,6 +113,7 @@ class _NoteNode:
     has_tie_start: bool      = False   # 已有 <tie type="start">
     has_tie_stop: bool       = False   # 已有 <tie type="stop">
     has_slur_start: bool     = False
+    has_slur_stop: bool      = False
     beam_end: bool           = False   # beam 组结束（此音符）
     beam_begin: bool         = False   # beam 组开始（此音符）
 
@@ -196,7 +211,8 @@ def _parse_score(root: ET.Element, ns: str) -> list[_NoteNode]:
 
                     # — 装饰音 —
                     has_staccato = has_accent = has_lyrics = False
-                    has_tie_start = has_tie_stop = has_slur_start = False
+                    has_tie_start = has_tie_stop = False
+                    has_slur_start = has_slur_stop = False
                     beam_begin = beam_end = False
 
                     notations_e = child.find(f'{ns}notations')
@@ -208,6 +224,8 @@ def _parse_score(root: ET.Element, ns: str) -> list[_NoteNode]:
                         for slur_e in notations_e.findall(f'{ns}slur'):
                             if slur_e.get('type') == 'start':
                                 has_slur_start = True
+                            elif slur_e.get('type') == 'stop':
+                                has_slur_stop = True
                         for tied_e in notations_e.findall(f'{ns}tied'):
                             t = tied_e.get('type', '')
                             if t == 'start':
@@ -254,6 +272,7 @@ def _parse_score(root: ET.Element, ns: str) -> list[_NoteNode]:
                         has_tie_start=has_tie_start,
                         has_tie_stop=has_tie_stop,
                         has_slur_start=has_slur_start,
+                        has_slur_stop=has_slur_stop,
                         beam_end=beam_end,
                         beam_begin=beam_begin,
                     ))
@@ -285,6 +304,14 @@ def _apply_rules(a: _NoteNode, b: _NoteNode) -> Optional[TieDecision]:
     if a.voice_id != b.voice_id:
         return TieDecision.DEFINITE_NON_TIE
 
+    # 规则 E：模型输出的曲线恰好连接这对相邻同音高音符 → 必然延音。
+    # Homr 训练时 tie 被编码为 slur（见模块 docstring），slurStart(a)+slurStop(b)
+    # 就是模型检测到的延音线本体。优先级高于 C/D：显式画出的曲线比
+    # staccato 点（OMR 常见误检源）或歌词对齐更可信——金样评测中
+    # 存在"tie 的第二音符带 staccato"的真实谱面，C 先行会造成漏判。
+    if a.has_slur_start and b.has_slur_stop:
+        return TieDecision.DEFINITE_TIE
+
     # 规则 C：第二音符含 staccato 或 accent → 必然非延音
     if b.has_staccato or b.has_accent:
         return TieDecision.DEFINITE_NON_TIE
@@ -293,7 +320,6 @@ def _apply_rules(a: _NoteNode, b: _NoteNode) -> Optional[TieDecision]:
     if b.has_lyrics:
         return TieDecision.DEFINITE_NON_TIE
 
-    # 规则 E（软规则）：slur 存在但无 tie → 计入启发式 -2，此处不作硬判断
     return None
 
 
@@ -326,9 +352,11 @@ def _heuristic_score(a: _NoteNode, b: _NoteNode) -> float:
     if a.beam_end and b.beam_begin:
         score += _W_BEAM_BOUNDARY
 
-    # slur 存在（规则 E 的软惩罚）
-    if a.has_slur_start:
-        score += _W_SLUR_PRESENT
+    # 完全无曲线证据：模型没在这对音符上画任何曲线（强负证据）。
+    # 单侧曲线（仅 a.slurStart 或仅 b.slurStop）保持中性：可能是换行处
+    # 悬挂的半条延音线，也可能是乐句连奏线的一端，证据不足不加不减。
+    if not a.has_slur_start and not b.has_slur_stop:
+        score += _W_NO_CURVE
 
     return score
 
@@ -372,6 +400,17 @@ def _has_tied_in_notations(note_elem: ET.Element, tied_type: str, ns: str) -> bo
         if tied_e.get('type') == tied_type:
             return True
     return False
+
+
+def _remove_slur_from_note(note_elem: ET.Element, slur_type: str, ns: str) -> None:
+    """移除 <notations> 内指定 type 的第一个 <slur>（该曲线已被判定为延音线本体）。"""
+    notations_e = note_elem.find(f'{ns}notations')
+    if notations_e is None:
+        return
+    for slur_e in notations_e.findall(f'{ns}slur'):
+        if slur_e.get('type') == slur_type:
+            notations_e.remove(slur_e)
+            return
 
 
 def _add_tie_to_note(note_elem: ET.Element, tie_type: str, ns: str) -> None:
@@ -442,6 +481,11 @@ def reconstruct_ties_in_musicxml(xml_path: Path) -> int:
             if decision is TieDecision.DEFINITE_TIE:
                 _add_tie_to_note(a.element, 'start', ns)
                 _add_tie_to_note(b.element, 'stop',  ns)
+                # 规则 E 命中时曲线本体就是延音线，移除这对 slur，
+                # 避免渲染时曲线与延音线重叠（双弧线）
+                if a.has_slur_start and b.has_slur_stop:
+                    _remove_slur_from_note(a.element, 'start', ns)
+                    _remove_slur_from_note(b.element, 'stop',  ns)
                 tie_count += 1
                 LOGGER.debug(
                     'reconstruct_ties: 写入 tie midi=%d tick=%d→%d',
