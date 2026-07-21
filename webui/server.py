@@ -47,9 +47,27 @@ class FileWhitelist:
         with self._lock:
             self._paths.discard(Path(path).resolve())
 
-    def is_allowed(self, path: Path) -> bool:
+    def resolve_allowed(self, raw: str) -> Optional[Path]:
+        """Return the canonical whitelisted Path for *raw*, or None.
+
+        *raw* (untrusted, straight from the ``/file?path=`` query) is resolved
+        — collapsing ``..`` and following symlinks — and matched against the
+        set of resolved, explicitly-allowed paths. On a match the **stored**
+        Path (built inside :meth:`allow` from application data) is returned, so
+        the caller reads a value sourced from the whitelist rather than one
+        derived directly from user input. This both closes the resolved-vs-raw
+        discrepancy (the read now targets exactly what was authorised) and
+        keeps untrusted input out of the file-open path expression.
+        """
+        try:
+            candidate = Path(raw).resolve()
+        except (OSError, ValueError, RuntimeError):
+            return None
         with self._lock:
-            return Path(path).resolve() in self._paths
+            for allowed in self._paths:
+                if allowed == candidate:
+                    return allowed
+        return None
 
 
 class _IsolatedHandler(SimpleHTTPRequestHandler):
@@ -73,13 +91,15 @@ class _IsolatedHandler(SimpleHTTPRequestHandler):
     def _serve_user_file(self) -> None:
         query = urllib.parse.urlparse(self.path).query
         raw = urllib.parse.parse_qs(query).get('path', [''])[0]
-        p = Path(raw) if raw else None
-        if p is None or not self.whitelist.is_allowed(p) or not p.is_file():
+        # resolve_allowed returns a whitelist-sourced canonical Path (or None);
+        # the byte read below never touches the untrusted query string directly.
+        path = self.whitelist.resolve_allowed(raw) if raw else None
+        if path is None or not path.is_file():
             self.send_error(403, 'file not whitelisted')
             return
-        mime = _MIME.get(p.suffix.lower(), 'application/octet-stream')
+        mime = _MIME.get(path.suffix.lower(), 'application/octet-stream')
         try:
-            data = p.read_bytes()
+            data = path.read_bytes()
         except OSError:
             self.send_error(500, 'read failed')
             return
