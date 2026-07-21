@@ -29,6 +29,7 @@ from .editor import EditorService
 from .models import ModelsService
 from .notedigger import NoteDiggerService
 from .outputs import OutputsService, ScoresService
+from .server import FileWhitelist
 from .transpose import TransposeService
 
 
@@ -41,7 +42,8 @@ class Bridge:
                  scores: Optional[ScoresService] = None,
                  transpose: Optional[TransposeService] = None,
                  editor: Optional[EditorService] = None,
-                 notedigger: Optional[NoteDiggerService] = None) -> None:
+                 notedigger: Optional[NoteDiggerService] = None,
+                 whitelist: Optional[FileWhitelist] = None) -> None:
         self._pusher = pusher
         self._conversion = conversion
         self._models = models
@@ -50,6 +52,7 @@ class Bridge:
         self._transpose = transpose
         self._editor = editor
         self._notedigger = notedigger
+        self._whitelist = whitelist
         self._window: Optional[webview.Window] = None
         self._maximized = False
 
@@ -197,6 +200,47 @@ class Bridge:
         if self._notedigger is None:
             return {'started': False, 'error': 'unavailable'}
         return self._notedigger.generate_jianpu(name, b64)
+
+    def notedigger_pick_import(self, kind: Optional[str] = None) -> dict:
+        """Open a native file dialog (defaulting to a sensible project folder)
+        and return a whitelisted ``/file`` URL for the picked file, for the
+        front-end to fetch and inject into noteDigger's ``app.io.onfile``.
+
+        kind='midi'  → dialog starts in ``Output/`` (auto-transcription MIDIs),
+                       filters ``.mid``/``.midi``.
+        kind='audio' → dialog starts in ``Input/`` (source recordings), filters
+                       audio.
+
+        Unlike noteDigger's own in-iframe ``<input type=file>`` (whose OS dialog
+        directory the browser forbids setting), this host dialog CAN default to
+        an app folder. Returns ``{ok, name, url}`` or ``{ok: False, error}``.
+        """
+        if self._window is None:
+            return {'ok': False, 'error': 'no_window'}
+        from core.app.backend import app_base_dir, output_dir
+        if kind == 'midi':
+            start = output_dir(None)
+            file_types = ('MIDI (*.mid;*.midi)', 'All files (*.*)')
+        else:
+            start = app_base_dir() / 'Input'
+            file_types = ('音频 (*.mp3;*.wav;*.flac;*.ogg)', 'All files (*.*)')
+        try:
+            start.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        result = self._window.create_file_dialog(
+            webview.FileDialog.OPEN, directory=str(start),
+            allow_multiple=False, file_types=file_types)
+        if not result:
+            return {'ok': False, 'error': 'cancelled'}
+        path = Path(result[0] if isinstance(result, (list, tuple)) else result).resolve()
+        if not path.is_file():
+            return {'ok': False, 'error': 'not_found'}
+        if self._whitelist is not None:
+            self._whitelist.allow(path)
+        import urllib.parse
+        return {'ok': True, 'name': path.name,
+                'url': '/file?path=' + urllib.parse.quote(str(path))}
 
     # ── 五线谱（xml-scores）──────────────────────────────────────────────────
     def scores_list(self) -> list:

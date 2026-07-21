@@ -372,6 +372,22 @@ button { font-family: inherit; cursor: default; }
 .ndcard > header .count.muted { color: var(--faint); }
 .nd-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; display: block; }
 
+/* noteDigger 操作指南浮层：更宽、正文可滚动 */
+.nd-help-sheet { width: min(640px, calc(100vw - 48px)); max-height: min(80vh, 720px); }
+.nd-help-sheet .prog-titlerow { align-items: center; }
+.nd-help-body { overflow-y: auto; padding-right: 4px; user-select: text; }
+.nd-help-body h4 {
+  margin: 14px 0 6px; font-size: 12.5px; font-weight: 500; color: var(--accent);
+  letter-spacing: .02em;
+}
+.nd-help-body h4:first-child { margin-top: 0; }
+.nd-help-body ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; }
+.nd-help-body li { font-size: 13px; line-height: 1.55; color: var(--text); }
+.nd-help-credit {
+  margin: 0; padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 11.5px; line-height: 1.5; color: var(--faint); user-select: text; word-break: break-word;
+}
+
 /* ── 简谱编辑页 ─────────────────────────────────────────────────────────── */
 .tabgroup .tab { width: auto; padding: 0 14px; font-size: 12.5px; }
 .tabgroup .tab[aria-selected="true"] { background: var(--accent-tint); color: var(--accent); border-color: var(--accent); z-index: 1; }

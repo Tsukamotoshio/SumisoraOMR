@@ -389,9 +389,12 @@
         <section class="card span ndcard" aria-label="音频扒谱编辑器">
           <header>
             <button class="chipbtn" id="nd-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
+            <button class="chipbtn" id="nd-import-audio" title="从 Input 文件夹导入音频" data-i18n-title="w.nd.import_audio_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V6l10-2v12" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg><span data-i18n="w.nd.import_audio">导入音频</span></button>
+            <button class="chipbtn" id="nd-import-midi" title="从 Output 文件夹导入 MIDI" data-i18n-title="w.nd.import_midi_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h16M8 4v4M14 10v4M11 16v4" stroke-linecap="round"/></svg><span data-i18n="w.nd.import_midi">导入 MIDI</span></button>
             <h2 data-i18n="w.nd.title">音频扒谱编辑器（noteDigger）</h2>
             <span class="spring"></span>
             <span class="count muted" id="nd-status" data-i18n="w.nd.export_hint">在 noteDigger 里导出 MIDI 后即可一键生成简谱</span>
+            <button class="chipbtn" id="nd-help" title="扒谱操作指南" data-i18n-title="w.nd.help_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .8-1 1.7M12 17h.01" stroke-linecap="round"/></svg><span data-i18n="w.nd.help">帮助</span></button>
             <button class="chipbtn accent" id="nd-gen" disabled title="用刚导出的 MIDI 生成简谱" data-i18n-title="w.nd.gen_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h9M5 9h6" stroke-linecap="round"/><circle cx="16.5" cy="15.5" r="3"/><path d="M19.5 15.5V6l1.5.6" stroke-linecap="round"/></svg><span data-i18n="w.nd.gen">生成简谱</span></button>
           </header>
           <iframe id="nd-frame" class="nd-frame" title="noteDigger" allow="cross-origin-isolated; autoplay"></iframe>
@@ -551,6 +554,18 @@ https://www.gnu.org/licenses/agpl-3.0.html</pre>
       <button class="ghost" id="model-cancel" data-i18n="w.conv.cancel">取消</button>
       <button class="primary hidden" id="model-retry" data-i18n="w.model.retry">重试</button>
     </div>
+  </div>
+</div>
+
+<!-- ── noteDigger 操作指南浮层 ── -->
+<div class="scrim hidden" id="nd-help-overlay">
+  <div class="sheet nd-help-sheet">
+    <div class="prog-titlerow">
+      <h3 data-i18n="w.nd.help_title">扒谱操作指南</h3>
+      <button class="iconbtn" id="nd-help-close" aria-label="关闭" title="关闭" data-i18n-title="w.result.close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="nd-help-body" id="nd-help-body"></div>
+    <p class="nd-help-credit" id="nd-help-credit"></p>
   </div>
 </div>
 

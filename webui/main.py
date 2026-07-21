@@ -377,7 +377,8 @@ def main() -> None:
     transpose = TransposeService(pusher, whitelist)
     editor = EditorService(pusher, whitelist)
     notedigger = NoteDiggerService(pusher)
-    bridge = Bridge(pusher, conversion, models, outputs, scores, transpose, editor, notedigger)
+    bridge = Bridge(pusher, conversion, models, outputs, scores, transpose, editor, notedigger,
+                    whitelist=whitelist)
     # selftest / gate 驱动跑在 M1 测试台（harness.html）上，正式 UI 在 index.html
     page = 'harness.html' if (selftest or gate_mode) else 'index.html'
     window = webview.create_window(
