@@ -495,7 +495,12 @@ def _run_homr_multipage_pdf(
         log_message('[homr] 检查模型权重…')
         try:
             _run_with_heartbeat(
-                lambda: homr_main.download_weights(use_gpu_inference),
+                # Windows 无 CoreML；GPU 开关同时作用于 segnet 与 transformer
+                lambda: homr_main.download_weights(
+                    segnet_use_gpu=use_gpu_inference,
+                    transformer_use_gpu=use_gpu_inference,
+                    coreml_encoder=False,
+                ),
                 label='[homr] 模型权重下载',
                 max_seconds=120,
                 heartbeat_message='仍在下载中',
@@ -569,7 +574,8 @@ def _run_homr_multipage_pdf(
                 return homr_main.ProcessingConfig(
                     enable_debug=False, enable_cache=False,
                     write_staff_positions=False, read_staff_positions=False,
-                    selected_staff=-1, use_gpu_inference=gpu,
+                    selected_staff=-1,
+                    transformer_use_gpu=gpu, segnet_use_gpu=gpu, coreml_encoder=False,
                     segnet_batch_size=_batch_size,
                 )
 
@@ -741,7 +747,12 @@ def run_homr_batch(
         log_message('[homr] 检查模型权重…')
         try:
             _run_with_heartbeat(
-                lambda: homr_main.download_weights(use_gpu_inference),
+                # Windows 无 CoreML；GPU 开关同时作用于 segnet 与 transformer
+                lambda: homr_main.download_weights(
+                    segnet_use_gpu=use_gpu_inference,
+                    transformer_use_gpu=use_gpu_inference,
+                    coreml_encoder=False,
+                ),
                 label='[homr] 模型权重下载',
                 max_seconds=120,
                 heartbeat_message='仍在下载中',
@@ -758,7 +769,9 @@ def run_homr_batch(
             write_staff_positions=False,
             read_staff_positions=False,
             selected_staff=-1,
-            use_gpu_inference=use_gpu_inference,
+            transformer_use_gpu=use_gpu_inference,
+            segnet_use_gpu=use_gpu_inference,
+            coreml_encoder=False,
             segnet_batch_size=_batch_size,
         )
         xml_args = homr_main.XmlGeneratorArguments(False, None, None)
@@ -787,7 +800,9 @@ def run_homr_batch(
                     write_staff_positions=False,
                     read_staff_positions=False,
                     selected_staff=-1,
-                    use_gpu_inference=False,
+                    transformer_use_gpu=False,
+                    segnet_use_gpu=False,
+                    coreml_encoder=False,
                     segnet_batch_size=_batch_size,
                 )
                 log_message('[homr] 回退到 CPU 模式重试…')
