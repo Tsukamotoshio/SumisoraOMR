@@ -104,7 +104,9 @@ tmp_*
 /README_EN.txt
 
 # Build metadata and packaging config
-/SumisoraOMR.spec
+# SumisoraOMR.spec is tracked: hand-maintained build authority (DLL exclusion,
+# hooks, version binding), no machine-specific paths — needed for reproducible
+# packaging. version_info.txt (referenced by the spec) is likewise tracked.
 /version_info.txt
 
 # Personal VS Code workspace settings
