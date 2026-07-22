@@ -18,14 +18,18 @@ PyMuPDF>=1.24.0
 typing_extensions>=4.0.0
 
 # ── ONNX Runtime 后端 ────────────────────────────────────────────────────────
-# 三种包互斥，仅能安装其一：
-#   onnxruntime-gpu   — NVIDIA GPU（CUDA 12.x）+ CPU 回退；开发/CI 推荐
-#   onnxruntime-directml — 任意 Windows GPU（DirectML）+ CPU 回退；仅限 Windows 分发
+# 三种包互斥（都提供 `onnxruntime` 模块），仅能安装其一：
+#   onnxruntime-directml — 任意 Windows DX12 GPU（Intel/AMD iGPU、AMD dGPU、
+#                          NVIDIA）+ CPU 回退；**Windows 分发默认**（广兼容目标）
+#   onnxruntime-gpu   — NVIDIA GPU（CUDA 12.x）+ CPU 回退；开发/CI（本行默认）
 #   onnxruntime       — 纯 CPU；Linux / macOS
 #
 # homr 推理优先级（代码层面）：CUDAExecutionProvider → DmlExecutionProvider → CPUExecutionProvider
+#   onnxruntime-directml 分发：Intel/AMD/NVIDIA 用户都走 DirectML，无 DX12 GPU 才回退 CPU
 #   onnxruntime-gpu 分发：NVIDIA 用户走 CUDA，其余走 CPU
-#   onnxruntime-directml 分发：AMD/Intel 用户走 DirectML，其余走 CPU
+#
+# 锁定文件：requirements.lock.txt（gpu，开发/CI）；requirements.lock.directml.txt（分发）。
+# 本行保持 gpu 作为默认解析目标，方便开发/CI；分发打包改用 directml 锁定文件。
 onnxruntime-gpu>=1.26.0
 
 # ── homr 引擎运行时依赖（omr_engine/homr 子模块，app.py 直接 import homr.main）──
