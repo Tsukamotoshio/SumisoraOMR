@@ -752,10 +752,11 @@ $('nd-help').addEventListener('click', () => {
   $('nd-help-overlay').classList.remove('hidden');
 });
 
-// ── 宿主导入（替代 noteDigger 内置的两个导入项）───────────────────────────────
-// 走宿主 create_file_dialog（可默认到 Input/Output 目录），取回白名单 /file URL，
-// fetch 成 File 后注入 noteDigger 的 app.io.onfile —— 绕过 iframe 内那个无法设默认
-// 目录的 <input type=file>。midi 强制 type='audio/mid' 以命中 onfile 的 MIDI 分支。
+// ── 宿主 MIDI 导入（替代 noteDigger 内置的 midi 导入项）───────────────────────
+// 走宿主 create_file_dialog（可默认到 Output 目录，取自动转录产出的 MIDI），取回白名单
+// /file URL，fetch 成 File 后注入 noteDigger 的 app.io.onfile —— 绕过 iframe 内那个
+// 无法设默认目录的 <input type=file>。midi 强制 type='audio/mid' 以命中 onfile 的
+// MIDI 分支。（ndImport/bridge 仍保留 audio 通路参数，当前 UI 只暴露 MIDI 导入。）
 async function ndImport(kind) {
   const f = $('nd-frame');
   const cw = f.contentWindow;
@@ -774,7 +775,6 @@ async function ndImport(kind) {
     toast(t('w.nd.import_failed', { e: String(e) }));
   }
 }
-$('nd-import-audio').addEventListener('click', () => ndImport('audio'));
 $('nd-import-midi').addEventListener('click', () => ndImport('midi'));
 $('nd-help-close').addEventListener('click', () => $('nd-help-overlay').classList.add('hidden'));
 $('nd-help-overlay').addEventListener('click', (e) => {
@@ -890,7 +890,7 @@ function renderModels(st) {
   const homr = $('homr-status');
   homr.classList.toggle('absent', !st.homr.available);
   $('homr-status-text').textContent = st.homr.available
-    ? t('w.score.homr_ready')
+    ? t('w.score.homr_ready', { ver: st.homr.version || '?' })
     : t('w.score.homr_missing', { p: st.homr.files_present, t: st.homr.files_total });
   $('homr-download').disabled = st.homr.available;
   $('homr-delete').disabled = !st.homr.files_present;
@@ -1143,7 +1143,10 @@ function jpRenderList() {
     nm.textContent = e.name;
     nm.title = e.path;
     li.append(cb, nm);
-    li.addEventListener('click', () => { jpSel = e.path; jpRenderList(); jpOpenSelected(); });
+    li.addEventListener('click', () => {
+      if (e.path !== jpSel) midiPlayer.leave();  // 切到其它文件 → 立即停止并收起当前 MIDI 播放
+      jpSel = e.path; jpRenderList(); jpOpenSelected();
+    });
     list.appendChild(li);
   }
   $('jp-count').textContent = jpEntries.length ? t('w.list.checked_count', { n: jpChecked.size, t: jpEntries.length }) : '';
@@ -1256,7 +1259,10 @@ function stRenderList() {
     nm.textContent = e.name;
     nm.title = e.path;
     li.append(cb, nm);
-    li.addEventListener('click', () => { stSel = e.path; stRenderList(); stOpenSelected(); });
+    li.addEventListener('click', () => {
+      if (e.path !== stSel) midiPlayer.leave();  // 切到其它文件 → 立即停止并收起当前 MIDI 播放
+      stSel = e.path; stRenderList(); stOpenSelected();
+    });
     list.appendChild(li);
   }
   $('st-count').textContent = stEntries.length ? t('w.list.checked_count', { n: stChecked.size, t: stEntries.length }) : '';

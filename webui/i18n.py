@@ -44,7 +44,7 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.score.outdir": {"zh": "打开输出目录", "en": "Open Output Folder"},
     "w.score.homr_label": {"zh": "HOMR 模型", "en": "HOMR Model"},
     "w.score.checking": {"zh": "检查中…", "en": "Checking…"},
-    "w.score.homr_ready": {"zh": "OMR 引擎 “Homr” · 已就绪", "en": "OMR engine \"Homr\" · ready"},
+    "w.score.homr_ready": {"zh": "OMR 引擎 “Homr” v{ver} · 已就绪", "en": "OMR engine \"Homr\" v{ver} · ready"},
     "w.score.homr_missing": {"zh": "未就绪（{p}/{t} 个权重）", "en": "Not ready ({p}/{t} weights)"},
     "w.score.homr_missing_guard": {
         "zh": "HOMR 模型权重尚未下载，请先下载，或将引擎切换为 Audiveris。",
@@ -76,8 +76,6 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.nd.generating": {"zh": "正在生成简谱…", "en": "Generating jianpu…"},
     "w.nd.gen_done": {"zh": "简谱已生成：{name}", "en": "Jianpu generated: {name}"},
     "w.nd.gen_failed": {"zh": "生成简谱失败：{e}", "en": "Failed to generate jianpu: {e}"},
-    "w.nd.import_audio": {"zh": "导入音频", "en": "Import audio"},
-    "w.nd.import_audio_tip": {"zh": "从 Input 文件夹导入音频到 noteDigger", "en": "Import audio into noteDigger (defaults to the Input folder)"},
     "w.nd.import_midi": {"zh": "导入 MIDI", "en": "Import MIDI"},
     "w.nd.import_midi_tip": {"zh": "从 Output 文件夹导入 MIDI 到 noteDigger", "en": "Import MIDI into noteDigger (defaults to the Output folder)"},
     "w.nd.import_loading": {"zh": "扒谱编辑器仍在加载，请稍候再试", "en": "The editor is still loading — try again shortly"},

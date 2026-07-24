@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Optional
@@ -62,6 +63,20 @@ def _load_homr_weight_manifest() -> tuple[list[str], dict[str, str]]:
     return files, hashes
 
 
+def _homr_model_version(files: list[str]) -> str:
+    """Extract the transformer model version (e.g. '426') from _WEIGHT_FILES.
+
+    Weight filenames look like ``encoder_pytorch_model_426-<hash>.onnx``.
+    Returns '' if no versioned transformer weight is found, so callers can
+    hide the version label instead of showing a blank one.
+    """
+    for f in files:
+        m = re.search(r'pytorch_model_(\d+)-', f)
+        if m:
+            return m.group(1)
+    return ''
+
+
 def _sha256_ok(path: Path, expected: str) -> bool:
     if not expected:
         return True
@@ -103,6 +118,7 @@ class ModelsService:
                 'available': bool(files) and len(present) == len(files),
                 'files_present': len(present),
                 'files_total': len(files),
+                'version': _homr_model_version(files),
             },
             'piano': {'available': piano_model_available()},
         }
