@@ -2,7 +2,7 @@
 
 > Batch-convert Western staff notation (PDF / PNG / JPG) to Jianpu (numbered musical notation) PDFs, with a built-in Jianpu editor and transposer.
 
-[![Version: v0.5.0](https://img.shields.io/badge/Version-v0.5.0-green)]()
+[![Version: v0.5.1](https://img.shields.io/badge/Version-v0.5.1-green)]()
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%20v3-blue)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey)]()
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)]()

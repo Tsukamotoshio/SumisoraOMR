@@ -5,6 +5,59 @@ All notable changes to SumisoraOMR are documented here. Format follows
 `APP_VERSION` in `core/config.py` (the single source of truth — run
 `python scripts/sync_version.py` after bumping it).
 
+## [0.5.1] - 2026-07-25
+
+Recognition-quality and GPU release: the HOMR engine moves to model 426,
+whose dedicated slur channel makes tie reconstruction reliable for the
+first time, and the Windows build now ships a working DirectML GPU path
+(~3x faster than CPU on an integrated GPU).
+
+### Added
+- **DirectML GPU inference** for HOMR on Windows. `requirements.lock.directml.txt`
+  pins the DirectML distribution target (onnxruntime-directml 1.24.4);
+  `requirements.txt` documents the three mutually-exclusive ONNX Runtime
+  backends (directml = Windows distribution default, gpu = dev/CI, cpu).
+- **noteDigger help overlay** — a Help button on the transcription editor page
+  opens a guide (basic flow, mouse, shortcuts, tips) adapted from noteDigger's
+  own documentation, with attribution and a link to its project page.
+- **Import MIDI into noteDigger** from the editor's header, with the file dialog
+  defaulting to `Output/` (where auto-transcription MIDIs land) — the embedded
+  editor's own file input cannot set a default directory.
+
+### Changed
+- **HOMR transcription model 367 → 426**, which emits a dedicated slur channel.
+  Validated on a 5-score golden set: Scarborough Fair recovers 19/20 gold tie
+  pairs (model 367 emitted no slurs at all, so tie reconstruction never fired);
+  note counts stay stable across the set. Known trade-off: 426 reads one test
+  score's time signature as 3/4 where Audiveris and 367 say 6/8.
+  Upgrading users will be prompted to re-download the changed encoder/decoder
+  weights (~220 MB; the segmentation weights are unchanged, and the superseded
+  367 files are pruned automatically once the new set verifies).
+- **Tie reconstruction now trusts HOMR's slur output as primary evidence.**
+  HOMR's training pipelines encode MusicXML `<tied>` as a `<slur>` token, so a
+  matched slur pair on adjacent same-pitch notes is direct evidence of a tie
+  rather than the weak signal the old heuristic assumed. Measured on 9 real
+  Audiveris-sourced scores (86 gold tie pairs): precision 0.448 → 1.000,
+  F1 0.575 → 1.000 (full curve detection) / 0.918 (70% detection, closer to
+  realistic HOMR recall).
+- MIDI playback now stops when you select a different file in the jianpu or
+  staff preview list, instead of playing over the newly opened score.
+
+### Fixed
+- **DirectML was silently falling back to CPU.** Two independent causes: the
+  PyInstaller spec's DLL-exclusion regex stripped `DirectML.dll` from the
+  bundle, and `ort.preload_dlls()` (a CUDA/cuDNN helper absent from
+  onnxruntime-directml builds) raised on attribute lookup. Both fixed, so the
+  DirectML execution provider actually engages in the shipped build.
+- Hardened the local preview server's `/file` endpoint against a path-injection
+  pattern flagged by CodeQL: the byte read now targets a whitelist-sourced
+  canonical path rather than the request's raw query string, which also closes
+  a resolved-vs-raw mismatch that symlinks could have exploited.
+- Re-tracked `SumisoraOMR.spec` in git. It is the hand-maintained build
+  authority (DLL exclusion, hooks, version binding) with no machine-specific
+  paths, and had been swept into `.gitignore` by an earlier broad untrack of
+  packaging files.
+
 ## [0.5.0] - 2026-07-20
 
 Major release: the GUI is rebuilt from Flet to a pywebview shell
