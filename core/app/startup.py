@@ -6,8 +6,12 @@ calls these for the plumbing, so the dev and packaged builds behave identically.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
+import threading
+import traceback
+from typing import Callable, Optional
 
 APP_MUTEX_NAME = 'SumisoraOMR_RunningMutex'
 
@@ -45,6 +49,60 @@ def early_frozen_setup() -> None:
     for var in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
                 'VECLIB_MAXIMUM_THREADS', 'NUMEXPR_NUM_THREADS'):
         os.environ.setdefault(var, threads)
+
+
+def install_crash_handlers(
+    on_uncaught: Optional[Callable[[str], None]] = None,
+    suppress_dialog: bool = False,
+) -> None:
+    """Install process-wide handlers so an uncaught exception is logged (and,
+    on the main thread, reported to the user) instead of a silent crash.
+
+    Restores the P0-era `sys.excepthook` safety net that lived in the Flet-era
+    `app.py` and was lost when that file was deleted in the v0.5.0 pywebview
+    rewrite — no equivalent was ever added to `webui/main.py`.
+
+    Two layers, not three: there is no asyncio-loop handler here, because
+    unlike the Flet GUI this replaces, pywebview drives everything through
+    plain threads and the WinForms message pump — there is no asyncio event
+    loop in this process to attach a handler to.
+
+    - ``sys.excepthook`` (main thread): logs the full traceback at CRITICAL,
+      then calls ``on_uncaught(log_path)`` so the caller can show its own
+      native dialog (this module never touches a GUI toolkit itself).
+    - ``threading.excepthook`` (background threads): logs at ERROR only —
+      deliberately does **not** call ``on_uncaught``, so a misbehaving
+      background thread cannot pop up a dialog storm.
+
+    Set ``suppress_dialog=True`` (or env ``SUMISORA_NO_CRASH_DIALOG=1``) to
+    keep logging but skip ``on_uncaught`` — for ``--selftest`` / ``--gateN``
+    automation runs, mirroring ``acquire_single_instance``'s own opt-out.
+    """
+    from ..utils import log_message
+    from .. import utils as _utils  # module ref: LOG_FILE_PATH is set lazily, must read live
+
+    callback = on_uncaught if not suppress_dialog and os.environ.get('SUMISORA_NO_CRASH_DIALOG') != '1' else None
+
+    def _excepthook(exc_type, exc_value, exc_tb) -> None:
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+        text = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        log_message(f'未捕获异常，程序即将退出：\n{text}', logging.CRITICAL)
+        if callback is not None:
+            try:
+                callback(str(_utils.LOG_FILE_PATH or ''))
+            except Exception:
+                pass  # 弹窗失败不应阻断原有的默认异常处理
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    def _thread_excepthook(args: threading.ExceptHookArgs) -> None:
+        text = ''.join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+        thread_name = args.thread.name if args.thread is not None else '?'
+        log_message(f'后台线程 {thread_name} 未捕获异常：\n{text}', logging.ERROR)
+
+    sys.excepthook = _excepthook
+    threading.excepthook = _thread_excepthook
 
 
 def acquire_single_instance() -> bool:

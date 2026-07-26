@@ -340,7 +340,34 @@ def _selftest(window: webview.Window) -> None:
     window.destroy()
 
 
+def _on_uncaught_exception(log_path: str) -> None:
+    """Native crash dialog for the main-thread `sys.excepthook` — see
+    ``core.app.startup.install_crash_handlers``. Late-imports ``t`` so this can
+    be installed before ``set_language()`` runs and still pick up whatever
+    language is active by the time a crash actually happens.
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        from gui.strings import t
+        ctypes.windll.user32.MessageBoxW(
+            0, t('app.crash_dialog_body').format(path=log_path),
+            t('app.crash_dialog_title'), 0x10)  # MB_ICONERROR
+    except Exception:
+        pass  # 弹窗本身失败不应阻断进程退出
+
+
 def main() -> None:
+    selftest = '--selftest' in sys.argv
+    gate_mode = next((a for a in sys.argv if a in ('--happy', '--gate2', '--gate3', '--gate4')), None)
+    gate_file = sys.argv[sys.argv.index(gate_mode) + 1] if gate_mode else None
+
+    # 全局异常兜底：越早装越好，覆盖 SSL/建窗/事件循环里任何未预料的崩溃。
+    # selftest/gate 自动化跑法只留日志，不弹原生对话框阻塞无人值守的运行。
+    from core.app.startup import install_crash_handlers
+    install_crash_handlers(on_uncaught=_on_uncaught_exception, suppress_dialog=bool(selftest or gate_mode))
+
     # SSL：走系统证书库（truststore），修复 MITM 代理 / 本地根证书验证失败。
     # 必须在任何下载（模型权重等）创建 SSL 上下文之前注入。
     from core.app.ssl_setup import setup_system_ssl
@@ -348,10 +375,6 @@ def main() -> None:
 
     # Windows 任务栏身份（图标 + 分组 + 右键应用名）—— 必须在建窗前设置
     _setup_windows_identity()
-
-    selftest = '--selftest' in sys.argv
-    gate_mode = next((a for a in sys.argv if a in ('--happy', '--gate2', '--gate3', '--gate4')), None)
-    gate_file = sys.argv[sys.argv.index(gate_mode) + 1] if gate_mode else None
 
     # 启动时恢复持久化语言（与 Flet 版共用 ui-settings.json / gui.strings 状态）
     from gui.settings import get_saved_language
