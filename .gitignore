@@ -121,6 +121,10 @@ Project_Convert.code-workspace
 /harness.toml
 /.claude-plugin/
 
+# Dev-only doc, not distributed publicly (kept locally; ruff.toml/pyrightconfig.json/
+# .pre-commit-config.yaml remain tracked — CI reads ruff.toml directly)
+/CONTRIBUTING.md
+
 # tests/ 目录整体豁免上方的 test_*.py / *_test*.txt 全局模式（提交的测试套件）
 !tests/test_*.py
 !tests/**/test_*.py
