@@ -141,8 +141,15 @@ class EditorService:
             with self._render_lock:
                 try:
                     import tempfile
+                    from core.render.jianpu_runner import (
+                        inject_repeat_barlines_to_ly,
+                        merge_polyphonic_jianpu_staves,
+                    )
                     from core.render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
-                    from core.render.renderer import sanitize_generated_lilypond_file
+                    from core.render.renderer import (
+                        parse_jianpu_meta_comment,
+                        sanitize_generated_lilypond_file,
+                    )
                     with tempfile.TemporaryDirectory(prefix='_editor_preview_',
                                                      dir=str(build_dir())) as td:
                         ly = Path(td) / f'{stem}.ly'
@@ -158,6 +165,13 @@ class EditorService:
                             except Exception:
                                 pass
                             sanitize_generated_lilypond_file(ly, title)
+                            # P1-4：主管线转换时把多声部分组/反复小节信息存进了本文件
+                            # 头部的 #__jianpu_meta__ 行（用户不可见）；这里读回并重放
+                            # 同样两步，否则"打开→不改动→重渲染"会悄悄丢掉多声部合并
+                            # 与反复记号，产出与原始转换结果不一致。
+                            voice_groups, repeat_barlines = parse_jianpu_meta_comment(self._header)
+                            merge_polyphonic_jianpu_staves(ly, voice_groups)
+                            inject_repeat_barlines_to_ly(ly, repeat_barlines)
                             produced = render_lilypond_pdf(ly)
                             if produced is None or not produced.exists():
                                 error = 'LilyPond 渲染失败'

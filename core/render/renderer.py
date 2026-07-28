@@ -1,5 +1,6 @@
 # core/render/renderer.py — Score rendering: LilyPond PDF, MIDI, and direct PDF output.
 # Split from convert.py.
+import json
 import logging
 import re
 import shutil
@@ -532,10 +533,17 @@ def render_score_to_jianpu_pdf(
     lyrics_lines: Optional[list[str]] = None,
     composer: str = '',
     tempo: int = 0,
-) -> bool:
+) -> tuple[bool, list[list[int]], dict[int, dict[str, bool]]]:
     """
     Render a music21 score to jianpu PDF.
     Tries in order: standard jianpu-ly → strict-timing → reportlab fallback → LilyPond markup fallback.
+
+    Returns (ok, voice_groups, repeat_barlines) — the latter two are only ever
+    non-empty on the standard jianpu-ly path (the only one that computes them);
+    every fallback path returns empty defaults, since none of them produce
+    multi-voice-aware or repeat-aware output for those to describe. Callers
+    that persist the .jianpu.txt for later editor re-render (P1-4) need these
+    to survive alongside it — see _save_editor_files.
     """
     _repeat_barlines: dict = {}
     try:
@@ -576,7 +584,7 @@ def render_score_to_jianpu_pdf(
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
             log_message(f'已通过 LilyPond 生成简谱 PDF: {output_pdf_path.name}')
-            return True
+            return True, _voice_groups, _repeat_barlines
         log_message('标准 jianpu-ly 路径失败，尝试严格按拍号重建简谱。', logging.WARNING)
     else:
         log_message('文本版 jianpu-ly 失败，尝试严格按拍号重建简谱。', logging.WARNING)
@@ -591,7 +599,7 @@ def render_score_to_jianpu_pdf(
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
             log_message(f'已通过 LilyPond 生成简谱 PDF: {output_pdf_path.name}')
-            return True
+            return True, [], {}
         log_message('MIDI 中转后的严格拍号路径仍失败，切换到备用简谱排版。', logging.WARNING)
     else:
         log_message('MIDI 中转后的严格拍号路径也失败，切换到备用简谱排版。', logging.WARNING)
@@ -600,14 +608,14 @@ def render_score_to_jianpu_pdf(
     try:
         create_pdf(output_pdf_path, title, measures, header_lines, font_name, lyrics_lines)
         log_message(f'已生成备用简谱 PDF: {output_pdf_path.name}')
-        return True
+        return True, [], {}
     except Exception as exc:
         log_message(f'图形化简谱回退失败，尝试文字版回退：{exc}', logging.WARNING)
 
     if render_lilypond_markup_pdf(output_pdf_path, title, measures, header_lines, temp_dir, lyrics_lines):
-        return True
+        return True, [], {}
 
-    return False
+    return False, [], {}
 
 
 # ── Editor workspace helpers ─────────────────────────────────────────────────
@@ -642,9 +650,58 @@ _EDITOR_HEADER_TEMPLATE = """\
 """
 
 
-def _build_editor_header(title: str) -> str:
-    """Return a #-prefixed instructional header for the editor .jianpu.txt file."""
-    return _EDITOR_HEADER_TEMPLATE.format(title=title)
+_META_LINE_PREFIX = '#__jianpu_meta__:'
+
+
+def _build_editor_header(
+    title: str,
+    voice_groups: Optional[list[list[int]]] = None,
+    repeat_barlines: Optional[dict[int, dict[str, bool]]] = None,
+) -> str:
+    """Return a #-prefixed instructional header for the editor .jianpu.txt file.
+
+    When *voice_groups* / *repeat_barlines* are given, also appends a single
+    machine-readable ``#__jianpu_meta__:`` line carrying them as JSON (P1-4 in
+    the fix-plan doc). Both are derived from the MusicXML score at conversion
+    time (build_jianpu_ly_text's _return_groups=True) and have no other source
+    once only the .jianpu.txt survives — the editor's own re-render reads this
+    line back via parse_jianpu_meta_comment() so a "no-op edit → re-render"
+    round trip doesn't silently drop multi-voice merging or repeat barlines.
+    Being #-prefixed keeps it inside the header block webui/editor.py's
+    _split_header() strips and never shows the user; being one single JSON
+    line (not reformatted) keeps it trivial to locate and replace.
+    """
+    header = _EDITOR_HEADER_TEMPLATE.format(title=title)
+    if voice_groups or repeat_barlines:
+        meta = {
+            'voice_groups': voice_groups or [],
+            'repeat_barlines': {str(k): v for k, v in (repeat_barlines or {}).items()},
+        }
+        header = header.rstrip('\n') + f'\n{_META_LINE_PREFIX} {json.dumps(meta, separators=(",", ":"))}\n\n'
+    return header
+
+
+def parse_jianpu_meta_comment(header_text: str) -> tuple[list[list[int]], dict[int, dict[str, bool]]]:
+    """Recover (voice_groups, repeat_barlines) from an editor .jianpu.txt header.
+
+    Counterpart to _build_editor_header's meta line. Defensive by design: a
+    missing or malformed line (hand-edited file, older file predating P1-4,
+    truncated copy) just yields ([], {}) — the same "no multi-voice merge /
+    no repeat injection" behaviour the editor had before this existed, not a
+    crash.
+    """
+    for line in header_text.splitlines():
+        line = line.strip()
+        if not line.startswith(_META_LINE_PREFIX):
+            continue
+        try:
+            meta = json.loads(line[len(_META_LINE_PREFIX):].strip())
+            voice_groups = [list(g) for g in meta.get('voice_groups', [])]
+            repeat_barlines = {int(k): v for k, v in meta.get('repeat_barlines', {}).items()}
+            return voice_groups, repeat_barlines
+        except (ValueError, TypeError, AttributeError):
+            return [], {}
+    return [], {}
 
 
 def _build_validation_annotation(errors: list) -> str:
@@ -680,6 +737,8 @@ def _save_editor_files(
     source_path: Optional[Path],
     editor_workspace_dir: Path,
     validation_errors: Optional[list] = None,
+    voice_groups: Optional[list[list[int]]] = None,
+    repeat_barlines: Optional[dict[int, dict[str, bool]]] = None,
 ) -> None:
     """Copy the jianpu.txt (prepending a human-readable header) and the original
     source file into *editor_workspace_dir* so the user can later manually edit
@@ -689,6 +748,16 @@ def _save_editor_files(
     a ``%``-prefixed comment block is appended at the end of the .jianpu.txt
     to flag rhythm-inconsistent measures for manual review.  The ``%`` prefix
     ensures these lines are treated as comments by both jianpu-ly.py and LilyPond.
+
+    *voice_groups* / *repeat_barlines* (P1-4): the same values the main
+    conversion pipeline uses to merge polyphonic staves and inject repeat
+    barlines into the generated ``.ly`` file. They only exist as long as the
+    MusicXML score is in hand; once only the ``.jianpu.txt`` survives, the
+    editor's own re-render has no way to recompute them. Threading them
+    through here (see _build_editor_header) is what lets the editor's
+    "load → change nothing → re-render → export" path reproduce the exact
+    same PDF as the original conversion, instead of silently regressing to
+    single-staff-per-voice with no repeat marks.
     """
     try:
         editor_workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -704,7 +773,7 @@ def _save_editor_files(
         dest_txt = editor_workspace_dir / f'{safe_title}.jianpu.txt'
         if txt_path.exists():
             original = txt_path.read_text(encoding='utf-8', errors='ignore')
-            content = _build_editor_header(title) + original
+            content = _build_editor_header(title, voice_groups, repeat_barlines) + original
             if validation_errors:
                 content += _build_validation_annotation(validation_errors)
             dest_txt.write_text(content, encoding='utf-8')
@@ -804,7 +873,7 @@ def generate_jianpu_pdf_from_mxl(
         # core/notation/jianpu/primitives.py:build_lyric_lines），不再走这里的
         # lyrics_lines 参数——那是给已废弃的 \markup 歌词方案用的（见 B10.1）。
         log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
-        result = render_score_to_jianpu_pdf(
+        result, _voice_groups_out, _repeat_barlines_out = render_score_to_jianpu_pdf(
             source_score, title, output_pdf_path, temp_dir, txt_path, ly_path,
             composer=composer, tempo=tempo_bpm,
         )
@@ -812,7 +881,8 @@ def generate_jianpu_pdf_from_mxl(
         # Preserve editor workspace files when the conversion succeeded
         if result and editor_workspace_dir is not None:
             _ws_stem = (preferred_title or output_pdf_path.stem.replace('.jianpu', '') or mxl_path.stem).strip()
-            _save_editor_files(_ws_stem, txt_path, source_path, editor_workspace_dir)
+            _save_editor_files(_ws_stem, txt_path, source_path, editor_workspace_dir,
+                                voice_groups=_voice_groups_out, repeat_barlines=_repeat_barlines_out)
 
         return result
     except Exception as exc:
