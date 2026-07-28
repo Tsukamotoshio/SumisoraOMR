@@ -6,6 +6,7 @@ from typing import Optional
 from ...utils import log_message
 from .primitives import (
     _get_score_key_tonic,
+    build_lyric_lines,
     clone_jianpu_note,
     duration_suffix,
     format_jianpu_note_text,
@@ -113,6 +114,7 @@ def build_jianpu_ly_text_from_measures(
             for mi, m in enumerate(line_measures)
         ]
         header.append(' | '.join(measure_texts) + ' |')
+    header.extend(build_lyric_lines(measures))
     return '\n'.join(header)
 
 
@@ -278,6 +280,7 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                     _logging.WARNING,
                 )
                 raise
+        header.extend(build_lyric_lines(measures))
 
     text = '\n'.join(header)
     if _return_groups:

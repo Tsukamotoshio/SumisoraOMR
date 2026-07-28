@@ -794,18 +794,19 @@ def generate_jianpu_pdf_from_mxl(
             except Exception:
                 pass
 
-        lyrics_lines = None  # 歌词排版存在已知问题，暂不在简谱输出中显示
-
         # Use the original parsed score for MIDI — preserves all parts and voices.
         if midi_output_path is not None:
             if not render_midi_from_score(source_score, midi_output_path):
                 log_message('简谱 MIDI 生成失败，跳过 MIDI 输出，继续生成简谱 PDF。', logging.WARNING)
 
         # Use the MXL-parsed score directly — preserves exact note durations and pitches
+        # 歌词现在由 build_jianpu_ly_text 直接写进 jianpu-ly 文本的 L:/H: 行（见
+        # core/notation/jianpu/primitives.py:build_lyric_lines），不再走这里的
+        # lyrics_lines 参数——那是给已废弃的 \markup 歌词方案用的（见 B10.1）。
         log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
         result = render_score_to_jianpu_pdf(
             source_score, title, output_pdf_path, temp_dir, txt_path, ly_path,
-            lyrics_lines, composer=composer, tempo=tempo_bpm,
+            composer=composer, tempo=tempo_bpm,
         )
 
         # Preserve editor workspace files when the conversion succeeded

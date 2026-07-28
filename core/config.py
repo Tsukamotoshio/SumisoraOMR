@@ -125,3 +125,8 @@ class JianpuNote:
     duration_dots: int
     midi: Optional[int]
     is_rest: bool
+    # Multi-verse lyrics anchored to this note: verse number -> (syllable text,
+    # hyphenated-to-next-syllable). Anchoring to the note (rather than a free-floating
+    # text stream) means inserting/deleting notes never desyncs the lyrics — see
+    # docs/修复计划2与简谱编辑器规划.md's B10.4 for the rationale.
+    lyrics: dict[int, tuple[str, bool]] = field(default_factory=dict)

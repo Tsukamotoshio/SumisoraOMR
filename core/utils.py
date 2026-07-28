@@ -27,7 +27,6 @@ from .config import (
     CJK_FONT_CANDIDATES,
     CONVERSION_HISTORY_FILE,
     CONVERSION_PIPELINE_VERSION,
-    ENABLE_LYRICS_OUTPUT,
     LOGGER,
     OMR_ENGINE_DIR_NAME,
     RUNTIME_ASSETS_DIR_NAME,
@@ -521,88 +520,3 @@ def print_conversion_summary(summary: ConversionSummary, generate_midi: bool, ou
             log_message('已完成。简谱 PDF 文件已保存在 Output 文件夹，仅保留 PDF 文件。')
         open_in_file_manager(output_dir)
 
-
-# ──────────────────────────────────────────────
-# 歌词提取
-# ──────────────────────────────────────────────
-
-def clean_lyrics_line(text: str) -> str:
-    """Strip a lyrics line of special Unicode, leading numbers, and excess whitespace."""
-    text = text.replace('\u00a0', ' ')
-    text = re.sub(r'[\uE000-\uF8FF]+', ' ', text)
-    text = re.sub(r'[^\w\s\u4e00-\u9fff,.;:!?()&\-\'"/]+', ' ', text)
-    text = re.sub(r'^\d+\s*', '', text)
-    text = re.sub(r'\s+([,.;:?!])', r'\1', text)
-    text = re.sub(r'\s+', ' ', text).strip(' -')
-    return text.strip()
-
-
-def extract_lyrics_lines_from_score(score) -> list[str]:
-    """Extract lyric lines from a music21 score object, returning up to 24 lines."""
-    tokens: list[str] = []
-    for note in score.recurse().notes:
-        lyric_values: list[str] = []
-        raw_lyrics = getattr(note, 'lyrics', None)
-        if raw_lyrics:
-            for item in raw_lyrics:
-                text = getattr(item, 'text', None) or str(item)
-                if text:
-                    lyric_values.append(text)
-        else:
-            text = getattr(note, 'lyric', None)
-            if text:
-                lyric_values.append(text)
-        for text in lyric_values:
-            cleaned = clean_lyrics_line(str(text))
-            if cleaned:
-                tokens.extend(cleaned.split())
-    if not tokens:
-        return []
-    lines: list[str] = []
-    chunk: list[str] = []
-    for token in tokens:
-        chunk.append(token)
-        if len(chunk) >= 8 or token.endswith(('.', '!', '?', ';', ':')):
-            lines.append(' '.join(chunk))
-            chunk = []
-    if chunk:
-        lines.append(' '.join(chunk))
-    return lines[:24]
-
-
-def extract_lyrics_lines_from_pdf(pdf_path: Path) -> list[str]:
-    """Extract lyric lines from the embedded text of a PDF."""
-    if _fitz is None or pdf_path.suffix.lower() != '.pdf' or not pdf_path.exists():
-        return []
-    lyric_lines: list[str] = []
-    seen: set[str] = set()
-    try:
-        with _fitz.open(str(pdf_path)) as doc:
-            for page in doc:
-                text: str = page.get_text('text') or ''  # type: ignore[assignment]
-                for raw_line in text.splitlines():
-                    cleaned = clean_lyrics_line(raw_line)
-                    if len(cleaned) < 6:
-                        continue
-                    letter_count = sum(ch.isalpha() or ('\u4e00' <= ch <= '\u9fff') for ch in cleaned)
-                    if letter_count < 4:
-                        continue
-                    if cleaned.lower() in seen:
-                        continue
-                    seen.add(cleaned.lower())
-                    lyric_lines.append(cleaned)
-    except Exception:
-        return []
-    return lyric_lines[:40]
-
-
-def collect_preserved_lyrics_lines(score, source_path: Optional[Path] = None) -> list[str]:
-    """Lyrics entry point: tries score first, then falls back to the source PDF."""
-    if not ENABLE_LYRICS_OUTPUT:
-        return []
-    lyric_lines = extract_lyrics_lines_from_score(score)
-    if lyric_lines:
-        return lyric_lines
-    if source_path is not None:
-        return extract_lyrics_lines_from_pdf(source_path)
-    return []

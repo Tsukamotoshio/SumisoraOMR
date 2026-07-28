@@ -1,11 +1,15 @@
 # core/notation/jianpu/primitives.py — Note/duration primitives for Jianpu conversion.
 
+import logging as _logging
+
 from music21 import chord as m21chord, note as m21note
 
 from ...config import (
     ALLOWED_JIANPU_DURATIONS,
+    ENABLE_LYRICS_OUTPUT,
     JianpuNote,
 )
+from ...utils import log_message as _log_message
 
 # ── Movable-Do (首调唱名法) semitone → jianpu numeral tables ─────────────────
 # Diatonic intervals from the reference tonic (0=do, 2=re, 4=mi, …)
@@ -187,6 +191,91 @@ def get_duration_render(duration: float, dots: int) -> tuple[int, int, int]:
     return 0, 1, dots
 
 
+_CJK_RANGE = range(0x3400, 0xa700)
+
+
+def build_lyric_lines(measures: 'list[list[JianpuNote]]') -> list[str]:
+    """Flatten a section's per-note lyrics into jianpu-ly ``L:``/``H:`` lines.
+
+    One line per verse number present anywhere in *measures*. Alignment follows
+    jianpu-ly's own note-counting: each non-rest ``JianpuNote`` consumes exactly
+    one lyric-stream token; rests are skipped entirely (jianpu-ly's own
+    ``use_rest_hack``, see B10.3 in the fix-plan doc).
+
+    Real-world MusicXML lyrics are often *sparse*, not one-syllable-per-note
+    throughout — verified empirically on Scarborough Fair-Flauta: only 46 of its
+    200 non-rest notes carry a lyric, in a scattered pattern with gaps up to 39
+    notes wide (an instrumental-arrangement flute part that only annotates notes
+    matching an original vocal line). Silently omitting gap notes would shift
+    every later syllable onto the wrong note, so a note with no entry for a
+    given verse emits a literal ``_`` — standard LilyPond ``\\lyricmode`` "skip
+    this note" syntax — for ``L:`` (non-CJK) lines only.
+
+    ``H:`` (CJK) lines cannot use the same trick: jianpu-ly's own hanzi-spacing
+    pass treats a bare ``_`` as "glue this hanzi to the previous one" and
+    *strips* it from the output (see ``jianpu-ly.py``'s ``do_hanzi_spacing``
+    loop), so a skip token would silently vanish instead of skipping — worse
+    than emitting nothing. A CJK verse with any gap is therefore dropped
+    entirely (logged), rather than emitted misaligned.
+    """
+    if not ENABLE_LYRICS_OUTPUT:
+        return []
+
+    non_rest = [note for measure in measures for note in measure if not note.is_rest]
+    verses: set[int] = set()
+    for note in non_rest:
+        verses.update(note.lyrics.keys())
+    if not verses:
+        return []
+
+    lines: list[str] = []
+    for verse in sorted(verses):
+        tokens: list[str] = []
+        has_gap = False
+        is_cjk = False
+        for note in non_rest:
+            entry = note.lyrics.get(verse)
+            if entry is None:
+                has_gap = True
+                tokens.append('_')
+                continue
+            text, hyphenated = entry
+            if any(ord(c) in _CJK_RANGE for c in text):
+                is_cjk = True
+            tokens.append(f'{text}-' if hyphenated else text)
+        if is_cjk and has_gap:
+            _log_message(
+                f'[jianpu] 歌词第 {verse} 段含汉字且覆盖不连续（有音符缺歌词）——'
+                'H: 的 "_" 语义与跳过冲突，跳过该段以避免错位输出',
+                _logging.WARNING,
+            )
+            continue
+        prefix = 'H:' if is_cjk else 'L:'
+        stanza = f'{verse}. ' if verse != 1 else ''
+        lines.append(f'{prefix} {stanza}{" ".join(tokens)}')
+    return lines
+
+
+def _extract_lyrics(element) -> dict[int, tuple[str, bool]]:
+    """Read music21 ``Lyric`` objects off *element* into ``JianpuNote.lyrics`` shape.
+
+    Key = verse number (music21's ``Lyric.number``, defaulting to 1 when absent/
+    non-positive); value = (syllable text, hyphenated-to-next-syllable). The
+    hyphen flag mirrors jianpu-ly's own convention (see B10.2 in the fix-plan
+    doc): a ``begin``/``middle`` syllabic position means this syllable belongs
+    to the same word as the next one.
+    """
+    result: dict[int, tuple[str, bool]] = {}
+    for lyric in getattr(element, 'lyrics', None) or ():
+        text = (lyric.text or '').strip()
+        if not text:
+            continue
+        verse = lyric.number if isinstance(lyric.number, int) and lyric.number > 0 else 1
+        hyphenated = lyric.syllabic in ('begin', 'middle')
+        result[verse] = (text, hyphenated)
+    return result
+
+
 def note_to_jianpu(element, key_tonic_semitone: int = 0) -> JianpuNote:
     """Convert a music21 note or rest to a JianpuNote dataclass (Movable-Do / 首调唱名法).
 
@@ -213,6 +302,7 @@ def note_to_jianpu(element, key_tonic_semitone: int = 0) -> JianpuNote:
             duration=float(element.duration.quarterLength),
             duration_dots=int(getattr(element.duration, 'dots', 0)),
             midi=None, is_rest=False,
+            lyrics=_extract_lyrics(element),
         )
 
     # Determine MIDI pitch (C4 = 60)
@@ -250,6 +340,7 @@ def note_to_jianpu(element, key_tonic_semitone: int = 0) -> JianpuNote:
         duration_dots=int(getattr(element.duration, 'dots', 0)),
         midi=note_midi,
         is_rest=False,
+        lyrics=_extract_lyrics(element),
     )
 
 
@@ -350,8 +441,15 @@ def infer_duration_dots(duration: float) -> int:
     return 0
 
 
-def clone_jianpu_note(note: JianpuNote, duration: float) -> JianpuNote:
-    """Clone a JianpuNote with a new duration (auto-normalised and dotted)."""
+def clone_jianpu_note(note: JianpuNote, duration: float, carry_lyrics: bool = True) -> JianpuNote:
+    """Clone a JianpuNote with a new duration (auto-normalised and dotted).
+
+    *carry_lyrics*: when a note is split into several duration-limited fragments
+    (see ``repair_jianpu_measure``'s ``split_duration_chunks`` loop), only the
+    *first* fragment should keep the original syllable — jianpu-ly counts every
+    emitted token as one lyric slot, so carrying the syllable onto every
+    fragment would desync all following lyrics by the fragment count minus one.
+    """
     normalized_duration = normalize_jianpu_duration(duration)
     return JianpuNote(
         symbol=note.symbol,
@@ -362,6 +460,7 @@ def clone_jianpu_note(note: JianpuNote, duration: float) -> JianpuNote:
         duration_dots=infer_duration_dots(normalized_duration),
         midi=note.midi,
         is_rest=note.is_rest,
+        lyrics=note.lyrics if carry_lyrics else {},
     )
 
 

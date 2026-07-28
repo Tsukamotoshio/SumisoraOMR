@@ -146,10 +146,12 @@ def repair_jianpu_measure(measure_notes: list[JianpuNote], measure_length: float
             current_total += new_note.duration
             continue
 
-        for piece in split_duration_chunks(remaining):
+        for piece_idx, piece in enumerate(split_duration_chunks(remaining)):
             if current_total >= measure_length - tol:
                 break
-            new_note = clone_jianpu_note(note, piece)
+            # Only the first fragment keeps the syllable — see clone_jianpu_note's
+            # carry_lyrics docstring.
+            new_note = clone_jianpu_note(note, piece, carry_lyrics=(piece_idx == 0))
             repaired.append(new_note)
             current_total += new_note.duration
 
@@ -164,14 +166,25 @@ def repair_jianpu_measure(measure_notes: list[JianpuNote], measure_length: float
 
 
 def clone_monophonic_element(element, duration: float):
-    """Clone a music21 element as a monophonic note: chords become the top pitch."""
+    """Clone a music21 element as a monophonic note: chords become the top pitch.
+
+    Propagates ``.lyrics`` onto the new element — constructing a fresh Note from
+    just a pitch otherwise silently drops any attached lyric, which is how the
+    lyrics-support work first surfaced this (see docs/修复计划2与简谱编辑器规划.md's
+    B10 appendix): note_to_jianpu() reads ``element.lyrics``, but every element
+    on the extraction hot path passes through here first, so without this the
+    lyrics field would always come out empty regardless of what note_to_jianpu
+    itself does.
+    """
     normalized_duration = normalize_jianpu_duration(duration)
     if isinstance(element, m21note.Rest):
         new_element = m21note.Rest()
     elif isinstance(element, m21chord.Chord):
         top_pitch = max(element.pitches, key=lambda pitch: pitch.midi)
         new_element = m21note.Note(top_pitch)
+        new_element.lyrics = list(element.lyrics)
     else:
         new_element = m21note.Note(element.pitch)
+        new_element.lyrics = list(element.lyrics)
     new_element.duration.quarterLength = normalized_duration
     return new_element
