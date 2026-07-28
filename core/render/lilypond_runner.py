@@ -921,6 +921,17 @@ def _split_multivoice_parts_in_mxl(mxl_path: Path, out_dir: Optional[Path] = Non
         LOGGER.debug('_split_multivoice_parts_in_mxl: music21 parse failed: %s', exc)
         return mxl_path
 
+    if not isinstance(score, music21.stream.Score):
+        # converter.parse() can in principle return a bare Part or an Opus
+        # (multi-piece bundle) instead of a Score; .parts below is only valid
+        # on Score. Real MusicXML score files always parse to Score, so this
+        # never fires in practice — but skipping the split (rather than
+        # crashing on an unguarded .parts access) keeps this function's
+        # existing "unexpected input -> return the file unchanged" pattern
+        # consistent (see the two early returns above).
+        LOGGER.debug('_split_multivoice_parts_in_mxl: parsed to %s, not Score; skipping split', type(score).__name__)
+        return mxl_path
+
     def _part_has_voices(part: 'music21.stream.Part') -> bool:
         return any(
             list(m.getElementsByClass(music21.stream.Voice))

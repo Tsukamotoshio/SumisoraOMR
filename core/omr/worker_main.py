@@ -20,7 +20,7 @@ from typing import Any, Optional
 # 所以此处 sys.stdout 就是与 GUI 通信的管道。
 # 获取二进制流，方便写入 UTF-8 JSON 行。
 _ipc_out: Optional[Any] = None
-_current_file_detail: dict[str, str] = {}  # 每文件重置，由 _log_ipc 填充
+_current_file_detail: dict[str, str | bool] = {}  # 每文件重置，由 _log_ipc 填充；fallback_used 是 bool，其余是 str
 
 
 def _send(msg: dict[str, Any]) -> None:

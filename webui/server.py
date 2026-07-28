@@ -109,7 +109,7 @@ class _IsolatedHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def log_message(self, fmt: str, *args) -> None:  # noqa: D102
+    def log_message(self, format: str, *args) -> None:  # noqa: D102,A002 — matches BaseHTTPRequestHandler's own param name
         pass  # 静默访问日志；错误仍会以异常形式浮出
 
 

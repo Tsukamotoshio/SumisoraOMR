@@ -315,7 +315,10 @@ def _apply_ort_thread_override() -> None:
         'homr.transformer.decoder_inference',
     ):
         try:
-            importlib.import_module(mod_name)._ORT_INTRA_THREADS = cap
+            # Dynamically patching a hidden config constant on a by-name-looked-up
+            # module — pyright can't know this attribute exists on ModuleType (nor
+            # should it need to; that's the point of the try/except here).
+            importlib.import_module(mod_name)._ORT_INTRA_THREADS = cap  # pyright: ignore[reportAttributeAccessIssue]
         except Exception:
             pass
 
@@ -337,7 +340,7 @@ def _cuda_dlls_available() -> bool:
 def _log_homr_gpu_mode() -> None:
     """Log the compute device homr will use (informational only)."""
     try:
-        import onnxruntime as _rt
+        import onnxruntime as _rt  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
         _avail = _rt.get_available_providers()
         if 'DmlExecutionProvider' in _avail:
             log_message('[homr] GPU: DirectML（DmlExecutionProvider 可用，将尝试集显/独显加速）。')
@@ -350,7 +353,7 @@ def _log_homr_gpu_mode() -> None:
 def _homr_gpu_available() -> bool:
     """Return True if DmlExecutionProvider is available (integrated/discrete GPU via DirectML)."""
     try:
-        import onnxruntime as rt
+        import onnxruntime as rt  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
         return 'DmlExecutionProvider' in rt.get_available_providers()
     except Exception:
         return False

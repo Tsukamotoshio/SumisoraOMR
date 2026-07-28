@@ -280,9 +280,9 @@ def _ensure_piano_model(progress_fn=None, cancel_event=None) -> Optional[Path]:
 
 def _load_audio_16k(source_file: Path):
     """Load *source_file* as mono float32 at 16 kHz (the model's input rate)."""
-    import librosa
+    import librosa  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
     import numpy as np
-    import soundfile as sf
+    import soundfile as sf  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
 
     try:
         y, sr = sf.read(str(source_file), dtype='float32')
@@ -308,7 +308,7 @@ def _reduce_to_melody(note_events, tempo: float = 120.0):
     tracking on real piano audio (correct key, coherent line). Returns a PrettyMIDI
     or None. Each event is ``(start, end, pitch, amplitude)``.
     """
-    import pretty_midi
+    import pretty_midi  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
 
     if not note_events:
         return None
@@ -361,7 +361,7 @@ def _quantize_to_beat_grid(note_events, audio, sample_rate):
     Returns ``(quantized_events, tempo_bpm)`` or None when beat tracking is
     unreliable (too few beats). Each event is ``(start, end, pitch, amplitude)``.
     """
-    import librosa
+    import librosa  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
     import numpy as np
 
     tempo, beat_times = librosa.beat.beat_track(y=audio, sr=sample_rate, units='time')
@@ -405,7 +405,7 @@ def _quantize_to_beat_grid(note_events, audio, sample_rate):
 
 def _events_to_midi(note_events, tempo: float):
     """Build a single-track PrettyMIDI from ``(start, end, pitch, amplitude)`` events."""
-    import pretty_midi
+    import pretty_midi  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
 
     pm = pretty_midi.PrettyMIDI(initial_tempo=tempo)
     inst = pretty_midi.Instrument(program=0)
@@ -453,8 +453,8 @@ def run_audio_transcription(
     # ── 1) Import engine + resolve device ───────────────────────────────────────
     _report(0.03, '[钢琴转录] 加载引擎…')
     try:
-        import torch
-        from piano_transcription_inference import PianoTranscription
+        import torch  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
+        from piano_transcription_inference import PianoTranscription  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
     except Exception as exc:
         log_message(
             f'  ✗ 钢琴转录引擎未安装或导入失败：{exc}\n'
@@ -545,7 +545,7 @@ def run_audio_transcription(
         return None
 
     # ── 3) Optional melody-only reduction ───────────────────────────────────────
-    import pretty_midi
+    import pretty_midi  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
 
     try:
         pm = pretty_midi.PrettyMIDI(str(midi_path))

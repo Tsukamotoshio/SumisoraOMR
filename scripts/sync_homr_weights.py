@@ -193,7 +193,7 @@ def cmd_upload(models_dir: Path, token: str, retries: int = 5,
     # Import lazily so download/verify work without modelscope installed.
     import time
 
-    from modelscope.hub.api import HubApi
+    from modelscope.hub.api import HubApi  # pyright: ignore[reportMissingImports]  # optional dep, not installed by default
 
     api = HubApi()
     api.login(token)

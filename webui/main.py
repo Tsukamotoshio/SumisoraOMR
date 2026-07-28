@@ -130,9 +130,9 @@ def _setup_native_script_dialogs(window: 'webview.Window') -> None:
         return
     try:
         from webview.platforms.winforms import BrowserView  # noqa: PLC0415
-        from System import Action  # noqa: PLC0415
-        import System.Windows.Forms as WinForms  # noqa: PLC0415
-        from Microsoft.Web.WebView2.Core import CoreWebView2ScriptDialogKind  # noqa: PLC0415
+        from System import Action  # noqa: PLC0415  # pyright: ignore[reportMissingImports] — pythonnet
+        import System.Windows.Forms as WinForms  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+        from Microsoft.Web.WebView2.Core import CoreWebView2ScriptDialogKind  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         form = BrowserView.instances.get(window.uid)
         if form is None:

@@ -22,7 +22,17 @@ _HOMR_SRC = Path(__file__).resolve().parent.parent.parent / 'omr_engine' / 'homr
 if str(_HOMR_SRC) not in sys.path:
     sys.path.insert(0, str(_HOMR_SRC))
 
-from homr.main import _WEIGHT_BASE_URLS, _WEIGHT_FILES  # noqa: E402
+# pyright can't statically follow the sys.path.insert() above (the submodule
+# also isn't checked out in this project's CI, which deliberately skips
+# submodules — see ruff.toml's comment), so this import always shows as
+# unresolved to it; re-declaring with an explicit type immediately below gives
+# every other use of these names in this file (and downstream importers, e.g.
+# tests/test_homr_downloader_url.py) a known type instead of Unknown.
+from homr.main import _WEIGHT_BASE_URLS as _RAW_BASE_URLS  # noqa: E402  # pyright: ignore[reportMissingImports]
+from homr.main import _WEIGHT_FILES as _RAW_FILES  # noqa: E402  # pyright: ignore[reportMissingImports]
+
+_WEIGHT_BASE_URLS: list[str] = _RAW_BASE_URLS
+_WEIGHT_FILES: list[str] = _RAW_FILES
 
 # HEAD probe constants
 _PROBE_TIMEOUT_SEC = 5.0
@@ -116,8 +126,15 @@ def probe_sources(urls: Optional[list[str]] = None) -> Optional[str]:
 import threading
 from typing import Callable
 
-from homr.main import _WEIGHT_HASHES, verify_sha256  # noqa: E402
-from homr.download_utils import unzip_file  # noqa: E402
+# Same pyright-can't-see-the-sys.path-trick situation as the first homr.main
+# import above — see that comment.
+from homr.main import _WEIGHT_HASHES as _RAW_WEIGHT_HASHES  # noqa: E402  # pyright: ignore[reportMissingImports]
+from homr.main import verify_sha256 as _raw_verify_sha256  # noqa: E402  # pyright: ignore[reportMissingImports]
+from homr.download_utils import unzip_file as _raw_unzip_file  # noqa: E402  # pyright: ignore[reportMissingImports]
+
+_WEIGHT_HASHES: dict[str, str] = _RAW_WEIGHT_HASHES
+verify_sha256: Callable[[str, str], bool] = _raw_verify_sha256
+unzip_file: Callable[..., None] = _raw_unzip_file
 
 
 # Progress callback signature:

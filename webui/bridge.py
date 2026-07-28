@@ -138,7 +138,11 @@ class Bridge:
         result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
         if not result:
             return {'added': [], 'rejected': [], 'error': 'cancelled'}
-        folder = Path(result[0] if isinstance(result, (list, tuple)) else result)
+        # str(...) in the else branch is a no-op for the real cases (pywebview
+        # only returns a bare str here for single-selection dialogs) but gives
+        # pyright a provably-str value regardless of how broad its Sequence[str]
+        # stub type for create_file_dialog's return is.
+        folder = Path(result[0] if isinstance(result, (list, tuple)) else str(result))
         if kind == 'score':
             suffixes = SUPPORTED_INPUT_SUFFIXES
         elif kind == 'audio':
@@ -233,7 +237,8 @@ class Bridge:
             allow_multiple=False, file_types=file_types)
         if not result:
             return {'ok': False, 'error': 'cancelled'}
-        path = Path(result[0] if isinstance(result, (list, tuple)) else result).resolve()
+        # See the analogous str(...) note in shell_pick_folder_import above.
+        path = Path(result[0] if isinstance(result, (list, tuple)) else str(result)).resolve()
         if not path.is_file():
             return {'ok': False, 'error': 'not_found'}
         if self._whitelist is not None:
@@ -433,8 +438,8 @@ class Bridge:
         if form is None:
             return False
         try:
-            from System import Action  # noqa: PLC0415 — pythonnet, loaded by pywebview
-            from System.Windows.Forms import FormWindowState, Screen  # noqa: PLC0415
+            from System import Action  # noqa: PLC0415 — pythonnet, loaded by pywebview  # pyright: ignore[reportMissingImports]
+            from System.Windows.Forms import FormWindowState, Screen  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
             def _apply() -> None:
                 # WorkingArea 按窗口当前所在屏取（多屏正确），排除任务栏区域

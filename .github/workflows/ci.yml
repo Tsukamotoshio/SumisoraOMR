@@ -1,5 +1,5 @@
 # CI — lint + notation regression tests on every push/PR to main (P2-3),
-# plus the webui/static/js/ toolchain added in P1-3.
+# plus the webui/static/js/ toolchain added in P1-3, plus pyright (P2-1).
 #
 # Deliberately scoped to the green gates this project already has:
 #   - ruff (config in ruff.toml; excludes submodules/vendored/runtimes by path,
@@ -9,10 +9,19 @@
 #   - eslint over webui/static/js/ only (webui/static/vendor/ is third-party
 #     and excluded by eslint.config.js's ignores, same idea as ruff.toml)
 #   - node --test over webui/static/js/*.test.js (no jest — see P1-3)
+#   - pyright over the same submodule/vendored-excluded scope as ruff, plus
+#     build_hooks/** (PyInstaller build-time hooks — out of scope, same reason
+#     as the packaging note below), against a throwaway venv with every
+#     *lightweight* third-party dep the codebase imports (see the pyright job's
+#     own install step); genuinely-dynamic imports it can't follow regardless
+#     of what's installed (pythonnet's System.*, the homr submodule's
+#     sys.path trick, the optional modelscope dep) and genuinely-heavy optional
+#     deps deliberately not installed in CI (onnxruntime, torch + the audio
+#     transcription stack) are suppressed inline with `# pyright: ignore[...]`
+#     at each call site, not silenced project-wide
 #
 # Not covered here (by design): PyInstaller packaging (Windows-only, needs JDK +
-# Inno Setup + submodules) and pyright (not yet clean). Add as separate jobs once
-# they can pass reliably.
+# Inno Setup + submodules).
 name: CI
 
 on:
@@ -82,3 +91,38 @@ jobs:
         run: npm ci
       - name: Run JS tests
         run: npm test
+
+  pyright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # 无需 submodules：pyrightconfig.json 按路径排除子模块目录（同 ruff.toml）
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install JS deps (pyright itself is pinned in package.json)
+        run: npm ci
+      - name: Create .venv matching pyrightconfig.json's venvPath/venv
+        # pyright resolves third-party imports (music21, Pillow, requests, ...)
+        # through the venv named in pyrightconfig.json, not just whatever's on
+        # PATH — a bare `pip install` into the runner's system Python would
+        # leave pyright unable to find them and produce spurious
+        # reportMissingImports noise unrelated to real type errors. Reuses
+        # requirements-ci.txt (already proven minimal-but-sufficient by the
+        # test job) plus every other *lightweight* third-party package pyright
+        # needs to resolve across the non-ignored codebase (pytest's current
+        # test suite doesn't happen to exercise these). Genuinely heavy/optional
+        # deps (onnxruntime, torch + the audio-transcription stack) are
+        # deliberately NOT installed here — those import sites carry their own
+        # `# pyright: ignore[reportMissingImports]`, same precedent as the
+        # modelscope/pythonnet suppressions elsewhere in this codebase.
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements-ci.txt Pillow==12.2.0 requests==2.34.2 \
+            rich==15.0.0 truststore==0.10.4 pypdf==6.14.2 markdown-it-py==4.2.0 \
+            pywebview==6.2.1 opencv-python-headless==4.13.0.92
+      - name: Pyright check
+        run: npm run pyright

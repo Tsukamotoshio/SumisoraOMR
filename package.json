@@ -2,15 +2,17 @@
   "name": "sumisora-omr-webui",
   "version": "0.5.1",
   "private": true,
-  "description": "JS toolchain for webui/static/js — lint + tests only, no bundler (the front-end ships ES modules directly, see CLAUDE.md).",
+  "description": "Dev toolchain: JS lint + tests for webui/static/js (no bundler — the front-end ships ES modules directly, see CLAUDE.md), plus a pinned pyright for the Python type-check CI gate (P2-1).",
   "type": "module",
   "scripts": {
     "lint": "eslint webui/static/js",
-    "test": "node --test \"webui/static/js/*.test.js\""
+    "test": "node --test \"webui/static/js/*.test.js\"",
+    "pyright": "pyright"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.8.0",
-    "globals": "^17.8.0"
+    "globals": "^17.8.0",
+    "pyright": "^1.1.411"
   }
 }

@@ -1,7 +1,7 @@
 # core/notation/jianpu/__init__.py — Public API for Jianpu conversion.
 # Orchestration functions live here; sub-modules provide the building blocks.
 import logging as _logging
-from typing import Optional
+from typing import Literal, Optional, overload
 
 from ...utils import log_message
 from .primitives import (
@@ -118,6 +118,15 @@ def build_jianpu_ly_text_from_measures(
     return '\n'.join(header)
 
 
+@overload
+def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
+                          composer: str = '', tempo: int = 0,
+                          _return_groups: Literal[False] = False) -> str: ...
+@overload
+def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
+                          composer: str = '', tempo: int = 0,
+                          *, _return_groups: Literal[True],
+                          ) -> tuple[str, list[list[int]], dict[int, dict[str, bool]]]: ...
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                           composer: str = '', tempo: int = 0,
                           _return_groups: bool = False):

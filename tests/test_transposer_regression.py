@@ -10,6 +10,7 @@
 #      display-step/display-octave info at render time, breaking multi-voice
 #      layout the same way stripping it at transpose time would.
 from pathlib import Path
+from typing import Optional
 import xml.etree.ElementTree as ET
 
 from core.notation.transposer import _transpose_xml_bytes
@@ -17,7 +18,7 @@ from core.notation.transposer import _transpose_xml_bytes
 _FIXTURE = Path(__file__).parent / 'fixtures' / 'musicxml' / 'Scarborough Fair-Flauta.musicxml'
 
 
-def _rest_positions(xml_bytes: bytes) -> list[tuple[str, str]]:
+def _rest_positions(xml_bytes: bytes) -> list[tuple[Optional[str], Optional[str]]]:
     """Return (display-step, display-octave) for every <rest> element, in document order."""
     root = ET.fromstring(xml_bytes)
     positions = []
@@ -29,7 +30,7 @@ def _rest_positions(xml_bytes: bytes) -> list[tuple[str, str]]:
     return positions
 
 
-def _all_pitches(xml_bytes: bytes) -> list[tuple[str, str]]:
+def _all_pitches(xml_bytes: bytes) -> list[tuple[Optional[str], Optional[str]]]:
     """Return (step, octave) for every <pitch> element, in document order."""
     root = ET.fromstring(xml_bytes)
     return [(p.findtext('step'), p.findtext('octave')) for p in root.iter('pitch')]

@@ -23,7 +23,7 @@ def _pkg_version(mod_name: str) -> str:
 
 def _onnx_info() -> str:
     try:
-        import onnxruntime as ort
+        import onnxruntime as ort  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
         provs = ort.get_available_providers()  # 仅列举，不建 session → 无 CUDA 初始化
         return f'{ort.__version__} providers={provs}'
     except Exception as exc:

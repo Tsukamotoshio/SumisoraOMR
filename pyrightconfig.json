@@ -3,7 +3,15 @@
   "venv": ".venv",
   "pythonVersion": "3.14",
   "ignore": [
-    ".venv/**"
+    ".venv/**",
+    "omr_engine/**",
+    "upscaling_engine/**",
+    "lilypond-2.24.4/**",
+    "package-assets/**",
+    "build/**",
+    "dist/**",
+    "scripts/jianpu-ly.py",
+    "build_hooks/**"
   ],
   "reportPossiblyUnboundVariable": "none"
 }

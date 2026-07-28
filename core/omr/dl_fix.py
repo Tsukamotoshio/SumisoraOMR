@@ -48,7 +48,7 @@ except ImportError:
 
 try:
     import numpy as np
-    import onnxruntime as ort
+    import onnxruntime as ort  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
     _HAS_ONNX = True
 except ImportError:
     _HAS_ONNX = False

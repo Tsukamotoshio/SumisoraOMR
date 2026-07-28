@@ -85,7 +85,7 @@ def _measure_border_ratio(img: 'Image.Image') -> float:
     """返回白色边距占原图像素的比例（0–1）。亮度 >= 240 视为白色背景。"""
     try:
         gray = img.convert('L')
-        content_mask = gray.point(lambda px: 0 if px >= 240 else 255, '1')
+        content_mask = gray.point(lambda px: 0 if px >= 240 else 255, '1')  # pyright: ignore[reportOperatorIssue] — Image.point()'s lambda param is a per-pixel int/float at runtime; Pillow's stub overload resolution mistypes it as ImagePointTransform here
         bbox = content_mask.getbbox()
         if bbox is None:
             return 1.0
@@ -105,7 +105,7 @@ def _measure_tilt_angle(img: 'Image.Image') -> float:
     if not _HAS_NUMPY:
         return 0.0
     try:
-        thumb = img.convert('L').resize((400, 400), Image.LANCZOS)
+        thumb = img.convert('L').resize((400, 400), Image.Resampling.LANCZOS)
         arr = np.array(thumb, dtype=np.uint8)
         best_angle = 0.0
         best_variance = -1.0
@@ -135,7 +135,7 @@ def _detect_staff_lines(img: 'Image.Image') -> bool:
         w, h = img.size
         scale = 600 / max(w, 1)
         small = img.convert('L').resize(
-            (600, max(1, int(h * scale))), Image.LANCZOS
+            (600, max(1, int(h * scale))), Image.Resampling.LANCZOS
         )
         arr = np.array(small, dtype=np.float32)
         binary = (arr < 128).astype(np.float32)

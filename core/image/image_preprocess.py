@@ -58,7 +58,7 @@ def _measure_laplacian_stddev(img: 'Image.Image') -> float:
     Uses Pillow's built-in FIND_EDGES filter (3×3 Laplacian kernel).
     Lower value means blurrier image.  Returns 100.0 if measurement fails (assume sharp)."""
     try:
-        thumb = img.convert('L').resize((500, 500), Image.LANCZOS)
+        thumb = img.convert('L').resize((500, 500), Image.Resampling.LANCZOS)
         edges = thumb.filter(ImageFilter.FIND_EDGES)
         return ImageStat.Stat(edges).stddev[0]
     except Exception:
@@ -130,7 +130,7 @@ def fit_image_within_pixel_limit(
                 f'图像尺寸 {w}×{h} ({w * h:,} px) 超出 Audiveris 上限 {max_pixels:,} px，'
                 f'自动缩小至 {new_w}×{new_h} ({new_w * new_h:,} px)。'
             )
-            resized = img.resize((new_w, new_h), Image.LANCZOS)
+            resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
             out_path = work_dir / f'resized_{image_path.stem}.png'
             resized.save(out_path)
             return out_path
@@ -304,7 +304,7 @@ def crop_white_border(img: 'Image.Image') -> tuple['Image.Image', float]:
                 # Normal scan: white/near-white background — percentile threshold
                 p92 = float(_np.percentile(gray_arr, 92))
                 bg_thresh = max(200, int(p92) - 15)
-                content_mask = _np.array(gray.point(lambda px: 0 if px >= bg_thresh else 255, '1'))
+                content_mask = _np.array(gray.point(lambda px: 0 if px >= bg_thresh else 255, '1'))  # pyright: ignore[reportOperatorIssue] — Image.point()'s lambda param is a per-pixel int/float at runtime; Pillow's stub overload resolution mistypes it as ImagePointTransform here
                 rows = content_mask.any(axis=1)
                 cols = content_mask.any(axis=0)
                 if not rows.any() or not cols.any():
@@ -312,7 +312,7 @@ def crop_white_border(img: 'Image.Image') -> tuple['Image.Image', float]:
                 rmin, rmax = int(_np.where(rows)[0][0]),  int(_np.where(rows)[0][-1])
                 cmin, cmax = int(_np.where(cols)[0][0]),  int(_np.where(cols)[0][-1])
         else:
-            content_mask = gray.point(lambda px: 0 if px >= 225 else 255, '1')
+            content_mask = gray.point(lambda px: 0 if px >= 225 else 255, '1')  # pyright: ignore[reportOperatorIssue] — see the identical note above
             bbox = content_mask.getbbox()
             if bbox is None:
                 return img, 1.0
@@ -383,7 +383,7 @@ def detect_and_correct_rotation(img: 'Image.Image') -> tuple['Image.Image', floa
             scale = min(1200 / long_side, 1.0)
             thumb_w = max(1, int(w_img * scale))
             thumb_h = max(1, int(h_img * scale))
-            thumb = img.convert('L').resize((thumb_w, thumb_h), Image.LANCZOS)
+            thumb = img.convert('L').resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
             arr_t = np.array(thumb, dtype=np.uint8)
             best_var = -1.0
             for step in range(-30, 31):
