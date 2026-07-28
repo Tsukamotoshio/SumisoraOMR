@@ -2,7 +2,7 @@
 // Split out of the former monolithic app.js (P0-3) — pure move, no behavior change.
 'use strict';
 
-import { $, api, t, toast, pageEnterHooks, showPage } from './core.js';
+import { $, api, t, toast, pageEnterHooks } from './core.js';
 import { PdfView } from './pdfview.js';
 import { midiPlayer } from './midi.js';
 import { edOpenForPdf } from './editor.js';

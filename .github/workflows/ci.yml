@@ -1,10 +1,14 @@
-# CI — lint + notation regression tests on every push/PR to main (P2-3).
+# CI — lint + notation regression tests on every push/PR to main (P2-3),
+# plus the webui/static/js/ toolchain added in P1-3.
 #
-# Deliberately scoped to the two green gates this project already has:
+# Deliberately scoped to the green gates this project already has:
 #   - ruff (config in ruff.toml; excludes submodules/vendored/runtimes by path,
 #     so no submodule checkout is needed — it never descends into empty dirs)
 #   - pytest over tests/ (pure-Python notation logic; music21-only deps via
 #     requirements-ci.txt, no onnxruntime/flet/submodules)
+#   - eslint over webui/static/js/ only (webui/static/vendor/ is third-party
+#     and excluded by eslint.config.js's ignores, same idea as ruff.toml)
+#   - node --test over webui/static/js/*.test.js (no jest — see P1-3)
 #
 # Not covered here (by design): PyInstaller packaging (Windows-only, needs JDK +
 # Inno Setup + submodules) and pyright (not yet clean). Add as separate jobs once
@@ -53,3 +57,28 @@ jobs:
         run: python -m pip install -r requirements-ci.txt
       - name: Run tests
         run: python -m pytest tests/ -q
+
+  lint-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # 无需 submodules：eslint.config.js 按路径排除 webui/static/vendor/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install JS deps
+        run: npm ci
+      - name: Eslint check
+        run: npm run lint
+
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install JS deps
+        run: npm ci
+      - name: Run JS tests
+        run: npm test

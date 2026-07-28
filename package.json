@@ -1,0 +1,16 @@
+{
+  "name": "sumisora-omr-webui",
+  "version": "0.5.1",
+  "private": true,
+  "description": "JS toolchain for webui/static/js — lint + tests only, no bundler (the front-end ships ES modules directly, see CLAUDE.md).",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint webui/static/js",
+    "test": "node --test \"webui/static/js/*.test.js\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0"
+  }
+}

@@ -11,7 +11,6 @@ const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pagei
 const edRefView = new PdfView($('ed-ref-canvas'), $('ed-ref-stage'), null);
 let edDirty = false;
 let edLoaded = false;
-let edPreviewOK = false;
 
 function edSetDirty(v) {
   edDirty = v;
@@ -46,7 +45,6 @@ $('ed-tab-pv').addEventListener('click', () => edShowTab('pv'));
 
 function edApplyLoad(r) {
   edLoaded = true;
-  edPreviewOK = false;
   $('ed-name').textContent = r.name;
   $('ed-hint').textContent = '';
   const ta = $('ed-text');
@@ -123,11 +121,9 @@ $('ed-render').addEventListener('click', async () => {
 window.addEventListener('editor_preview_ready', (e) => {
   const d = e.detail || {};
   if (!d.ok) {
-    edPreviewOK = false;
     $('ed-pv-ph').textContent = t('w.st.render_failed', { e: d.error || '' });
     return;
   }
-  edPreviewOK = true;
   $('ed-pv-ph').parentElement.classList.add('hidden');
   edShowTab('pv');
   edPvView.open(`/file?path=${encodeURIComponent(d.pdf)}`).catch((e2) => toast(t('w.pv.open_failed', { e: e2 })));
