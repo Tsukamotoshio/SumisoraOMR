@@ -8,7 +8,15 @@
 # assumes the legacy submodule tree and silently builds wrong URLs against
 # the flat layout. That distinction was previously enforced only by a
 # docstring/comment, not a test.
-from core.omr.homr_downloader import _WEIGHT_BASE_URLS, _WEIGHT_FILES, _build_url_for
+import pytest
+
+try:
+    from core.omr.homr_downloader import _WEIGHT_BASE_URLS, _WEIGHT_FILES, _build_url_for
+except ModuleNotFoundError:
+    # homr_downloader imports homr.main via the omr_engine/homr submodule's
+    # sys.path trick; CI's test job deliberately skips submodule checkout
+    # (see ci.yml), so this whole module has nothing real to test there.
+    pytest.skip('omr_engine/homr submodule not checked out', allow_module_level=True)
 
 _MODELSCOPE_BASE = _WEIGHT_BASE_URLS[0]
 _GITHUB_BASE = _WEIGHT_BASE_URLS[1]
