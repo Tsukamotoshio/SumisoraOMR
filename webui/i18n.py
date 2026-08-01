@@ -316,6 +316,14 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.dirty": {"zh": "未保存", "en": "Unsaved"},
     "w.ed.unsaved_confirm": {"zh": "有未保存的修改，离开将丢失。确定离开？",
                              "en": "You have unsaved changes that will be lost. Leave anyway?"},
+
+    # ── 简谱编辑器 · 实时校验（阶段1） ────────────────────────────────────────
+    "w.ed.lint.error_at": {"zh": "第 {line} 行：非法记号 “{token}”", "en": "Line {line}: invalid token “{token}”"},
+    "w.ed.lint.errors_toast": {"zh": "{n} 处非法记号", "en": "{n} invalid tokens"},
+    "w.ed.lint.warning_at": {"zh": "第 {line} 行小节拍数不符（实际 {got} 拍，期望 {expected} 拍）",
+                             "en": "Line {line}: measure duration mismatch ({got} beats, expected {expected})"},
+    "w.ed.lint.warnings_toast": {"zh": "{n} 个小节拍数不符", "en": "{n} measures have a duration mismatch"},
+    "w.ed.lint.export_blocked": {"zh": "存在非法记号，请先修正后再导出", "en": "Fix the invalid token(s) before exporting"},
 }
 
 

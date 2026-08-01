@@ -6,11 +6,128 @@
 
 import { $, api, t, toast, showPage } from './core.js';
 import { PdfView } from './pdfview.js';
+import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
 const edRefView = new PdfView($('ed-ref-canvas'), $('ed-ref-stage'), null);
 let edDirty = false;
 let edLoaded = false;
+
+// ── 语法高亮 + 实时校验（阶段1，见修复计划2与简谱编辑器规划.md B5/B6） ──────────
+// .ed-text 本身文字透明，可见的彩色文字来自 .ed-highlight 的镜像内容（见 app.css
+// 的说明注释）；两者绝对定位重叠，靠 edSyncHighlightScroll() 同步滚动位置。
+const CLASS_FOR_SEVERITY = { error: 'tok-err', warning: 'measure-warn', info: 'tok-info' };
+let edDiagnostics = [];
+let edLastToastKey = '';
+let edToastTimer = null;
+
+function edEscapeHtml(s) {
+  return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+// 逐行标出注释（%…）/ 表头（title=、1=C、拍号…）行的字符区间，供高亮层染色；
+// 纯视觉，不追求语法层面的绝对精度（精度要求见 jianpu-lint.js 的诊断逻辑）。
+function edClassifyLines(text) {
+  const ranges = [];
+  let offset = 0;
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    const trimmed = line.trim();
+    let cls = null;
+    if (trimmed.startsWith('%')) cls = 'tok-comment';
+    else if (trimmed && isHeaderLine(trimmed)) cls = 'tok-header';
+    if (cls) ranges.push({ start: offset, end: offset + rawLine.length, cls });
+    offset += rawLine.length + 1;
+  }
+  return ranges;
+}
+
+function edBuildHighlightHtml(text) {
+  const { diagnostics } = lintJianpuText(text);
+  const n = text.length;
+  const base = new Array(n).fill('');
+  const overlay = new Array(n).fill('');
+  for (const r of edClassifyLines(text)) {
+    for (let i = r.start; i < r.end && i < n; i++) base[i] = r.cls;
+  }
+  for (let i = 0; i < n; i++) {
+    if (text[i] === '|' && !base[i]) overlay[i] = 'tok-bar';
+  }
+  for (const d of diagnostics) {
+    const cls = CLASS_FOR_SEVERITY[d.severity];
+    for (let i = d.start; i < d.end && i < n; i++) {
+      overlay[i] = overlay[i] ? `${overlay[i]} ${cls}` : cls;
+    }
+  }
+  let html = '';
+  let i = 0;
+  while (i < n) {
+    const cls = [base[i], overlay[i]].filter(Boolean).join(' ');
+    let j = i + 1;
+    while (j < n && [base[j], overlay[j]].filter(Boolean).join(' ') === cls) j++;
+    const chunk = edEscapeHtml(text.slice(i, j));
+    html += cls ? `<span class="${cls}">${chunk}</span>` : chunk;
+    i = j;
+  }
+  return { html, diagnostics };
+}
+
+function edSyncHighlightScroll() {
+  const hl = $('ed-highlight');
+  const ta = $('ed-text');
+  hl.scrollTop = ta.scrollTop;
+  hl.scrollLeft = ta.scrollLeft;
+}
+
+function edJumpTo(start, end) {
+  const ta = $('ed-text');
+  if (ta.disabled) return;
+  ta.focus();
+  ta.setSelectionRange(start, end);
+  const lineIdx = (ta.value.slice(0, start).match(/\n/g) || []).length;
+  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 21;
+  ta.scrollTop = Math.max(0, lineIdx * lineHeight - ta.clientHeight / 2);
+  edUpdateGutter();
+  edSyncHighlightScroll();
+}
+
+// 汇总而非刷屏：同类问题合并计数一条 toast；诊断集合不变时不重复弹出。
+function edShowLintToasts(diagnostics) {
+  const errors = diagnostics.filter((d) => d.severity === 'error');
+  const warnings = diagnostics.filter((d) => d.severity === 'warning');
+  const key = `${errors.length}:${errors[0] ? errors[0].start : ''}:${warnings.length}:${warnings[0] ? warnings[0].start : ''}`;
+  if (key === edLastToastKey) return;
+  edLastToastKey = key;
+  if (errors.length === 1) {
+    const e = errors[0];
+    toast(t('w.ed.lint.error_at', { line: e.line, token: e.params.token || '' }), {
+      severity: 'error', onClick: () => edJumpTo(e.start, e.end),
+    });
+  } else if (errors.length > 1) {
+    toast(t('w.ed.lint.errors_toast', { n: errors.length }), {
+      severity: 'error', onClick: () => edJumpTo(errors[0].start, errors[0].end),
+    });
+  }
+  if (warnings.length === 1) {
+    const wDiag = warnings[0];
+    toast(t('w.ed.lint.warning_at', { line: wDiag.line, got: wDiag.params.got, expected: wDiag.params.expected }), {
+      severity: 'warning', onClick: () => edJumpTo(wDiag.start, wDiag.end),
+    });
+  } else if (warnings.length > 1) {
+    toast(t('w.ed.lint.warnings_toast', { n: warnings.length }), {
+      severity: 'warning', onClick: () => edJumpTo(warnings[0].start, warnings[0].end),
+    });
+  }
+}
+
+function edRunLint() {
+  const { html, diagnostics } = edBuildHighlightHtml($('ed-text').value);
+  $('ed-highlight').innerHTML = html;
+  edSyncHighlightScroll();
+  edDiagnostics = diagnostics;
+  clearTimeout(edToastTimer);
+  edToastTimer = setTimeout(() => edShowLintToasts(diagnostics), 300);
+}
 
 function edSetDirty(v) {
   edDirty = v;
@@ -52,6 +169,7 @@ function edApplyLoad(r) {
   ta.value = r.body || '';
   edSetDirty(false);
   edUpdateGutter();
+  edRunLint();
   // 左栏参考
   const img = $('ed-ref-img');
   const ph = $('ed-ref-ph');
@@ -131,6 +249,12 @@ window.addEventListener('editor_preview_ready', (e) => {
 
 $('ed-export').addEventListener('click', async () => {
   if (!edLoaded) return;
+  // 不阻断原则：校验只警告，唯独 🔴 级别的非法 token 在导出这一步硬拦截（见 B5 校验层）。
+  const firstError = edDiagnostics.find((d) => d.severity === 'error');
+  if (firstError) {
+    toast(t('w.ed.lint.export_blocked'), { severity: 'error', onClick: () => edJumpTo(firstError.start, firstError.end) });
+    return;
+  }
   const r = await api().editor_export_to_output();
   if (r.ok) toast(t('w.ed.exported', { dest: r.dest }));
   else if (r.error === 'no_preview') toast(t('w.ed.export_need_preview'));
@@ -144,8 +268,8 @@ $('ed-back').addEventListener('click', () => {
 
 // 编辑器输入行为：脏标记 + 行号同步 + Ctrl+S
 const edTa = $('ed-text');
-edTa.addEventListener('input', () => { edSetDirty(true); edUpdateGutter(); });
-edTa.addEventListener('scroll', () => { $('ed-gutter').scrollTop = edTa.scrollTop; });
+edTa.addEventListener('input', () => { edSetDirty(true); edUpdateGutter(); edRunLint(); });
+edTa.addEventListener('scroll', () => { $('ed-gutter').scrollTop = edTa.scrollTop; edSyncHighlightScroll(); });
 for (const ev of ['keyup', 'click']) edTa.addEventListener(ev, edUpdateGutter);
 edTa.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {

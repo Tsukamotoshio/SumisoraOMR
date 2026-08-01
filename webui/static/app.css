@@ -408,14 +408,33 @@ button { font-family: inherit; cursor: default; }
   user-select: none; white-space: pre;
 }
 .ed-gutter .cur { color: var(--accent); font-weight: 700; }
-.ed-text {
-  flex: 1; min-width: 0; border: 0; outline: none; resize: none;
+
+/* 简谱语法高亮 + 实时校验（阶段1）：.ed-highlight 与 .ed-text 严格同字体/同内边距、
+   绝对定位重叠；真正可见的彩色文字来自 .ed-highlight 的 span（见 editor.js），
+   .ed-text 本身文字透明——只负责光标/选区/键盘输入这些原生 textarea 行为。
+   两者滚动位置由 editor.js 在 textarea 的 scroll/input 事件里同步。 */
+.ed-text-wrap { position: relative; flex: 1; min-width: 0; }
+.ed-highlight, .ed-text {
+  position: absolute; inset: 0; margin: 0; border: 0;
   padding: 10px 12px;
   font: 13px/1.6 Consolas, "Courier New", monospace;
-  color: var(--text); background: transparent;
-  white-space: pre; overflow: auto; user-select: text;
-  caret-color: var(--accent);
+  white-space: pre;
 }
+.ed-highlight {
+  color: var(--text); overflow: hidden; pointer-events: none; user-select: none;
+}
+.ed-highlight .tok-header { color: var(--accent); }
+.ed-highlight .tok-comment { color: var(--faint); font-style: italic; }
+.ed-highlight .tok-bar { color: var(--faint); }
+.ed-highlight .tok-err { text-decoration: underline wavy var(--danger); text-underline-offset: 2px; }
+.ed-highlight .tok-info { color: var(--faint); text-decoration: underline dotted var(--faint); text-underline-offset: 2px; }
+.ed-highlight .measure-warn { background: var(--warning-tint); border-radius: 2px; }
+.ed-text {
+  outline: none; resize: none; z-index: 1;
+  color: transparent; background: transparent;
+  overflow: auto; user-select: text; caret-color: var(--accent);
+}
+.ed-text::selection { background: var(--accent-tint-2); }
 .ed-text:disabled { opacity: .5; }
 .ed-symbols {
   flex: none; width: 240px; overflow-y: auto;
@@ -462,15 +481,25 @@ pre.license {
 .grip-ne { top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; }
 .grip-sw { bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; }
 
-/* toast */
-.toast {
+/* toast — 可堆叠（core.js:toast()），纵向排列，各自独立显隐 */
+.toast-host {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
-  z-index: 60; background: var(--card); color: var(--text);
-  border: 1px solid var(--border-strong); border-radius: 10px;
-  padding: 10px 18px; font-size: 13px; box-shadow: var(--shadow);
-  opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 70vw;
+  z-index: 60; display: flex; flex-direction: column-reverse; gap: 8px;
+  align-items: center; pointer-events: none;
 }
-.toast.show { opacity: 1; }
+.toast {
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong);
+  border-radius: 10px; padding: 10px 18px; font-size: 13px; box-shadow: var(--shadow);
+  opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s;
+  pointer-events: auto; max-width: 70vw;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.sev-error { border-left-color: var(--danger); }
+.toast.sev-warning { border-left-color: var(--warning); }
+.toast.sev-info { border-left-color: var(--accent); }
+.toast.clickable { cursor: pointer; }
+.toast.clickable:hover { border-color: var(--accent); }
 
 @media (max-width: 880px) {
   .content, .content.two, .content.editor { grid-template-columns: 1fr; }

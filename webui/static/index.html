@@ -450,7 +450,10 @@
           <div class="ed-body">
             <div class="ed-editor" id="ed-editor-wrap">
               <div class="ed-gutter" id="ed-gutter"></div>
-              <textarea id="ed-text" class="ed-text" spellcheck="false" wrap="off" disabled></textarea>
+              <div class="ed-text-wrap">
+                <pre class="ed-highlight" id="ed-highlight" aria-hidden="true"></pre>
+                <textarea id="ed-text" class="ed-text" spellcheck="false" wrap="off" disabled></textarea>
+              </div>
             </div>
             <aside class="ed-symbols hidden" id="ed-symbols-panel"></aside>
           </div>

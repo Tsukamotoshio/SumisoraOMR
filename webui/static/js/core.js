@@ -36,15 +36,32 @@ window.__omrEvents = (events) => {
 };
 
 // ═══ Toast ═══════════════════════════════════════════════════════════════════
-const toastEl = document.createElement('div');
-toastEl.className = 'toast';
-document.body.appendChild(toastEl);
-let toastTimer = null;
-export function toast(text) {
-  toastEl.textContent = text;
-  toastEl.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+// 可堆叠：多条同时存在时纵向排列，各自独立计时消失（不再互相顶掉）。
+// opts（可选，向后兼容 —— 现存 ~50 处 toast(text) 调用点行为不变）：
+//   severity: 'error'|'warning'|'info' — 左侧配色（简谱编辑器阶段1校验层用）
+//   onClick:  () => void              — 点击后调用并立即关闭该条（如“跳转到出错位置”）
+//   duration: 毫秒，默认 2600
+const toastHost = document.createElement('div');
+toastHost.className = 'toast-host';
+document.body.appendChild(toastHost);
+
+export function toast(text, opts) {
+  const { severity = null, onClick = null, duration = 2600 } = opts || {};
+  const el = document.createElement('div');
+  el.className = 'toast' + (severity ? ` sev-${severity}` : '') + (onClick ? ' clickable' : '');
+  el.textContent = text;
+  const remove = () => el.remove();
+  if (onClick) {
+    el.addEventListener('click', () => { onClick(); remove(); });
+  }
+  toastHost.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  const timer = setTimeout(() => {
+    el.classList.remove('show');
+    el.addEventListener('transitionend', remove, { once: true });
+    setTimeout(remove, 400); // 兜底：某些环境下 transitionend 可能不触发
+  }, duration);
+  return { dismiss: () => { clearTimeout(timer); remove(); } };
 }
 
 // ═══ 导航 ════════════════════════════════════════════════════════════════════
