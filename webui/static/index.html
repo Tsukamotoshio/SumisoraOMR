@@ -146,6 +146,8 @@
               <button class="chipbtn" id="jp-selall" title="全选/全不选" data-i18n-title="w.list.selall_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.selall">全选</span></button>
               <button class="chipbtn" id="jp-export" title="导出勾选到文件夹" data-i18n-title="w.jp.export_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.export">导出</span></button>
               <button class="chipbtn danger" id="jp-delete" title="删除勾选（含 MIDI 与编辑文本）" data-i18n-title="w.jp.delete_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.list.delete">删除</span></button>
+              <span class="hsep"></span>
+              <button class="chipbtn accent" id="jp-new" title="新建空白简谱" data-i18n-title="w.jp.new_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span data-i18n="w.jp.new">新建简谱</span></button>
             </div>
           </div>
           <ul class="filelist" id="jp-files"><li class="empty" data-i18n="w.jp.empty">Output/ 中还没有简谱 PDF</li></ul>
@@ -555,6 +557,83 @@ https://www.gnu.org/licenses/agpl-3.0.html</pre>
       <button class="ghost hidden" id="model-close" data-i18n="w.result.close">关闭</button>
       <button class="ghost" id="model-cancel" data-i18n="w.conv.cancel">取消</button>
       <button class="primary hidden" id="model-retry" data-i18n="w.model.retry">重试</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 新建空白简谱向导（B8.4 轻量版） ── -->
+<div class="scrim hidden" id="newscore-overlay">
+  <div class="sheet newscore-sheet">
+    <div class="prog-titlerow">
+      <h3 data-i18n="w.ns.title">新建简谱</h3>
+      <button class="iconbtn" id="ns-close" aria-label="关闭" title="关闭" data-i18n-title="w.result.close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="newscore-grid">
+      <div class="field span2">
+        <span class="lbl" data-i18n="w.ns.field_title">标题</span>
+        <input type="text" id="ns-title" class="textinput" maxlength="80">
+      </div>
+      <div class="field span2">
+        <span class="lbl" data-i18n="w.ns.field_composer">作曲（可留空）</span>
+        <input type="text" id="ns-composer" class="textinput" maxlength="80">
+      </div>
+      <div class="field">
+        <span class="lbl" data-i18n="w.ns.field_key_mode">调式</span>
+        <div class="selectwrap"><select id="ns-key-mode">
+          <option value="major" selected data-i18n="w.ns.key_major">大调（1=X）</option>
+          <option value="minor" data-i18n="w.ns.key_minor">小调（6=X）</option>
+        </select></div>
+      </div>
+      <div class="field">
+        <span class="lbl" data-i18n="w.ns.field_tonic">主音</span>
+        <div class="selectwrap"><select id="ns-tonic"></select></div>
+      </div>
+      <div class="field">
+        <span class="lbl" data-i18n="w.ns.field_timesig">拍号</span>
+        <div class="timesigrow">
+          <input type="number" id="ns-time-num" class="textinput num" min="1" max="32" value="4">
+          <span class="timesig-sep">/</span>
+          <div class="selectwrap"><select id="ns-time-den">
+            <option value="2">2</option>
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+          </select></div>
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl" data-i18n="w.ns.field_tempo">速度（每分钟拍数）</span>
+        <input type="number" id="ns-tempo" class="textinput num" min="1" max="400" value="120">
+      </div>
+      <div class="field span2">
+        <span class="lbl" data-i18n="w.ns.field_anacrusis">弱起（可选）</span>
+        <div class="selectwrap"><select id="ns-anacrusis">
+          <option value="" selected data-i18n="w.ns.anacrusis_none">无弱起</option>
+          <option value="16" data-i18n="w.ns.anacrusis_16">十六分音符（1/4 拍）</option>
+          <option value="16." data-i18n="w.ns.anacrusis_16d">附点十六分音符（3/8 拍）</option>
+          <option value="8" data-i18n="w.ns.anacrusis_8">八分音符（1/2 拍）</option>
+          <option value="8." data-i18n="w.ns.anacrusis_8d">附点八分音符（3/4 拍）</option>
+          <option value="4" data-i18n="w.ns.anacrusis_4">四分音符（1 拍）</option>
+          <option value="4." data-i18n="w.ns.anacrusis_4d">附点四分音符（1.5 拍）</option>
+          <option value="2" data-i18n="w.ns.anacrusis_2">二分音符（2 拍）</option>
+          <option value="2." data-i18n="w.ns.anacrusis_2d">附点二分音符（3 拍）</option>
+          <option value="1" data-i18n="w.ns.anacrusis_1">全音符（4 拍）</option>
+          <option value="1." data-i18n="w.ns.anacrusis_1d">附点全音符（6 拍）</option>
+        </select></div>
+      </div>
+      <div class="field">
+        <span class="lbl" data-i18n="w.ns.field_measures">初始小节数</span>
+        <input type="number" id="ns-measures" class="textinput num" min="1" max="200" value="16">
+      </div>
+      <div class="field">
+        <span class="lbl" data-i18n="w.ns.field_voices">声部数</span>
+        <input type="number" id="ns-voices" class="textinput num" min="1" max="8" value="1">
+      </div>
+    </div>
+    <div class="msg err hidden" id="ns-error"></div>
+    <div class="btnrow">
+      <button class="ghost" id="ns-cancel" data-i18n="w.conv.cancel">取消</button>
+      <button class="primary" id="ns-create" data-i18n="w.ns.create">创建</button>
     </div>
   </div>
 </div>

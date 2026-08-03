@@ -160,7 +160,7 @@ function edShowTab(which) {
 $('ed-tab-ref').addEventListener('click', () => edShowTab('ref'));
 $('ed-tab-pv').addEventListener('click', () => edShowTab('pv'));
 
-function edApplyLoad(r) {
+export function edApplyLoad(r) {
   edLoaded = true;
   $('ed-name').textContent = r.name;
   $('ed-hint').textContent = '';

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import threading
 from pathlib import Path
@@ -49,6 +50,49 @@ def _normalize_stem(stem: str) -> str:
     if stem.endswith('.source'):
         stem = stem[: -len('.source')]
     return stem
+
+
+_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def _sanitize_title_for_filename(title: str) -> str:
+    """Turn a user-typed title into a safe Windows filename stem."""
+    cleaned = _INVALID_FILENAME_CHARS.sub('_', title).strip().strip('.')
+    return cleaned or 'Untitled'
+
+
+def _unique_jianpu_txt_path(ws: Path, stem: str) -> Path:
+    """First available ``<stem>[ (n)].jianpu.txt`` under *ws* (Explorer-style
+    auto-suffix — new-file creation has no prior "this exact file" to
+    overwrite, so silently picking the next free name beats either blocking
+    on a scary error or silently clobbering an existing score)."""
+    dest = ws / f'{stem}.jianpu.txt'
+    n = 2
+    while dest.exists():
+        dest = ws / f'{stem} ({n}).jianpu.txt'
+        n += 1
+    return dest
+
+
+def _blank_measure_text(bar_quarter_length: float) -> str:
+    """A full-bar rest matching *bar_quarter_length*, using the same greedy
+    duration decomposition already used to repair malformed OMR measures —
+    so a hand-typed 5/4 or 7/8 bar chains multiple rest tokens exactly the
+    way the rest of the pipeline would, not a bespoke one-off encoding."""
+    from core.config import JianpuNote
+    from core.notation.jianpu.primitives import jianpu_note_token, split_duration_chunks
+
+    chunks = split_duration_chunks(bar_quarter_length)
+    if not chunks:
+        return '0'
+    tokens = [
+        jianpu_note_token(JianpuNote(
+            symbol='0', accidental='', upper_dots=0, lower_dots=0,
+            duration=chunk, duration_dots=0, midi=None, is_rest=True,
+        ))
+        for chunk in chunks
+    ]
+    return ' '.join(tokens)
 
 
 class EditorService:
@@ -107,6 +151,69 @@ class EditorService:
         if not txt.exists():
             return {'ok': False, 'error': 'no_txt', 'name': txt.name}
         return self.load(str(txt))
+
+    # ── 新建空白简谱（B8.4 轻量版）───────────────────────────────────────────
+
+    def create_blank(self, params: dict) -> dict:
+        """Create a new blank .jianpu.txt from the "新建简谱" wizard's fields,
+        write it into editor_workspace_dir() alongside OMR output (so the
+        entire downstream render/export/preview chain needs zero changes),
+        then load() it exactly like opening any other file.
+        """
+        from core.notation.jianpu.primitives import _QL_TO_ANACRUSIS_CODE
+        from core.render.renderer import _build_editor_header
+
+        title = str(params.get('title') or '').strip() or 'Untitled'
+        composer = str(params.get('composer') or '').strip()
+        key_mode = params.get('key_mode') if params.get('key_mode') in ('major', 'minor') else 'major'
+        tonic = str(params.get('tonic') or 'C').strip()
+        try:
+            num = max(1, int(params.get('time_num') or 4))
+            den = max(1, int(params.get('time_den') or 4))
+            tempo = max(1, int(params.get('tempo') or 120))
+            measure_count = max(1, int(params.get('measure_count') or 16))
+            voice_count = max(1, int(params.get('voice_count') or 1))
+        except (TypeError, ValueError):
+            return {'ok': False, 'error': 'bad_params'}
+        anacrusis_code = str(params.get('anacrusis') or '').strip()
+        anacrusis_ql = None
+        if anacrusis_code:
+            code_to_ql = {code: ql for ql, code in _QL_TO_ANACRUSIS_CODE.items()}
+            anacrusis_ql = code_to_ql.get(anacrusis_code)
+            if anacrusis_ql is None:
+                return {'ok': False, 'error': 'bad_params'}
+
+        ws = editor_workspace_dir()
+        ws.mkdir(parents=True, exist_ok=True)
+        dest = _unique_jianpu_txt_path(ws, _sanitize_title_for_filename(title))
+
+        bar_ql = 4.0 * num / den
+        full_bar = _blank_measure_text(bar_ql)
+        first_bar = _blank_measure_text(anacrusis_ql) if anacrusis_ql is not None else full_bar
+        key_line = f'1={tonic}' if key_mode == 'major' else f'6={tonic}'
+        timesig_line = f'{num}/{den}' + (f',{anacrusis_code}' if anacrusis_code else '')
+
+        def voice_body() -> str:
+            bars = [first_bar] + [full_bar] * (measure_count - 1)
+            lines = [key_line, timesig_line, f'4={tempo}', '']
+            for i in range(0, len(bars), 4):  # 4 小节一行，贴近真实文件排版习惯
+                lines.append(' | '.join(bars[i:i + 4]) + ' |')
+            return '\n'.join(lines)
+
+        body_lines = ['% jianpu-ly.py', f'title={title}']
+        if composer:
+            body_lines.append(f'composer={composer}')
+        body_lines.append(voice_body())
+        for _ in range(voice_count - 1):
+            body_lines.append('NextPart')
+            body_lines.append(voice_body())
+        body = '\n'.join(body_lines) + '\n'
+
+        try:
+            dest.write_text(_build_editor_header(title) + body, encoding='utf-8')
+        except OSError as exc:
+            return {'ok': False, 'error': str(exc)}
+        return self.load(str(dest))
 
     # ── 保存 ─────────────────────────────────────────────────────────────────
 

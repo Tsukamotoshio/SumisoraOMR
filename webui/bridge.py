@@ -341,6 +341,9 @@ class Bridge:
     def editor_export_to_output(self) -> dict:
         return self._editor.export_to_output() if self._editor else {'ok': False}
 
+    def editor_create_blank(self, params: dict) -> dict:
+        return self._editor.create_blank(params) if self._editor else {'ok': False}
+
     def editor_pick_open(self) -> dict:
         """Native open dialog for a .jianpu.txt → load it."""
         if self._editor is None or self._window is None:

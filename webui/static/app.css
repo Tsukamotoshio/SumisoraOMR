@@ -159,6 +159,22 @@ button { font-family: inherit; cursor: default; }
   transform: translateY(-70%) rotate(45deg); pointer-events: none;
 }
 .checkrow { display: flex; align-items: center; gap: 9px; padding: 2px 1px; font-size: 13.5px; color: var(--text); }
+.textinput {
+  width: 100%; box-sizing: border-box;
+  padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: 9px;
+  background: var(--inset); font-size: 13.5px; color: var(--text); font-family: inherit;
+}
+.textinput.num { text-align: center; }
+.textinput:focus { outline: none; border-color: var(--accent); }
+
+/* 新建简谱向导 */
+.newscore-sheet { width: min(460px, calc(100vw - 48px)); }
+.newscore-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.newscore-grid .span2 { grid-column: 1 / -1; }
+.timesigrow { display: flex; align-items: center; gap: 8px; }
+.timesigrow .textinput.num { width: 64px; flex: none; }
+.timesigrow .timesig-sep { font-size: 15px; color: var(--faint); }
+.timesigrow .selectwrap { flex: 1; }
 .primary {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; padding: 12px 14px; border: 0; border-radius: 10px;

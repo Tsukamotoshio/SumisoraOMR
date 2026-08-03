@@ -5,7 +5,7 @@
 import { $, api, t, toast, pageEnterHooks } from './core.js';
 import { PdfView } from './pdfview.js';
 import { midiPlayer } from './midi.js';
-import { edOpenForPdf } from './editor.js';
+import { edOpenForPdf, edApplyLoad } from './editor.js';
 
 const jpView = new PdfView($('jp-canvas'), $('jp-stage'), $('jp-pageinfo'));
 let jpEntries = [];
@@ -118,3 +118,83 @@ $('jp-next').addEventListener('click', () => jpView.next());
 $('jp-zoomin').addEventListener('click', () => jpView.zoom(1.2));
 $('jp-zoomout').addEventListener('click', () => jpView.zoom(1 / 1.2));
 $('jp-zoomfit').addEventListener('click', () => jpView.zoomFit());
+
+// ── 新建空白简谱（B8.4 轻量版） ──────────────────────────────────────────────
+// 主音下拉与 webui/transpose.py:KEYS 同一份 15 个大调名（简谱调号用同一套主音
+// 拼写，无论大调/小调），静态常量不值得为它单开一趟桥调用。
+const NS_TONICS = ['Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#'];
+let nsTonicsPopulated = false;
+function nsPopulateTonics() {
+  if (nsTonicsPopulated) return;
+  const sel = $('ns-tonic');
+  for (const k of NS_TONICS) {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = k.replace('#', '♯').replace('b', '♭');
+    if (k === 'C') opt.selected = true;
+    sel.appendChild(opt);
+  }
+  nsTonicsPopulated = true;
+}
+
+function nsResetForm() {
+  $('ns-title').value = '';
+  $('ns-composer').value = '';
+  $('ns-key-mode').value = 'major';
+  $('ns-tonic').value = 'C';
+  $('ns-time-num').value = '4';
+  $('ns-time-den').value = '4';
+  $('ns-tempo').value = '120';
+  $('ns-anacrusis').value = '';
+  $('ns-measures').value = '16';
+  $('ns-voices').value = '1';
+  $('ns-error').classList.add('hidden');
+}
+
+function nsOpen() {
+  nsPopulateTonics();
+  nsResetForm();
+  $('newscore-overlay').classList.remove('hidden');
+  $('ns-title').focus();
+}
+function nsClose() { $('newscore-overlay').classList.add('hidden'); }
+
+$('jp-new').addEventListener('click', nsOpen);
+$('ns-close').addEventListener('click', nsClose);
+$('ns-cancel').addEventListener('click', nsClose);
+$('newscore-overlay').addEventListener('click', (e) => { if (e.target.id === 'newscore-overlay') nsClose(); });
+
+async function nsCreate() {
+  const title = $('ns-title').value.trim();
+  if (!title) {
+    $('ns-error').textContent = t('w.ns.err_title_required');
+    $('ns-error').classList.remove('hidden');
+    $('ns-title').focus();
+    return;
+  }
+  $('ns-create').disabled = true;
+  try {
+    const r = await api().editor_create_blank({
+      title,
+      composer: $('ns-composer').value.trim(),
+      key_mode: $('ns-key-mode').value,
+      tonic: $('ns-tonic').value,
+      time_num: Number($('ns-time-num').value) || 4,
+      time_den: Number($('ns-time-den').value) || 4,
+      tempo: Number($('ns-tempo').value) || 120,
+      anacrusis: $('ns-anacrusis').value,
+      measure_count: Number($('ns-measures').value) || 16,
+      voice_count: Number($('ns-voices').value) || 1,
+    });
+    if (!r.ok) {
+      $('ns-error').textContent = t('w.ns.err_create_failed', { e: r.error || '' });
+      $('ns-error').classList.remove('hidden');
+      return;
+    }
+    nsClose();
+    edApplyLoad(r);
+  } finally {
+    $('ns-create').disabled = false;
+  }
+}
+$('ns-create').addEventListener('click', nsCreate);
