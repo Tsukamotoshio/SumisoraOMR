@@ -43,7 +43,8 @@ from .extract import (
     extract_strict_jianpu_measures,
 )
 
-from ...config import JianpuNote  # re-export for callers that import it from here
+from ...config import JianpuDoc, JianpuNote, JianpuSection  # re-export for callers that import them from here
+from .parser import JianpuParseError, parse_jianpu_ly_text
 
 
 def choose_measures_per_line(measures: list[list[JianpuNote]]) -> int:

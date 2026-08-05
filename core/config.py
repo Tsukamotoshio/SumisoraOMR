@@ -130,3 +130,38 @@ class JianpuNote:
     # text stream) means inserting/deleting notes never desyncs the lyrics — see
     # docs/修复计划2与简谱编辑器规划.md's B10.4 for the rationale.
     lyrics: dict[int, tuple[str, bool]] = field(default_factory=dict)
+
+
+@dataclass
+class JianpuSection:
+    """One ``NextPart``-delimited segment of a jianpu-ly document.
+
+    Only ``time_sig`` varies per section in real jianpu-ly output — title,
+    composer, key and tempo are whole-document properties that appear once
+    and apply uniformly across every section (verified against real
+    multi-voice files and the current serializer; see the 2026-08-05
+    correction in docs/jianpu-ly-syntax.md §1.6 and the fix-plan doc's B3).
+    """
+    time_sig: str
+    measures: list[list[JianpuNote]] = field(default_factory=list)
+
+
+@dataclass
+class JianpuDoc:
+    """Editor-model form of a jianpu-ly document (修复计划2 B3, 方案 C).
+
+    The 唯一事实源 (single source of truth) for the graphical editor: parsed
+    from jianpu-ly text (``core.notation.jianpu.parser.parse_jianpu_ly_text``)
+    and serialized back to it (``core.notation.jianpu.build_jianpu_ly_text_from_doc``).
+    ``midi`` on each note is intentionally left ``None`` by the parser (not
+    needed for text round-tripping; computing it requires reversing the
+    key-tonic → semitone math in primitives.py, deferred to whichever stage
+    first needs it for playback).
+    """
+    title: str
+    composer: str = ''
+    key_header: str = '1=C'
+    tempo: int = 0
+    sections: list[JianpuSection] = field(default_factory=list)
+    voice_groups: list[list[int]] = field(default_factory=list)
+    repeat_barlines: dict[int, dict[str, bool]] = field(default_factory=dict)
