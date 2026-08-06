@@ -119,6 +119,41 @@ def build_jianpu_ly_text_from_measures(
     return '\n'.join(header)
 
 
+def build_jianpu_ly_text_from_doc(doc: 'JianpuDoc') -> str:
+    """Serialize a JianpuDoc (阶段2 editor model) back to jianpu-ly body text.
+
+    Counterpart to ``parser.parse_jianpu_ly_text`` — together they're the
+    parse/serialize pair the 48-file round-trip test exercises. Deliberately
+    does **not** call ``pad_measure_to_bar`` the way
+    ``build_jianpu_ly_text_from_measures`` does: padding is that function's
+    own repair step for freshly-extracted OMR measures, but here it would
+    silently "fix" an already-malformed measure on every re-save, changing
+    the file out from under a round trip that's supposed to reproduce it
+    byte-for-byte (after normalisation — see the parser's tests). A measure
+    that doesn't match its bar length is instead left exactly as parsed;
+    the real-time linter (jianpu-lint.js) is what surfaces that to the user.
+    """
+    header = ['% jianpu-ly.py', f'title={doc.title}']
+    if doc.composer:
+        header.append(f'composer={doc.composer}')
+    header.append(doc.key_header)
+    if doc.sections:
+        header.append(doc.sections[0].time_sig)
+    if doc.tempo > 0:
+        header.append(f'4={doc.tempo}')
+    header.append('')
+
+    for section_idx, section in enumerate(doc.sections):
+        if section_idx > 0:
+            header.append('NextPart')
+            header.append(section.time_sig)
+        for i in range(0, len(section.measures), 4):
+            line_measures = section.measures[i:i + 4]
+            measure_texts = [' '.join(jianpu_note_token(note) for note in m) for m in line_measures]
+            header.append(' | '.join(measure_texts) + ' |')
+    return '\n'.join(header)
+
+
 @overload
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                           composer: str = '', tempo: int = 0,
