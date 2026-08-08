@@ -57,7 +57,11 @@ def test_note_token_shapes_decode_correctly(token, expect):
     note = doc.sections[0].measures[0][0]
     for field, value in expect.items():
         assert getattr(note, field) == value, f'{token}: {field}'
-    assert note.midi is None  # 阶段2范围内不计算 midi（见 parser.py 模块文档）
+    # 阶段3.1: 休止符仍不计算 midi，真实音符现在都会算出 midi（见 parser.py 模块文档）
+    if expect['is_rest']:
+        assert note.midi is None
+    else:
+        assert note.midi is not None
 
 
 @pytest.mark.parametrize(('token', 'prefix_ql'), [('-', 1.0), ('q-', 0.5), ('s-', 0.25), ('d-', 0.125)])
@@ -166,3 +170,25 @@ def test_parses_all_golden_fixtures_without_raising():
         assert doc.sections, f'{path}: expected at least one section'
         assert any(m for section in doc.sections for m in section.measures), \
             f'{path}: expected at least one non-empty measure'
+
+
+def test_golden_fixtures_get_non_none_midi_for_real_notes():
+    # 阶段3.1: every real (non-rest, non-dash) note parsed from a golden
+    # fixture must come out with a computed .midi — only rests and dash
+    # continuations are allowed to keep None (see parser.py module docstring).
+    files = glob.glob(os.path.join(GOLDEN_DIR, '*.jly.txt'))
+    checked_any_note = False
+    for path in files:
+        if os.path.basename(path) in _KNOWN_OUT_OF_SCOPE:
+            continue
+        with open(path, encoding='utf-8') as f:
+            doc = parse_jianpu_ly_text(f.read())
+        for section in doc.sections:
+            for measure in section.measures:
+                for note in measure:
+                    if note.is_rest or note.symbol in ('-', '?'):
+                        assert note.midi is None, f'{path}: expected None midi for {note.symbol!r}'
+                        continue
+                    checked_any_note = True
+                    assert note.midi is not None, f'{path}: expected computed midi for {note.symbol!r}'
+    assert checked_any_note, 'expected at least one real note across the golden fixture set'

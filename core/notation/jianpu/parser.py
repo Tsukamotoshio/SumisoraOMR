@@ -14,17 +14,21 @@ raised instead of silently dropping them, per that doc's §3 rule ("解析器
 future work, not needed for the 48-file round-trip acceptance test this
 stage is scoped to.
 
-``JianpuNote.midi`` is intentionally left ``None`` here — recovering it
-would mean reversing the key-tonic → semitone math in primitives.py
-(``note_to_jianpu``'s forward direction), which isn't needed for text
-round-tripping (``jianpu_note_token`` never reads ``.midi``) and is deferred
-to whichever later stage first needs it for MIDI playback.
+``JianpuNote.midi`` is computed after parsing (阶段3.1) via
+``primitives.jianpu_note_to_midi`` — the reverse of ``note_to_jianpu``'s
+key-tonic → semitone math, keyed off the document's own ``key_header``.
+Dash-continuation notes (``symbol='-'``) and rests still get ``None``: a
+dash's pitch is a function of the note it continues, not of the token
+itself, so resolving it is the job of whatever merges consecutive dashes
+into one sustained note (the JianpuDoc -> renderer-JSON conversion), not
+this parser.
 """
 from __future__ import annotations
 
 import re
 
 from ...config import JianpuDoc, JianpuNote, JianpuSection
+from .primitives import jianpu_note_to_midi, key_header_tonic_semitone
 
 _NOTE_RE = re.compile(r"^([qsd]?)([#b]?)([0-7])('+|,+)?(\.?)$")
 _DASH_RE = re.compile(r"^([qsd]?)(-)(\.?)$")
@@ -177,6 +181,12 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
         current_measure.append(_decode_note_or_dash(word))
 
     flush_pending_defensively()
+
+    key_tonic_semitone = key_header_tonic_semitone(key_header)
+    for section in sections:
+        for measure in section.measures:
+            for note in measure:
+                note.midi = jianpu_note_to_midi(note, key_tonic_semitone)
 
     return JianpuDoc(
         title=title, composer=composer, key_header=key_header, tempo=tempo,

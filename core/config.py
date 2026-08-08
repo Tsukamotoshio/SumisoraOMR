@@ -153,10 +153,11 @@ class JianpuDoc:
     The 唯一事实源 (single source of truth) for the graphical editor: parsed
     from jianpu-ly text (``core.notation.jianpu.parser.parse_jianpu_ly_text``)
     and serialized back to it (``core.notation.jianpu.build_jianpu_ly_text_from_doc``).
-    ``midi`` on each note is intentionally left ``None`` by the parser (not
-    needed for text round-tripping; computing it requires reversing the
-    key-tonic → semitone math in primitives.py, deferred to whichever stage
-    first needs it for playback).
+    ``midi`` on each note is populated by the parser (阶段3.1, via
+    ``primitives.jianpu_note_to_midi``) for real notes; dash-continuation
+    notes and rests keep ``None`` — a dash's pitch depends on the note it
+    continues, resolved later by whatever merges dashes into one sustained
+    note (not the parser's job).
     """
     title: str
     composer: str = ''

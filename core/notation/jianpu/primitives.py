@@ -1,8 +1,9 @@
 # core/notation/jianpu/primitives.py — Note/duration primitives for Jianpu conversion.
 
 import logging as _logging
+from typing import Optional
 
-from music21 import chord as m21chord, note as m21note
+from music21 import chord as m21chord, note as m21note, pitch as m21pitch
 
 from ...config import (
     ALLOWED_JIANPU_DURATIONS,
@@ -24,6 +25,20 @@ _CHROMATIC_FLAT: dict[int, tuple[str, str]] = {
 # Keys whose accidentals lean towards flats (pitch-class of the tonic, 0-based)
 # F=5, Bb=10, Eb=3, Ab=8, Db=1, Gb=6, Cb=11
 _FLAT_KEY_SEMITONES: frozenset = frozenset({1, 3, 5, 6, 8, 10, 11})
+
+# Reverse of _DIATONIC_SEMITONES (jianpu numeral -> natural semitone offset
+# from tonic) — used by jianpu_note_to_midi() to invert note_to_jianpu().
+# Sharp/flat aren't looked up from _CHROMATIC_SHARP/_CHROMATIC_FLAT: those
+# tables only list the *canonical* spelling note_to_jianpu() itself would
+# choose for each chromatic pitch class (e.g. it always emits '#4', never
+# '#3', which is enharmonically the same pitch as natural '4'). A token
+# parsed from real text isn't limited to those canonical spellings — '#3'
+# ("sharp mi") and '#7' ("sharp ti") are syntactically valid jianpu-ly notes
+# that simply aren't reachable outputs of this project's own encoder — so
+# the reverse direction instead computes sharp/flat arithmetically
+# (±1 semitone from the natural degree), which is correct for every
+# accidental/digit combination, not just the ones note_to_jianpu() emits.
+_DIATONIC_TO_SEMITONE: dict[str, int] = {v: k for k, v in _DIATONIC_SEMITONES.items()}
 
 
 def _relative_major_tonic(tonic):
@@ -50,6 +65,25 @@ def _format_key_header(tonic, mode: str) -> str:
     """
     name = tonic.name.replace('-', 'b')
     return f"{'6' if mode == 'minor' else '1'}={name}"
+
+
+def key_header_tonic_semitone(key_header: str) -> int:
+    """Invert _format_key_header(): a jianpu-ly key header -> relative-major pitch-class.
+
+    Accepts the '1=X' (major) / '6=X' (minor) headers this module produces.
+    Minor headers are reduced to their relative major exactly like
+    _tonic_result() does, so the result is directly usable as the
+    key_tonic_semitone argument to note_to_jianpu() / jianpu_note_to_midi().
+    """
+    degree, _, name = key_header.partition('=')
+    name = name.strip()
+    # _format_key_header() writes flats as 'b' (tonic.name.replace('-', 'b'));
+    # music21 Pitch names spell flat with '-', so undo that substitution.
+    m21_name = name[0] + name[1:].replace('b', '-') if len(name) > 1 else name
+    tonic = m21pitch.Pitch(m21_name)
+    if degree.strip() == '6':
+        tonic = _relative_major_tonic(tonic)
+    return tonic.pitchClass
 
 
 def _first_part(score):
@@ -342,6 +376,36 @@ def note_to_jianpu(element, key_tonic_semitone: int = 0) -> JianpuNote:
         is_rest=False,
         lyrics=_extract_lyrics(element),
     )
+
+
+def jianpu_note_to_midi(note: JianpuNote, key_tonic_semitone: int) -> Optional[int]:
+    """Invert note_to_jianpu(): recover the absolute MIDI pitch from a JianpuNote.
+
+    *key_tonic_semitone* must be the same reference tonic (0-11,
+    relative-major-reduced) note_to_jianpu() would have been called with —
+    see key_header_tonic_semitone() to derive it from a JianpuDoc.key_header.
+
+    Returns None for rests, dash-continuation tokens (symbol='-') and
+    unrecognised symbols ('?'). A dash's pitch is a function of the note it
+    continues, not of the dash token itself — resolving that is the job of
+    whatever merges consecutive dash notes into one sustained note (the
+    JianpuDoc -> renderer-JSON conversion), not this per-token function.
+    """
+    if note.is_rest or note.symbol in ('-', '?'):
+        return None
+    natural_semitone = _DIATONIC_TO_SEMITONE.get(note.symbol)
+    if natural_semitone is None:
+        return None
+    if note.accidental == '':
+        relative_semitone = natural_semitone
+    elif note.accidental == '#':
+        relative_semitone = (natural_semitone + 1) % 12
+    elif note.accidental == 'b':
+        relative_semitone = (natural_semitone - 1) % 12
+    else:
+        return None
+    octave_offset = note.upper_dots - note.lower_dots
+    return (key_tonic_semitone % 12) + 60 + octave_offset * 12 + relative_semitone
 
 
 def format_jianpu_note_text(note: JianpuNote) -> str:
