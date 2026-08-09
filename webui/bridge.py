@@ -338,6 +338,9 @@ class Bridge:
     def editor_render_preview(self, body: Optional[str] = None) -> dict:
         return self._editor.render_preview(body) if self._editor else {'ok': False}
 
+    def editor_graphical_data(self, body: Optional[str] = None) -> dict:
+        return self._editor.graphical_render_data(body) if self._editor else {'ok': False}
+
     def editor_export_to_output(self) -> dict:
         return self._editor.export_to_output() if self._editor else {'ok': False}
 

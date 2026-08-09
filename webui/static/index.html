@@ -409,6 +409,7 @@
             <div class="btngroup tabgroup">
               <button class="pvbtn tab" id="ed-tab-ref" aria-selected="true" data-i18n="w.ed.ref_tab">参考图</button>
               <button class="pvbtn tab" id="ed-tab-pv" aria-selected="false" data-i18n="w.ed.preview_tab">简谱预览</button>
+              <button class="pvbtn tab" id="ed-tab-gr" aria-selected="false" data-i18n="w.ed.graphical_tab">图形预览</button>
             </div>
             <span class="count" id="ed-left-name"></span>
           </header>
@@ -420,6 +421,10 @@
           <div class="stage pdfstage hidden" id="ed-pv-stage">
             <div class="placeholder"><span id="ed-pv-ph" data-i18n="w.ed.no_preview_yet">点「渲染预览」查看当前文本的排版效果</span></div>
             <div class="a4frame"><canvas id="ed-pv-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="stage hidden" id="ed-gr-stage">
+            <div class="placeholder"><span id="ed-gr-ph" data-i18n="w.ed.graphical_placeholder">加载中…</span></div>
+            <div class="graphical-container" id="ed-gr-container"></div>
           </div>
           <div class="previewbar">
             <span class="lbl num" id="ed-pv-pageinfo"></span>

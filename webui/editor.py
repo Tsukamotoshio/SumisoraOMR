@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.app.backend import build_dir, editor_workspace_dir, output_dir
+from core.notation.jianpu import JianpuParseError, jianpu_section_to_render_json, parse_jianpu_ly_text
 from core.utils import log_message
 
 from .events import EventPusher
@@ -227,6 +228,35 @@ class EditorService:
         except OSError as exc:
             log_message(f'[webui] 简谱保存失败：{exc}', logging.WARNING)
             return {'ok': False, 'error': str(exc)}
+
+    # ── 图形化渲染数据（txt → JianpuDoc → JianpuRender JSON，阶段3.2）────────
+
+    def graphical_render_data(self, body: Optional[str] = None) -> dict:
+        """Parse the CURRENT buffer into JianpuRender's JianpuInfo JSON shape.
+
+        Read-only and does not save — unlike render_preview() (the LilyPond
+        PDF path), this never has to touch disk since the graphical renderer
+        only needs the in-memory JianpuDoc, not a saved file.  Single-section
+        only for now (阶段3.5 adds multi-voice/NextPart layout); returns the
+        first section.
+        """
+        if self._current is None:
+            return {'ok': False, 'error': 'no_file'}
+        if body is None:
+            try:
+                with self._file_lock:
+                    text = self._current.read_text(encoding='utf-8-sig', errors='replace')
+            except OSError as exc:
+                return {'ok': False, 'error': str(exc)}
+            _, body = _split_header(text)
+        try:
+            doc = parse_jianpu_ly_text(body)
+        except JianpuParseError as exc:
+            return {'ok': False, 'error': 'parse_error', 'message': str(exc), 'line': exc.line, 'col': exc.col}
+        if not doc.sections:
+            return {'ok': False, 'error': 'empty'}
+        render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+        return {'ok': True, 'render': render}
 
     # ── 预览渲染（txt → LilyPond → PDF；完成推 editor_preview_ready）─────────
 

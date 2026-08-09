@@ -16,3 +16,6 @@
 [submodule "webui/static/vendor/notedigger"]
 	path = webui/static/vendor/notedigger
 	url = https://github.com/Tsukamotoshio/noteDigger
+[submodule "webui/static/vendor/jianpu-render"]
+	path = webui/static/vendor/jianpu-render
+	url = https://github.com/Tsukamotoshio/JianpuRender

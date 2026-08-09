@@ -154,11 +154,54 @@ function edUpdateGutter() {
 function edShowTab(which) {
   $('ed-tab-ref').setAttribute('aria-selected', String(which === 'ref'));
   $('ed-tab-pv').setAttribute('aria-selected', String(which === 'pv'));
+  $('ed-tab-gr').setAttribute('aria-selected', String(which === 'gr'));
   $('ed-ref-stage').classList.toggle('hidden', which !== 'ref');
   $('ed-pv-stage').classList.toggle('hidden', which !== 'pv');
+  $('ed-gr-stage').classList.toggle('hidden', which !== 'gr');
 }
 $('ed-tab-ref').addEventListener('click', () => edShowTab('ref'));
 $('ed-tab-pv').addEventListener('click', () => edShowTab('pv'));
+$('ed-tab-gr').addEventListener('click', () => { edShowTab('gr'); edRenderGraphical(); });
+
+// ── 图形化渲染（阶段3.2，只读；实时刷新是阶段3.6的事）─────────────────────────
+// fork 自 flufy3d/JianpuRender（webui/static/vendor/jianpu-render/，见修复计划2
+// 与简谱编辑器规划.md B9.3.1/B6 阶段3.2），构建产物 window.jr 走全局脚本注入，
+// 与 tinysynth（midi.js）同一套懒加载手法。
+let _jianpuRenderLibPromise = null;
+function edLoadJianpuRenderLib() {
+  if (_jianpuRenderLibPromise) return _jianpuRenderLibPromise;
+  _jianpuRenderLibPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '../vendor/jianpu-render/dist/jianpurender.js';
+    s.onload = () => resolve(window.jr);
+    s.onerror = () => reject(new Error('jianpu-render load failed'));
+    document.head.appendChild(s);
+  });
+  return _jianpuRenderLibPromise;
+}
+
+async function edRenderGraphical() {
+  if (!edLoaded) return;
+  const ph = $('ed-gr-ph');
+  const container = $('ed-gr-container');
+  ph.parentElement.classList.remove('hidden');
+  ph.textContent = t('w.ed.graphical_placeholder');
+  const r = await api().editor_graphical_data($('ed-text').value);
+  if (!r.ok) {
+    ph.textContent = r.error === 'parse_error'
+      ? t('w.ed.graphical_parse_error', { line: r.line, message: r.message || '' })
+      : t('w.ed.graphical_failed', { e: r.error || '' });
+    return;
+  }
+  try {
+    const jr = await edLoadJianpuRenderLib();
+    container.replaceChildren();
+    new jr.JianpuSVGRender(r.render, { noteHeight: 24 }, container);
+    ph.parentElement.classList.add('hidden');
+  } catch (e) {
+    ph.textContent = t('w.ed.graphical_failed', { e: String(e) });
+  }
+}
 
 export function edApplyLoad(r) {
   edLoaded = true;
@@ -193,6 +236,10 @@ export function edApplyLoad(r) {
   edPvView.close();
   $('ed-pv-ph').parentElement.classList.remove('hidden');
   $('ed-pv-ph').textContent = t('w.ed.no_preview_yet');
+  // 图形预览复位（换文件后旧渲染作废，切到该 tab 时才重新拉取，见 edRenderGraphical）
+  $('ed-gr-container').replaceChildren();
+  $('ed-gr-ph').parentElement.classList.remove('hidden');
+  $('ed-gr-ph').textContent = t('w.ed.graphical_placeholder');
   edShowTab(r.source ? 'ref' : 'pv');
   showPage('editor');
 }
