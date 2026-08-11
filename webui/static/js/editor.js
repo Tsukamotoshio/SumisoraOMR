@@ -161,9 +161,13 @@ function edShowTab(which) {
 }
 $('ed-tab-ref').addEventListener('click', () => edShowTab('ref'));
 $('ed-tab-pv').addEventListener('click', () => edShowTab('pv'));
-$('ed-tab-gr').addEventListener('click', () => { edShowTab('gr'); edRenderGraphical(); });
+$('ed-tab-gr').addEventListener('click', () => {
+  edShowTab('gr');
+  // 切到本 tab 时如果期间有过编辑（edGraphicalStale），或者干脆还没渲染过，就拉一次
+  if (edGraphicalStale || !$('ed-gr-container').firstChild) edRenderGraphical();
+});
 
-// ── 图形化渲染（阶段3.2，只读；实时刷新是阶段3.6的事）─────────────────────────
+// ── 图形化渲染（阶段3.2 只读渲染 + 阶段3.5 多声部 + 阶段3.6 实时更新）────────
 // fork 自 flufy3d/JianpuRender（webui/static/vendor/jianpu-render/，见修复计划2
 // 与简谱编辑器规划.md B9.3.1/B6 阶段3.2），构建产物 window.jr 走全局脚本注入，
 // 与 tinysynth（midi.js）同一套懒加载手法。
@@ -180,14 +184,47 @@ function edLoadJianpuRenderLib() {
   return _jianpuRenderLibPromise;
 }
 
-async function edRenderGraphical() {
+// 阶段3.6 实时更新：输入 → 防抖 → 重新解析并重绘。
+// 防抖而不是逐键立即重绘，是因为解析在 Python 侧（阶段2 的解析器是唯一事实源，
+// 不在前端重写一份），每次都要走一趟 pywebview 桥 IPC；逐键触发只会堆积一串
+// 必然被下一次覆盖掉的往返。ED_GRAPHICAL_DEBOUNCE_MS 取 200ms：低于常人连续
+// 打字的间隔（停手就更新），又足以把一个词的连续击键合并成一次渲染。
+const ED_GRAPHICAL_DEBOUNCE_MS = 200;
+let edGraphicalTimer = null;
+let edGraphicalStale = false;   // 不在图形 tab 时发生过编辑 → 切回来要重拉
+let edGraphicalSeq = 0;         // 作废迟到的响应（后发先至时不覆盖新结果）
+let edGraphicalRendered = false; // 是否已有一份成功渲染的内容挂在容器里
+
+function edScheduleGraphicalRender() {
+  if (!edLoaded) return;
+  if ($('ed-gr-stage').classList.contains('hidden')) {
+    edGraphicalStale = true;  // 当前看不见，不浪费一次桥调用；切回来时再补
+    return;
+  }
+  clearTimeout(edGraphicalTimer);
+  edGraphicalTimer = setTimeout(() => edRenderGraphical({ quiet: true }), ED_GRAPHICAL_DEBOUNCE_MS);
+}
+
+// quiet=true 用于实时重绘：不闪"加载中"占位符、不因为中途的临时语法错误就把已经
+// 画好的谱面清空——打字打到一半（比如刚敲下 "q" 还没敲数字）文本必然短暂非法，
+// 这时把整张谱擦掉换成红字是最难受的交互。保留上一版可见内容，让阶段1 的实时校验
+// 层（波浪线 + toast）去负责告诉用户哪里有错，各司其职。
+async function edRenderGraphical({ quiet = false } = {}) {
   if (!edLoaded) return;
   const ph = $('ed-gr-ph');
   const container = $('ed-gr-container');
-  ph.parentElement.classList.remove('hidden');
-  ph.textContent = t('w.ed.graphical_placeholder');
+  const seq = ++edGraphicalSeq;
+  edGraphicalStale = false;
+  if (!quiet || !edGraphicalRendered) {
+    ph.parentElement.classList.remove('hidden');
+    ph.textContent = t('w.ed.graphical_placeholder');
+  }
   const r = await api().editor_graphical_data($('ed-text').value);
+  if (seq !== edGraphicalSeq) return;  // 已有更新的一次渲染在路上，丢弃本次结果
   if (!r.ok) {
+    if (quiet && edGraphicalRendered) return;  // 实时重绘遇到临时错误：保留旧画面
+    edGraphicalRendered = false;
+    ph.parentElement.classList.remove('hidden');
     ph.textContent = r.error === 'parse_error'
       ? t('w.ed.graphical_parse_error', { line: r.line, message: r.message || '' })
       : t('w.ed.graphical_failed', { e: r.error || '' });
@@ -195,6 +232,10 @@ async function edRenderGraphical() {
   }
   try {
     const jr = await edLoadJianpuRenderLib();
+    if (seq !== edGraphicalSeq) return;
+    // 重绘会重建全部 DOM，横向滚动位置会归零；先记下来再还原，否则用户每敲一个
+    // 字都会被弹回谱面开头。JianpuRender 自己在容器里套了一层可滚动 div。
+    const scrollLefts = [...container.querySelectorAll('.graphical-staff > div')].map((d) => d.scrollLeft);
     container.replaceChildren();
     // 阶段3.5：每个 NextPart 分段各自一个独立 renderer 实例，纵向堆叠成多行
     // 谱表——JianpuRender 本身没有"同一谱表多声部叠放"的概念（见 B9.3.1 spike
@@ -205,8 +246,13 @@ async function edRenderGraphical() {
       container.appendChild(staff);
       new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
     }
+    const scrollables = container.querySelectorAll('.graphical-staff > div');
+    scrollables.forEach((d, i) => { if (scrollLefts[i] !== undefined) d.scrollLeft = scrollLefts[i]; });
+    edGraphicalRendered = true;
     ph.parentElement.classList.add('hidden');
   } catch (e) {
+    edGraphicalRendered = false;
+    ph.parentElement.classList.remove('hidden');
     ph.textContent = t('w.ed.graphical_failed', { e: String(e) });
   }
 }
@@ -245,6 +291,10 @@ export function edApplyLoad(r) {
   $('ed-pv-ph').parentElement.classList.remove('hidden');
   $('ed-pv-ph').textContent = t('w.ed.no_preview_yet');
   // 图形预览复位（换文件后旧渲染作废，切到该 tab 时才重新拉取，见 edRenderGraphical）
+  clearTimeout(edGraphicalTimer);
+  edGraphicalSeq += 1;          // 作废上一个文件那次还在飞的渲染请求
+  edGraphicalRendered = false;
+  edGraphicalStale = false;
   $('ed-gr-container').replaceChildren();
   $('ed-gr-ph').parentElement.classList.remove('hidden');
   $('ed-gr-ph').textContent = t('w.ed.graphical_placeholder');
@@ -323,7 +373,9 @@ $('ed-back').addEventListener('click', () => {
 
 // 编辑器输入行为：脏标记 + 行号同步 + Ctrl+S
 const edTa = $('ed-text');
-edTa.addEventListener('input', () => { edSetDirty(true); edUpdateGutter(); edRunLint(); });
+edTa.addEventListener('input', () => {
+  edSetDirty(true); edUpdateGutter(); edRunLint(); edScheduleGraphicalRender();
+});
 edTa.addEventListener('scroll', () => { $('ed-gutter').scrollTop = edTa.scrollTop; edSyncHighlightScroll(); });
 for (const ev of ['keyup', 'click']) edTa.addEventListener(ev, edUpdateGutter);
 edTa.addEventListener('keydown', (e) => {
