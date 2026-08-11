@@ -232,13 +232,25 @@ class EditorService:
     # ── 图形化渲染数据（txt → JianpuDoc → JianpuRender JSON，阶段3.2）────────
 
     def graphical_render_data(self, body: Optional[str] = None) -> dict:
-        """Parse the CURRENT buffer into JianpuRender's JianpuInfo JSON shape.
+        """Parse the CURRENT buffer into a JianpuRender JianpuInfo JSON per section.
 
         Read-only and does not save — unlike render_preview() (the LilyPond
         PDF path), this never has to touch disk since the graphical renderer
-        only needs the in-memory JianpuDoc, not a saved file.  Single-section
-        only for now (阶段3.5 adds multi-voice/NextPart layout); returns the
-        first section.
+        only needs the in-memory JianpuDoc, not a saved file.
+
+        One entry per `NextPart` section (阶段3.5): every section becomes its
+        own independent staff, stacked vertically by the caller — this is
+        deliberately simpler than the OMR pipeline's voice_groups concept
+        (which merges some sections onto the *same* polyphonic staff for the
+        LilyPond PDF path, see render_preview()'s merge_polyphonic_jianpu_staves
+        call). The 阶段2 editor parser doesn't populate voice_groups at all
+        (that data lives in the file's hidden #__jianpu_meta__ header comment,
+        which parse_jianpu_ly_text never sees — it only receives the body),
+        and JianpuRender itself has no concept of multiple voices sharing one
+        staff (see the 阶段2.5 spike's B9.3.1 finding). Showing every section
+        as its own staff is strictly more information than showing nothing,
+        and is what B6 阶段3.5's own "多个 renderer 实例纵向排布" wording
+        already describes.
         """
         if self._current is None:
             return {'ok': False, 'error': 'no_file'}
@@ -255,8 +267,8 @@ class EditorService:
             return {'ok': False, 'error': 'parse_error', 'message': str(exc), 'line': exc.line, 'col': exc.col}
         if not doc.sections:
             return {'ok': False, 'error': 'empty'}
-        render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
-        return {'ok': True, 'render': render}
+        renders = [jianpu_section_to_render_json(section, doc.key_header) for section in doc.sections]
+        return {'ok': True, 'renders': renders}
 
     # ── 预览渲染（txt → LilyPond → PDF；完成推 editor_preview_ready）─────────
 

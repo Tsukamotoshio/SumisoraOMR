@@ -196,7 +196,15 @@ async function edRenderGraphical() {
   try {
     const jr = await edLoadJianpuRenderLib();
     container.replaceChildren();
-    new jr.JianpuSVGRender(r.render, { noteHeight: 24 }, container);
+    // 阶段3.5：每个 NextPart 分段各自一个独立 renderer 实例，纵向堆叠成多行
+    // 谱表——JianpuRender 本身没有"同一谱表多声部叠放"的概念（见 B9.3.1 spike
+    // 结论），这是本项目自己在外层做的编排，不是改 fork 内部。
+    for (const render of r.renders) {
+      const staff = document.createElement('div');
+      staff.className = 'graphical-staff';
+      container.appendChild(staff);
+      new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
+    }
     ph.parentElement.classList.add('hidden');
   } catch (e) {
     ph.textContent = t('w.ed.graphical_failed', { e: String(e) });
