@@ -267,7 +267,10 @@ class EditorService:
             return {'ok': False, 'error': 'parse_error', 'message': str(exc), 'line': exc.line, 'col': exc.col}
         if not doc.sections:
             return {'ok': False, 'error': 'empty'}
-        renders = [jianpu_section_to_render_json(section, doc.key_header) for section in doc.sections]
+        renders = [
+            jianpu_section_to_render_json(section, doc.key_header, doc.tempo)
+            for section in doc.sections
+        ]
         return {'ok': True, 'renders': renders}
 
     # ── 预览渲染（txt → LilyPond → PDF；完成推 editor_preview_ready）─────────

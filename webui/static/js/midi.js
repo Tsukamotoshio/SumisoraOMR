@@ -13,7 +13,9 @@ const MP_ICON = {
   vol: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 9v6h4l5 4V5L8 9H4z" stroke-linejoin="round"/><path d="M16 8.5a5 5 0 0 1 0 7" stroke-linecap="round"/></svg>',
 };
 let _synthLibPromise = null;
-function loadSynthLib() {
+// 导出给 jianpu-play.js 复用：合成器脚本只能加载一次（它往 window 上挂
+// WebAudioTinySynth），两个模块各自插一遍 <script> 会重复加载。
+export function loadSynthLib() {
   if (_synthLibPromise) return _synthLibPromise;
   _synthLibPromise = new Promise((resolve, reject) => {
     const s = document.createElement('script');

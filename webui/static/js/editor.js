@@ -7,6 +7,7 @@
 import { $, api, t, toast, showPage } from './core.js';
 import { PdfView } from './pdfview.js';
 import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
+import { jianpuPlayer } from './jianpu-play.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
 const edRefView = new PdfView($('ed-ref-canvas'), $('ed-ref-stage'), null);
@@ -158,6 +159,9 @@ function edShowTab(which) {
   $('ed-ref-stage').classList.toggle('hidden', which !== 'ref');
   $('ed-pv-stage').classList.toggle('hidden', which !== 'pv');
   $('ed-gr-stage').classList.toggle('hidden', which !== 'gr');
+  // 离开图形 tab 就停播：播放控件此刻已不可见，让声音在看不见的地方继续响
+  // （而且用户找不到暂停按钮）是明显的坏交互。
+  if (which !== 'gr') jianpuPlayer.stop();
 }
 $('ed-tab-ref').addEventListener('click', () => edShowTab('ref'));
 $('ed-tab-pv').addEventListener('click', () => edShowTab('pv'));
@@ -250,12 +254,59 @@ async function edRenderGraphical({ quiet = false } = {}) {
     scrollables.forEach((d, i) => { if (scrollLefts[i] !== undefined) d.scrollLeft = scrollLefts[i]; });
     edGraphicalRendered = true;
     ph.parentElement.classList.add('hidden');
+    // 阶段4.1：播放引擎吃的是同一份 renders 数据（声音与画面同源）。
+    // load() 会停掉正在进行的播放——文本已经变了，继续按旧时间轴放会驴唇不对马嘴。
+    jianpuPlayer.load(r.renders);
+    edSyncTransport();
   } catch (e) {
     edGraphicalRendered = false;
     ph.parentElement.classList.remove('hidden');
     ph.textContent = t('w.ed.graphical_failed', { e: String(e) });
   }
 }
+
+// ── 播放控件（阶段4.1）───────────────────────────────────────────────────────
+function edFmtTime(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function edSyncTransport() {
+  const bar = $('ed-gr-transport');
+  bar.classList.toggle('hidden', !jianpuPlayer.duration);
+  const playing = jianpuPlayer.isPlaying;
+  const btn = $('ed-gr-play');
+  btn.innerHTML = playing
+    ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  btn.title = t(playing ? 'w.ed.pause' : 'w.ed.play');
+  $('ed-gr-time').textContent = `${edFmtTime(jianpuPlayer.positionSec)} / ${edFmtTime(jianpuPlayer.duration)}`;
+}
+
+// 播放期间用 rAF 刷新读数：位置直接读 AudioContext 时钟，不自己数拍子，
+// 所以即使这个循环被掉帧拖慢，显示的位置也不会漂。
+let edTransportRaf = 0;
+function edTransportLoop() {
+  edSyncTransport();
+  edTransportRaf = jianpuPlayer.isPlaying ? requestAnimationFrame(edTransportLoop) : 0;
+}
+jianpuPlayer.onstate = () => {
+  edSyncTransport();
+  if (jianpuPlayer.isPlaying && !edTransportRaf) edTransportRaf = requestAnimationFrame(edTransportLoop);
+};
+
+$('ed-gr-play').addEventListener('click', async () => {
+  // play() 是 async（要等合成器脚本加载 + AudioContext.resume），所以这里显式
+  // 分支 await，而不是调同步的 toggle()——否则加载/恢复失败会变成无人接管的
+  // unhandled rejection，用户只看到按钮没反应。
+  try {
+    if (jianpuPlayer.isPlaying) jianpuPlayer.pause();
+    else await jianpuPlayer.play();
+  } catch (e) {
+    toast(t('w.ed.play_failed', { e: String(e) }));
+  }
+});
+$('ed-gr-stop').addEventListener('click', () => jianpuPlayer.stop());
 
 export function edApplyLoad(r) {
   edLoaded = true;
@@ -368,6 +419,7 @@ $('ed-export').addEventListener('click', async () => {
 
 $('ed-back').addEventListener('click', () => {
   if (edDirty && !confirm(t('w.ed.unsaved_confirm'))) return;
+  jianpuPlayer.stop();   // 别让声音跟着用户飘到别的页面去
   showPage('jianpu');
 });
 

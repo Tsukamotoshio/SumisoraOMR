@@ -1,7 +1,10 @@
 # tests/test_jianpu_render_json.py — unit tests for the 阶段3.2 conversion
 # layer (core/notation/jianpu/render_json.py: jianpu_section_to_render_json()).
 from core.notation.jianpu.parser import parse_jianpu_ly_text
-from core.notation.jianpu.render_json import jianpu_section_to_render_json
+from core.notation.jianpu.render_json import (
+    DEFAULT_PLAYBACK_TEMPO,
+    jianpu_section_to_render_json,
+)
 
 
 def test_simple_measure_produces_one_note_per_token():
@@ -45,3 +48,18 @@ def test_key_signature_uses_relative_major_semitone_for_minor_header():
     doc = parse_jianpu_ly_text('title=T\n6=A\n4/4\n\n6 7 1 2 |\n')
     render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
     assert render['keySignatures'] == [{'start': 0, 'key': 0}]
+
+
+def test_tempo_is_carried_through_for_playback():
+    # 阶段4.1: playback turns the unitless quarter-note start/length values
+    # into seconds, so the document's `4=N` line has to reach the renderer.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n4=88\n\n1 2 3 4 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header, doc.tempo)
+    assert render['tempos'] == [{'start': 0, 'qpm': 88}]
+
+
+def test_tempo_falls_back_to_the_project_default_when_absent():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 |\n')
+    assert doc.tempo == 0, 'no 4=N line means JianpuDoc.tempo stays 0'
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header, doc.tempo)
+    assert render['tempos'] == [{'start': 0, 'qpm': DEFAULT_PLAYBACK_TEMPO}]

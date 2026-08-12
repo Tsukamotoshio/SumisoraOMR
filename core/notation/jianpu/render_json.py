@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 
 _TIMESIG_RE = re.compile(r'^(\d+)/(\d+)')
 
+# Quarter-notes-per-minute assumed when a file declares no `4=N` tempo line.
+# Matches the default the "新建简谱" wizard fills in (webui/editor.py's
+# create_blank and its front-end form), so a blank score plays back at the
+# same speed it was created at.
+DEFAULT_PLAYBACK_TEMPO = 120
+
 
 def _parse_time_sig(time_sig: str) -> tuple[int, int]:
     """Parse a 'num/denom[,pickup]' time signature string; fall back to 4/4."""
@@ -29,7 +35,9 @@ def _parse_time_sig(time_sig: str) -> tuple[int, int]:
     return int(m.group(1)), int(m.group(2))
 
 
-def jianpu_section_to_render_json(section: 'JianpuSection', key_header: str) -> dict:
+def jianpu_section_to_render_json(
+    section: 'JianpuSection', key_header: str, tempo: int = 0
+) -> dict:
     """Build a JianpuRender ``JianpuInfo`` dict from one JianpuSection.
 
     Only real (non-rest, non-dash) notes become ``notes`` entries —
@@ -41,6 +49,13 @@ def jianpu_section_to_render_json(section: 'JianpuSection', key_header: str) -> 
     new attack, and it's why ``JianpuNote.midi`` is left ``None`` for dashes
     (see primitives.jianpu_note_to_midi's docstring): there's nothing here
     for a dash to contribute beyond duration.
+
+    *tempo* is the document-level quarter-notes-per-minute (``JianpuDoc.tempo``);
+    0 or absent means the file declared none. It is emitted as a ``tempos``
+    entry — unused by the visual render, but it is what turns the otherwise
+    unitless quarter-note ``start``/``length`` values into wall-clock seconds
+    for playback (阶段4.1). ``DEFAULT_PLAYBACK_TEMPO`` stands in when the file
+    has none, matching what jianpu-ly itself assumes for a header-less score.
     """
     notes: list[dict] = []
     start = 0.0
@@ -66,4 +81,5 @@ def jianpu_section_to_render_json(section: 'JianpuSection', key_header: str) -> 
         'notes': notes,
         'keySignatures': [{'start': 0, 'key': key_header_tonic_semitone(key_header)}],
         'timeSignatures': [{'start': 0, 'numerator': numerator, 'denominator': denominator}],
+        'tempos': [{'start': 0, 'qpm': tempo if tempo > 0 else DEFAULT_PLAYBACK_TEMPO}],
     }
