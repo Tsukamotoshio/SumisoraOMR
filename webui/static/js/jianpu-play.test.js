@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildTimeline } from './jianpu-play.js';
+import { activeNotesAt, buildTimeline } from './jianpu-play.js';
 
 /** Minimal stand-in for one section of what editor_graphical_data returns. */
 function section(notes, qpm = 120, ) {
@@ -88,4 +88,64 @@ test('empty and missing input produce an empty timeline rather than throwing', (
   assert.deepEqual(buildTimeline([]), { notes: [], duration: 0 });
   assert.deepEqual(buildTimeline(undefined), { notes: [], duration: 0 });
   assert.deepEqual(buildTimeline([section([])]), { notes: [], duration: 0 });
+});
+
+test('timeline entries carry their section index and original quarter-note note', () => {
+  // 阶段4.2 highlighting calls redraw(note, true), which wants the original
+  // object in quarter-note units -- not the seconds the audio side uses.
+  const src = { start: 2, length: 1, pitch: 64, intensity: 80 };
+  const { notes } = buildTimeline([section([]), section([src])]);
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].section, 1);
+  assert.equal(notes[0].note, src, 'passes the very same object through, not a copy');
+  assert.equal(notes[0].t, 1.0, 'seconds for audio');
+  assert.equal(notes[0].note.start, 2, 'quarters preserved for the renderer');
+});
+
+// ── activeNotesAt: what the playback highlight asks for every frame ──────────
+
+const ACTIVE_FIXTURE = buildTimeline([
+  section([
+    { start: 0, length: 1, pitch: 60 },   // 0.0 - 0.5s
+    { start: 2, length: 1, pitch: 62 },   // 1.0 - 1.5s
+  ]),
+  section([
+    { start: 1, length: 1, pitch: 67 },   // 0.5 - 1.0s
+  ]),
+]);
+
+test('activeNotesAt: reports the note sounding in each section at that instant', () => {
+  const at = (s) => {
+    const m = activeNotesAt(ACTIVE_FIXTURE.notes, s);
+    return [m.get(0) && m.get(0).pitch, m.get(1) && m.get(1).pitch];
+  };
+  assert.deepEqual(at(0.25), [60, undefined], 'only section 0 is sounding');
+  assert.deepEqual(at(0.75), [undefined, 67], 'section 0 has stopped, section 1 sounds');
+  assert.deepEqual(at(1.25), [62, undefined], 'section 0 again on its second note');
+});
+
+test('activeNotesAt: a note is active at its exact onset and silent at its exact end', () => {
+  const pitchAt = (s) => {
+    const n = activeNotesAt(ACTIVE_FIXTURE.notes, s).get(0);
+    return n && n.pitch;
+  };
+  assert.equal(pitchAt(0), 60, 'active exactly at onset (half-open interval start)');
+  assert.equal(pitchAt(0.499999), 60, 'still active just before the end');
+  assert.equal(pitchAt(0.5), undefined, 'silent exactly at its end (half-open interval end)');
+});
+
+test('activeNotesAt: nothing is active before the first note or after the last', () => {
+  assert.equal(activeNotesAt(ACTIVE_FIXTURE.notes, -1).size, 0);
+  assert.equal(activeNotesAt(ACTIVE_FIXTURE.notes, 999).size, 0);
+});
+
+test('activeNotesAt: overlapping notes in one section resolve to the latest onset', () => {
+  // A chord/overlap in a single section: the highlight only needs one
+  // representative, and the most recently struck note is the right one.
+  const { notes } = buildTimeline([section([
+    { start: 0, length: 4, pitch: 60 },   // 0.0 - 2.0s, still sounding
+    { start: 2, length: 1, pitch: 72 },   // 1.0 - 1.5s, struck later
+  ])]);
+  assert.equal(activeNotesAt(notes, 1.2).get(0).pitch, 72);
+  assert.equal(activeNotesAt(notes, 0.4).get(0).pitch, 60, 'before the later note starts');
 });

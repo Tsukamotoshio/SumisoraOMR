@@ -7,7 +7,7 @@
 import { $, api, t, toast, showPage } from './core.js';
 import { PdfView } from './pdfview.js';
 import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
-import { jianpuPlayer } from './jianpu-play.js';
+import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
 const edRefView = new PdfView($('ed-ref-canvas'), $('ed-ref-stage'), null);
@@ -198,6 +198,7 @@ let edGraphicalTimer = null;
 let edGraphicalStale = false;   // 不在图形 tab 时发生过编辑 → 切回来要重拉
 let edGraphicalSeq = 0;         // 作废迟到的响应（后发先至时不覆盖新结果）
 let edGraphicalRendered = false; // 是否已有一份成功渲染的内容挂在容器里
+let edRenderers = [];           // 每个分段一个 JianpuSVGRender 实例（阶段4.2 高亮要用）
 
 function edScheduleGraphicalRender() {
   if (!edLoaded) return;
@@ -244,12 +245,14 @@ async function edRenderGraphical({ quiet = false } = {}) {
     // 阶段3.5：每个 NextPart 分段各自一个独立 renderer 实例，纵向堆叠成多行
     // 谱表——JianpuRender 本身没有"同一谱表多声部叠放"的概念（见 B9.3.1 spike
     // 结论），这是本项目自己在外层做的编排，不是改 fork 内部。
-    for (const render of r.renders) {
+    edRenderers = r.renders.map((render) => {
       const staff = document.createElement('div');
       staff.className = 'graphical-staff';
       container.appendChild(staff);
-      new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
-    }
+      // 留住实例：阶段4.2 的播放高亮要对每个分段调它自己的 redraw(note, true)。
+      return new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
+    });
+    edHighlighted = [];   // 实例全换了，上一轮记的"已高亮音符"作废
     const scrollables = container.querySelectorAll('.graphical-staff > div');
     scrollables.forEach((d, i) => { if (scrollLefts[i] !== undefined) d.scrollLeft = scrollLefts[i]; });
     edGraphicalRendered = true;
@@ -283,16 +286,43 @@ function edSyncTransport() {
   $('ed-gr-time').textContent = `${edFmtTime(jianpuPlayer.positionSec)} / ${edFmtTime(jianpuPlayer.duration)}`;
 }
 
+// ── 播放高亮 + 自动滚动（阶段4.2）─────────────────────────────────────────────
+// 每帧读一次 AudioContext 时钟算出"此刻哪个音符在响"，再交给对应分段的
+// renderer 高亮。**位置来自发声用的同一个时钟**，不是另起一套定时器自己数拍子——
+// 这正是"误差 < 1 帧"能成立的原因：高亮误差的上界就是一帧的间隔本身，掉帧只会
+// 让高亮少更新几次，不会让它跟声音越漂越远。
+// `redraw(note, true)` 的第二个参数就是 fork 自带的按需自动滚动。
+let edHighlighted = [];   // 每个分段上一帧高亮的音符（用来判断"变了没"，避免每帧重画）
+
+function edUpdateHighlight() {
+  if (!edRenderers.length) return;
+  const active = activeNotesAt(jianpuPlayer.notes, jianpuPlayer.positionSec);
+  for (let i = 0; i < edRenderers.length; i++) {
+    const note = active.get(i);
+    if (note === edHighlighted[i]) continue;   // 这一分段没换音符，不必重画
+    edHighlighted[i] = note;
+    if (note) edRenderers[i].redraw(note, true);
+    else edRenderers[i].clearHighlight();
+  }
+}
+
+function edClearHighlight() {
+  for (const r of edRenderers) r.clearHighlight();
+  edHighlighted = [];
+}
+
 // 播放期间用 rAF 刷新读数：位置直接读 AudioContext 时钟，不自己数拍子，
 // 所以即使这个循环被掉帧拖慢，显示的位置也不会漂。
 let edTransportRaf = 0;
 function edTransportLoop() {
   edSyncTransport();
+  edUpdateHighlight();
   edTransportRaf = jianpuPlayer.isPlaying ? requestAnimationFrame(edTransportLoop) : 0;
 }
 jianpuPlayer.onstate = () => {
   edSyncTransport();
   if (jianpuPlayer.isPlaying && !edTransportRaf) edTransportRaf = requestAnimationFrame(edTransportLoop);
+  if (!jianpuPlayer.isPlaying) edClearHighlight();
 };
 
 $('ed-gr-play').addEventListener('click', async () => {
@@ -346,6 +376,8 @@ export function edApplyLoad(r) {
   edGraphicalSeq += 1;          // 作废上一个文件那次还在飞的渲染请求
   edGraphicalRendered = false;
   edGraphicalStale = false;
+  edRenderers = [];             // 容器即将清空，实例引用一并作废
+  edHighlighted = [];
   $('ed-gr-container').replaceChildren();
   $('ed-gr-ph').parentElement.classList.remove('hidden');
   $('ed-gr-ph').textContent = t('w.ed.graphical_placeholder');

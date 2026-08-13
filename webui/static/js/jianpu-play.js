@@ -36,8 +36,12 @@ const DRUM_CHANNEL = 9;
 /**
  * 把 `renders`（每个 NextPart 分段一项）摊平成一条按时间排序的音符事件表。
  * 每个分段占一个 MIDI 通道，这样多声部同时发声不会互相掐断。
+ *
+ * 每条事件除了发声要用的秒数信息，还带上 `section`（第几个分段）与 `note`
+ * （原始的、以"拍"为单位的音符对象）——阶段4.2 的播放高亮要拿它去调对应
+ * renderer 的 `redraw(note, true)`，那个 API 吃的正是拍单位的原始对象。
  * @param {Array<object>} renders
- * @returns {{notes: Array<{t: number, dur: number, pitch: number, ch: number}>, duration: number}}
+ * @returns {{notes: Array<{t:number, dur:number, pitch:number, ch:number, section:number, note:object}>, duration:number}}
  */
 export function buildTimeline(renders) {
   const notes = [];
@@ -52,12 +56,35 @@ export function buildTimeline(renders) {
     for (const n of render.notes || []) {
       const t = n.start * secPerQuarter;
       const dur = n.length * secPerQuarter;
-      notes.push({ t, dur, pitch: n.pitch, ch });
+      notes.push({ t, dur, pitch: n.pitch, ch, section: sectionIdx, note: n });
       duration = Math.max(duration, t + dur);
     }
   });
   notes.sort((a, b) => a.t - b.t);
   return { notes, duration };
+}
+
+/**
+ * 求某个时刻每个分段正在发声的音符（阶段4.2 播放高亮用）。
+ * 同一分段同一时刻若有多个音符（和弦），取最后开始的那个——高亮只需要一个
+ * 代表元素，而"最后开始的"与听感上最新的那次起音一致。
+ * @param {Array<object>} timelineNotes buildTimeline() 的 notes
+ * @param {number} posSec 位置（秒）
+ * @returns {Map<number, object>} 分段下标 → 原始音符对象（拍单位）
+ */
+export function activeNotesAt(timelineNotes, posSec) {
+  const active = new Map();
+  const starts = new Map();
+  for (const n of timelineNotes) {
+    if (n.t > posSec) break;           // 已按时间排序，后面的都还没开始
+    if (posSec >= n.t + n.dur) continue; // 已经放完
+    const prev = starts.get(n.section);
+    if (prev === undefined || n.t >= prev) {
+      starts.set(n.section, n.t);
+      active.set(n.section, n.note);
+    }
+  }
+  return active;
 }
 
 export class JianpuPlayer {
