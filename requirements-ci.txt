@@ -8,6 +8,6 @@
 #
 # If a test starts needing another package, add it here (and to the lock).
 music21==10.5.0
-PyMuPDF==1.27.2.3
+PyMuPDF==1.28.2
 reportlab==5.0.0
 pytest==9.1.1

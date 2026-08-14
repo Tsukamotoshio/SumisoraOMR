@@ -18,9 +18,9 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 
 try:
-    import fitz as _fitz  # PyMuPDF
+    import pymupdf as _pymupdf  # PyMuPDF; the legacy `fitz` alias is deprecated since 1.28
 except Exception:
-    _fitz = None  # type: ignore
+    _pymupdf = None  # type: ignore
 
 from .config import (
     AUDIVERIS_RUNTIME_DIR_NAME,
@@ -157,10 +157,10 @@ def safe_remove_tree(path: Path) -> None:
 
 def get_pdf_page_count(pdf_path: Path) -> int:
     """Return the page count of a PDF, or 0 if unreadable."""
-    if _fitz is None or pdf_path.suffix.lower() != '.pdf' or not pdf_path.exists():
+    if _pymupdf is None or pdf_path.suffix.lower() != '.pdf' or not pdf_path.exists():
         return 0
     try:
-        with _fitz.open(str(pdf_path)) as doc:
+        with _pymupdf.open(str(pdf_path)) as doc:
             return doc.page_count
     except Exception:
         return 0

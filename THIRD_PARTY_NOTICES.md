@@ -32,6 +32,16 @@ This file provides license and attribution notices for third-party components di
 - License: BSD-3-Clause
 - Official site: <https://www.reportlab.com/>
 
+## PyMuPDF
+- Version: `1.28.2`
+- License: Dual-licensed — GNU AGPL-3.0 or Artifex commercial license. This
+  product is itself AGPL-3.0, so it is distributed under the AGPL-3.0 branch.
+- Upstream: <https://github.com/pymupdf/pymupdf>
+- Documentation: <https://pymupdf.readthedocs.io/>
+- Note: PDF page count, vector/bitmap type detection, and page → PNG rendering
+  (`core/utils.py`, `core/omr/engine_router.py`, `core/omr/homr_runner.py`).
+  Imported as `pymupdf`; the legacy `fitz` alias is deprecated as of 1.28.
+
 ## OpenCV
 - Version: `4.8.0`
 - License: Apache-2.0

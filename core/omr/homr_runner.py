@@ -100,18 +100,18 @@ def _pdf_pages_to_png(
     Returns a list of PNG paths (one per page) on success, or an empty list on failure.
     """
     try:
-        import fitz  # PyMuPDF
+        import pymupdf
     except ImportError:
-        log_message(f'[{engine_label}] PyMuPDF (fitz) 未安装，无法处理 PDF 输入。', logging.WARNING)
+        log_message(f'[{engine_label}] PyMuPDF 未安装，无法处理 PDF 输入。', logging.WARNING)
         return []
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
-        doc = fitz.open(str(pdf_path))
+        doc = pymupdf.open(str(pdf_path))
         page_count = doc.page_count
         png_paths: list[Path] = []
         for i in range(page_count):
             page = doc.load_page(i)
-            mat = fitz.Matrix(2.0, 2.0)  # 2× zoom → ~144 DPI from 72 DPI base
+            mat = pymupdf.Matrix(2.0, 2.0)  # 2× zoom → ~144 DPI from 72 DPI base
             pix = page.get_pixmap(matrix=mat, alpha=False)
             png_path = output_dir / f'{pdf_path.stem}_page{i + 1}.png'
             pix.save(str(png_path))

@@ -57,7 +57,13 @@ onnx_binaries = [item for item in onnx_binaries if not _is_cuda_item(item)]
 datas += onnx_datas; binaries += onnx_binaries; hiddenimports += onnx_hidden
 
 # ── PyMuPDF（PDF → 图片转换，图片输入预处理使用）────────────────────────
-tmp_ret = collect_all('fitz')
+# 收集 'pymupdf' 而不是旧的 'fitz' 别名：1.28 起 `import fitz` 会打弃用警告，代码已
+# 全部改用 pymupdf。打包上这也更正确——实测 collect_all('fitz') 只拿到 4 个 data、
+# **0 个 binary**（fitz 现在只是个转发 __init__.py），而 collect_all('pymupdf') 拿到
+# 109 个 data + mupdfcpp64.dll。此前之所以没出问题，是 PyInstaller 静态分析顺着
+# fitz/__init__.py 的 `from pymupdf import *` 把真正的包捎带收进来了；直接收
+# pymupdf 就不再依赖这条间接路径。
+tmp_ret = collect_all('pymupdf')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 # ── Pillow（PIL，图像处理 / 二值化 / 质量评分）────────────────────────────

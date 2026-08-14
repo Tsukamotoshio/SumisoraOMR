@@ -21,7 +21,6 @@ from ..utils import (
     find_packaged_runtime_dir,
     get_app_base_dir,
     log_message,
-    resolve_font_path,
 )
 
 
@@ -726,95 +725,6 @@ def _has_cjk(s: str) -> bool:
     """Return True if *s* contains any character outside the ASCII printable range."""
     return any(ord(c) > 0x7E for c in s)
 
-
-def _find_cjk_font_for_overlay() -> Optional[Path]:
-    """Locate a CJK-capable TrueType/OpenType font file for text overlay.
-
-    Preference order:
-    1. Bundled NotoSansSC font in assets/fonts/ (always available in this repo).
-    2. First available system CJK font via :func:`resolve_font_path`.
-    """
-    bundled = get_app_base_dir() / 'assets' / 'fonts' / 'NotoSansSC-VariableFont_wght.ttf'
-    if bundled.exists():
-        return bundled
-    return resolve_font_path()
-
-
-def _overlay_cjk_title_on_staff_pdf(pdf_path: Path, title: str) -> None:
-    """Overlay a Unicode/CJK title onto the first page of a LilyPond staff PDF.
-
-    When the score title is CJK-only, musicxml2ly emits raw CJK bytes into the
-    LilyPond \\header block which LilyPond's default font renders as empty boxes.
-    This function blanks out the garbled title area with a white rectangle and
-    draws the correct CJK text centered above it using ReportLab + pypdf.
-
-    Strategy: create a single-page overlay PDF (white rect + CJK title) with
-    ReportLab, then merge it on top of the original PDF with pypdf.  LilyPond
-    always reserves title-area space via the "." placeholder injected by
-    _inject_metadata_to_lilypond, so a fixed cover band (y ≈ 5–40 pt from top)
-    reliably blanks the right region without needing text-position detection.
-    """
-    if not title:
-        return
-    font_path = _find_cjk_font_for_overlay()
-    if font_path is None:
-        LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 未找到 CJK 字体，跳过叠加')
-        return
-    try:
-        import io as _io
-        import pypdf
-        from reportlab.pdfgen import canvas as rl_canvas
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-
-        # ── 读取原始 PDF，取第一页尺寸 ──────────────────────────────────────
-        reader = pypdf.PdfReader(str(pdf_path))
-        if len(reader.pages) == 0:
-            return
-        first_page = reader.pages[0]
-        pw = float(first_page.mediabox.width)   # points
-        ph = float(first_page.mediabox.height)  # points
-
-        # ── 用 ReportLab 生成叠加层（白色遮盖矩形 + CJK 标题文字）──────────
-        # LilyPond 坐标系原点在页面左下角；标题区在顶部，
-        # 即 y ∈ [ph-40, ph-5]（pt）
-        cover_top    = ph - 5.0
-        cover_bottom = ph - 40.0
-
-        font_name = 'NotoSansSC'
-        pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
-
-        overlay_buf = _io.BytesIO()
-        c = rl_canvas.Canvas(overlay_buf, pagesize=(pw, ph))
-        # 白色遮盖矩形
-        c.setFillColorRGB(1, 1, 1)
-        c.setStrokeColorRGB(1, 1, 1)
-        c.rect(0, cover_bottom, pw, cover_top - cover_bottom, fill=1, stroke=0)
-        # CJK 标题文字（居中，字号 15pt）
-        c.setFillColorRGB(0, 0, 0)
-        c.setFont(font_name, 15)
-        text_y = cover_bottom + (cover_top - cover_bottom - 15) / 2
-        c.drawCentredString(pw / 2, text_y, title)
-        c.save()
-        overlay_buf.seek(0)
-
-        # ── 用 pypdf 把叠加层合并到原始 PDF 第一页上 ────────────────────────
-        overlay_reader = pypdf.PdfReader(overlay_buf)
-        overlay_page  = overlay_reader.pages[0]
-        first_page.merge_page(overlay_page)
-
-        writer = pypdf.PdfWriter()
-        writer.add_page(first_page)
-        for p in reader.pages[1:]:
-            writer.add_page(p)
-
-        tmp_path = pdf_path.with_suffix('.tmp.pdf')
-        with open(str(tmp_path), 'wb') as f:
-            writer.write(f)
-        tmp_path.replace(pdf_path)
-        LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 已叠加标题 "%s"', title)
-    except Exception as exc:
-        LOGGER.debug('_overlay_cjk_title_on_staff_pdf: 叠加失败: %s', exc)
 
 def _inject_metadata_to_lilypond(ly_path: Path, mxl_path: Path) -> tuple[str, str]:
     """Append a \\header block with title/composer from MusicXML metadata at EOF.

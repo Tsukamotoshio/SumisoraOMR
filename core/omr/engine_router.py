@@ -78,18 +78,18 @@ def is_pdf_vector(pdf_path: Path) -> bool:
     Strategy: if the first page contains at least one large embedded image
     (width > 300 and height > 300), treat as bitmap; otherwise treat as vector.
 
-    Requires PyMuPDF (fitz); defaults to True (vector) on ImportError or any exception.
+    Requires PyMuPDF; defaults to True (vector) on ImportError or any exception.
     """
     try:
-        import fitz  # PyMuPDF
+        import pymupdf
     except ImportError:
         logging.getLogger('convert').warning(
-            '[engine_router] PyMuPDF (fitz) 未安装，无法检测 PDF 类型，默认按矢量处理。'
+            '[engine_router] PyMuPDF 未安装，无法检测 PDF 类型，默认按矢量处理。'
         )
         return True
 
     try:
-        doc = fitz.open(str(pdf_path))
+        doc = pymupdf.open(str(pdf_path))
         if doc.page_count == 0:
             doc.close()
             return True

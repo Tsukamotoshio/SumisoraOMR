@@ -122,7 +122,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install -r requirements-ci.txt Pillow==12.3.0 requests==2.34.2 \
-            rich==15.0.0 truststore==0.10.4 pypdf==6.16.0 markdown-it-py==4.2.0 \
+            rich==15.0.0 truststore==0.10.4 markdown-it-py==4.2.0 \
             pywebview==6.2.1 opencv-python-headless==4.13.0.92
       - name: Pyright check
         run: npm run pyright

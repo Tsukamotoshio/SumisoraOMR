@@ -38,9 +38,28 @@
 #   验证：Input/image_test3.png 走 HOMR 端到端跑通，改动前后 .mid / .jianpu.txt /
 #     .source.png 逐字节一致，PDF 字节数一致；归档 MusicXML 只差 music21 每次
 #     运行随机生成的 <score-instrument id>（同环境连跑两次同样会变，与本次改动无关）。
+#   （其中 anyio / pypdf 稍后又被下面的「PDF 库整理批」整个移除——升级时还没查到
+#     它们其实无人使用。）
+#
+# 2026-08-14 依赖巡检「PDF 库整理批」（同样两份 lock 同步）：
+#   PyMuPDF 1.27.2.3 → 1.28.2，并把代码里的 `import fitz` 全部改成 `import pymupdf`
+#   （1.28 起 fitz 别名会在 stdout 上打弃用警告）。spec 的 collect_all 也从 'fitz'
+#   改成 'pymupdf'——实测前者只收到 4 个 data、0 个 binary，后者才带上 mupdfcpp64.dll。
+#
+#   再移除 8 个无人使用的包：
+#     pypdf            唯一调用点 _overlay_cjk_title_on_staff_pdf() 自 a88e012
+#                      (2026-05-08，改用 LilyPond \markup 注入标题) 起就没有调用者，
+#                      本次连函数一起删除。
+#     httpx / httpcore / h11 / anyio / msgpack / oauthlib / repath
+#                      全是 Flet 的传递依赖残留：Flet 在 0.5.0 被 pywebview 取代，
+#                      但当时的 lock 是从仍装着 flet 的 venv `pip freeze` 出来的，
+#                      于是它的下游被一并冻了进来。用「从一手 import 出发做可达性
+#                      闭包」的方式扫出来的，本仓库任何地方都不 import 它们。
+#   验证：卸掉这 8 个后，core/webui/gui 全部 50 个模块 import 无一失败；
+#     `python -m webui.main --selftest` 全项通过（含 500 条事件洪泛门）；
+#     pytest 46 passed；PDF 输入走 AUTO→Audiveris 端到端转换成功。
 altgraph==0.17.5
 antlr4-python3-runtime==4.9.3
-anyio==4.14.2
 bottle==0.13.4
 certifi==2026.7.22
 cffi==2.1.1
@@ -53,9 +72,6 @@ contourpy==1.3.3
 cycler==0.12.1
 flatbuffers==25.12.19
 fonttools==4.63.0
-h11==0.16.0
-httpcore==1.0.9
-httpx==0.28.1
 idna==3.18
 iniconfig==2.3.0
 joblib==1.5.3
@@ -65,13 +81,11 @@ markdown-it-py==4.2.0
 matplotlib==3.10.9
 mdurl==0.1.2
 more-itertools==11.1.0
-msgpack==1.2.1
 music21==10.5.0
 numpy==2.5.0
 nvidia-cublas-cu12==12.9.2.10
 nvidia-cuda-nvrtc-cu12==12.9.86
 nvidia-cuda-runtime-cu12==12.9.79
-oauthlib==3.3.1
 omegaconf==2.3.1
 onnxruntime-gpu==1.26.0
 opencv-python-headless==4.13.0.92
@@ -87,9 +101,8 @@ pycparser==3.0
 Pygments==2.20.0
 pyinstaller-hooks-contrib==2026.5
 pyinstaller==6.20.0
-PyMuPDF==1.27.2.3
+PyMuPDF==1.28.2
 pyparsing==3.3.2
-pypdf==6.16.0
 pytest==9.1.1
 python-dateutil==2.9.0.post0
 pythonnet==3.1.0
@@ -97,7 +110,6 @@ pywebview==6.2.1
 pywin32-ctypes==0.2.3
 PyYAML==6.0.3
 rapidocr==3.8.1
-repath==0.9.0
 reportlab==5.0.0
 requests==2.34.2
 rich==15.0.0
