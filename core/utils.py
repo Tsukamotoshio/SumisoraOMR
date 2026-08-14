@@ -24,6 +24,7 @@ except Exception:
 
 from .config import (
     AUDIVERIS_RUNTIME_DIR_NAME,
+    AUDIVERIS_SOURCE_DIR_NAMES,
     CJK_FONT_CANDIDATES,
     CONVERSION_HISTORY_FILE,
     CONVERSION_PIPELINE_VERSION,
@@ -352,15 +353,17 @@ def find_local_tessdata_dir() -> Optional[Path]:
         candidates.extend([
             base_dir / 'tessdata',
             base_dir / RUNTIME_ASSETS_DIR_NAME / 'tessdata',
-            base_dir / 'audiveris-5.10.2' / 'app' / 'dev' / 'tessdata',
-            base_dir / 'audiveris-5.10.2' / 'dev' / 'tessdata',
-            base_dir / 'audiveris' / 'app' / 'dev' / 'tessdata',
-            base_dir / 'audiveris' / 'dev' / 'tessdata',
-            omr_engine_dir / 'audiveris-5.10.2' / 'app' / 'dev' / 'tessdata',
-            omr_engine_dir / 'audiveris-5.10.2' / 'dev' / 'tessdata',
-            omr_engine_dir / 'audiveris' / 'app' / 'dev' / 'tessdata',
-            omr_engine_dir / 'audiveris' / 'dev' / 'tessdata',
         ])
+        # 源码树里的 tessdata：目录名可能是子模块的 'audiveris'，也可能是官方源码包
+        # 解出来的 'audiveris-<版本>'——两者都试，名字统一由 config 的
+        # AUDIVERIS_SOURCE_DIR_NAMES 提供，避免版本号散落在各处。
+        for source_name in AUDIVERIS_SOURCE_DIR_NAMES:
+            candidates.extend([
+                base_dir / source_name / 'app' / 'dev' / 'tessdata',
+                base_dir / source_name / 'dev' / 'tessdata',
+                omr_engine_dir / source_name / 'app' / 'dev' / 'tessdata',
+                omr_engine_dir / source_name / 'dev' / 'tessdata',
+            ])
 
     packaged_audiveris_dir = find_packaged_runtime_dir(AUDIVERIS_RUNTIME_DIR_NAME)
     if packaged_audiveris_dir is not None:

@@ -47,13 +47,19 @@ WAIFU2X_RUNTIME_DIR_NAME = 'waifu2x-runtime'
 REALESRGAN_RUNTIME_DIR_NAME = 'realesrgan-runtime'
 OMR_ENGINE_DIR_NAME = 'omr_engine'
 AUDIVERIS_INSTALL_DIR_NAME = 'Audiveris'
-AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris', 'audiveris-5.10.2')
+# Version of the Audiveris source pinned by the omr_engine/audiveris submodule.
+# Only used to build the *fallback* directory / installer names below, for setups
+# where an official source or MSI release is dropped next to the repo instead of
+# checking the submodule out. Bump it together with the submodule pin — it is the
+# single place the version appears, so grep-and-replace is not needed elsewhere.
+AUDIVERIS_PINNED_VERSION = '5.11.0'
+AUDIVERIS_SOURCE_DIR_NAMES = ('audiveris', f'audiveris-{AUDIVERIS_PINNED_VERSION}')
 HOMR_SOURCE_DIR_NAME = 'homr'
 CONVERSION_HISTORY_FILE = 'conversion_history.json'
 CONVERSION_PIPELINE_VERSION = 7
 APP_VERSION = '0.5.1'
 AUDIVERIS_MSI_NAMES = [
-    'Audiveris-5.10.2-windows-x86_64.msi',
+    f'Audiveris-{AUDIVERIS_PINNED_VERSION}-windows-x86_64.msi',
     'Audiveris.msi',
     'audiveris.msi',
 ]

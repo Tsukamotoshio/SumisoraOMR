@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from ..config import AUDIVERIS_PINNED_VERSION
 from ..image.image_preprocess import (
     HAS_PILLOW,
     _measure_laplacian_stddev,
@@ -193,7 +194,11 @@ def run_audiveris_batch(
     try:
         if exe is None:
             log_message('[audiveris] 未能生成或定位启动器。根据官方文档，应先完成源码构建，再使用生成的 Audiveris.bat 运行。', logging.WARNING)
-            log_message('[audiveris] 请确认 audiveris-5.10.2 已构建成功，或重新运行程序让其自动准备启动器。', logging.WARNING)
+            log_message(
+                f'[audiveris] 请确认 audiveris-{AUDIVERIS_PINNED_VERSION} 已构建成功，'
+                '或重新运行程序让其自动准备启动器。',
+                logging.WARNING,
+            )
             return None
 
         log_message(f'[audiveris] 调用启动器: {exe}')

@@ -3,7 +3,7 @@
 This file provides license and attribution notices for third-party components distributed with this product, where such notices are required by the applicable licenses. It does not attempt to document every development or build dependency.
 
 ## Audiveris
-- Version: `5.10.2`
+- Version: `5.11.0`
 - License: `AGPL-3.0`
 - Upstream: <https://github.com/Audiveris/audiveris>
 - Official site: <https://audiveris.github.io/audiveris/>
