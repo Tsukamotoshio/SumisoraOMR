@@ -296,9 +296,55 @@ def upscale_image(input_path: Path, output_path: Path, scale: int = 2) -> bool:
 
     Falls back to waifu2x if Real-ESRGAN is selected but unavailable.
     Falls back to bicubic resize (returns False) if neither tool is found.
+
+    当两个引擎**都**不可用时会明确报错。此前每个引擎各自只打一条 WARNING
+    （"Real-ESRGAN 失败，回退到 waifu2x…" / "未找到 waifu2x-ncnn-vulkan…"），
+    读起来像"已经回退到另一个引擎了"，而实际上两个都没跑成——2026-08 就是这样
+    让两个 .exe 同时丢失的状态潜伏了近一周，期间所有转换都在用未放大的原图，
+    识别质量整体下降却无人察觉。调用方只在确实需要超分时才进来（见
+    image_preprocess 的 LOW_RES_PIXEL_THRESHOLD 判断），所以这里不存在误报。
     """
+    attempted: list[str] = []
     if _current_sr_engine == SREngine.REALESRGAN.value:
         if upscale_with_realesrgan(input_path, output_path, scale):
             return True
+        attempted.append('Real-ESRGAN')
         log_message('Real-ESRGAN 失败，回退到 waifu2x...', logging.WARNING)
-    return upscale_image_with_waifu2x(input_path, output_path, scale)
+    if upscale_image_with_waifu2x(input_path, output_path, scale):
+        return True
+    attempted.append('waifu2x')
+
+    log_message(
+        f'  ✗ 超分辨率未生效：{" 与 ".join(attempted)} 均不可用，'
+        f'本次将使用未放大的原图，识别质量会明显下降。',
+        logging.ERROR,
+    )
+    _warn_sr_unavailable_once()
+    return False
+
+
+_sr_unavailable_hint_shown = False
+
+
+def _warn_sr_unavailable_once() -> None:
+    """Print the actionable "how to restore SR" hint once per process."""
+    global _sr_unavailable_hint_shown
+    if _sr_unavailable_hint_shown:
+        return
+    _sr_unavailable_hint_shown = True
+    # 直接问发现函数，而不是拼一条猜测的路径：_find_ncnn_executable 会依次搜
+    # 应用目录、package-assets、常见安装位置和 PATH，硬编码单条路径会报错地方。
+    for label, found, dir_name, url in (
+        ('Real-ESRGAN', find_realesrgan_executable(), REALESRGAN_RUNTIME_DIR_NAME,
+         'https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases'),
+        ('waifu2x', find_waifu2x_executable(), WAIFU2X_RUNTIME_DIR_NAME,
+         'https://github.com/nihui/waifu2x-ncnn-vulkan/releases'),
+    ):
+        if found is not None:
+            log_message(f'    {label}: 已找到 {found}（是运行失败，不是缺文件）', logging.ERROR)
+        else:
+            log_message(
+                f'    {label}: 未找到可执行文件。请从 {url} 下载，'
+                f'解压后放进 {dir_name}/ 目录（模型文件保持原样）。',
+                logging.ERROR,
+            )
