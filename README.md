@@ -97,8 +97,12 @@ staff-notation PDF.
 
 **Prerequisites**
 
-- Python 3.10+
-- JDK 17+ on `PATH` (required only for PDF recognition via Audiveris)
+- Python 3.12–3.14 (`requirements.lock.txt` does not resolve outside this range:
+  `numpy` sets the 3.12 floor, `pythonnet` and `pyinstaller` both cap at `<3.15`).
+  Development happens on 3.14.
+- JDK 25+ on `PATH` (required only for PDF recognition via Audiveris). The exact
+  floor comes from the Audiveris source's `gradle.properties` (`theMinJavaVersion`);
+  `core/config.py` carries the same value as `DEFAULT_AUDIVERIS_MIN_JAVA_VERSION`.
 - The following runtime directories alongside the repo root:
 
   | Directory | Purpose |

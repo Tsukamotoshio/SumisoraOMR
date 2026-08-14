@@ -20,7 +20,7 @@ This file provides license and attribution notices for third-party components di
 - Documentation: <https://www.music21.org/music21docs/>
 
 ## Pillow
-- Version: `12.2.0`
+- Version: `12.3.0`
 - License: HPND (Historical Permission Notice and Disclaimer)
 - Upstream: <https://github.com/python-pillow/Pillow>
 - Documentation: <https://pillow.readthedocs.io/>
@@ -112,18 +112,22 @@ This file provides license and attribution notices for third-party components di
 - Source: <https://github.com/adoptium/temurin25-binaries>
 - Note: Bundled as the Java runtime required by Audiveris.
 
-## Flet
-- Version: `0.85`
-- License: Apache-2.0
-- Upstream: <https://github.com/flet-dev/flet>
-- Documentation: <https://flet.dev/>
-- Note: Used as the GUI framework for the desktop application.
+## pywebview
+- Version: `6.2.1`
+- License: BSD-3-Clause
+- Upstream: <https://github.com/r0x0r/pywebview>
+- Official site: <https://pywebview.flowrl.com/>
+- Note: GUI shell for the desktop application — hosts the local web front-end in a
+  WebView2 window. Replaced Flet in v0.5.0; the Flet runtime is no longer shipped.
 
-## pypdfium2
-- Version: `>=4.0.0`
-- License: Apache-2.0 (Python bindings) / BSD-3-Clause (PDFium)
-- Upstream: <https://github.com/pypdfium2-team/pypdfium2>
-- Note: Used for PDF page rendering and preview. Replaced PyMuPDF (fitz) as of v0.3.3 to reduce bundle size and avoid AGPL-3.0 licensing requirements.
+## Python.NET (pythonnet)
+- Version: `3.1.0`
+- License: MIT
+- Upstream: <https://github.com/pythonnet/pythonnet>
+- Official site: <https://pythonnet.github.io/>
+- Note: Pulled in by pywebview as the .NET bridge used to drive WinForms/WebView2
+  on Windows.
+
 ---
 
 ## Important note

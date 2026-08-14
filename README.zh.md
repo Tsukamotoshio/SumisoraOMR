@@ -89,8 +89,11 @@
 
 **前置条件**
 
-- Python 3.10+
-- JDK 17+（仅 PDF 识别时需要，供 Audiveris 使用；识别图片时不需要）
+- Python 3.12–3.14（`requirements.lock.txt` 在此区间之外无法解析：下限 3.12 来自
+  `numpy`，上限来自 `pythonnet` 与 `pyinstaller` 的 `<3.15`）。开发环境用 3.14。
+- JDK 25+（仅 PDF 识别时需要，供 Audiveris 使用；识别图片时不需要）。具体下限取自
+  Audiveris 源码的 `gradle.properties`（`theMinJavaVersion`），`core/config.py` 里的
+  `DEFAULT_AUDIVERIS_MIN_JAVA_VERSION` 与之同值。
 - 以下运行时目录需与仓库根目录并列放置：
 
   | 目录 | 用途 |
