@@ -85,12 +85,13 @@ if os.path.isdir(r'omr_engine\homr'):
     # HOMR Python package is bundled; .onnx weights are intentionally excluded
     # (see the _is_homr_onnx filter below) and downloaded on demand at runtime
     # by core.omr.homr_downloader into <app_base_dir>/models/.
-    # homr runtime deps: rapidocr (with its own ONNX models) and musicxml are
-    # not found by PyInstaller static analysis because homr is collected as data,
-    # so they must be declared explicitly here.
+    # homr runtime dep: rapidocr (with its own ONNX models) is not found by
+    # PyInstaller static analysis because homr is collected as data, so it must
+    # be declared explicitly here.
+    # 这里曾经还有一个 collect_all('musicxml')，但全仓库（含 homr 子模块）没有
+    # 任何 `import musicxml`，homr 的 pyproject.toml 也不依赖它——纯属误加，
+    # 连同 requirements 里的钉版一起移除。
     tmp_ret = collect_all('rapidocr')
-    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-    tmp_ret = collect_all('musicxml')
     datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 # ── OpenCV（图像处理依赖）────────────────────────────────────────────

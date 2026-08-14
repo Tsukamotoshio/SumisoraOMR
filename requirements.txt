@@ -4,13 +4,12 @@
 # GUI 壳：pywebview + WebView2（Windows）。pywebview 会拉入 pythonnet（.NET 桥）。
 pywebview>=6.2.0
 music21>=10.5.0
-pillow>=12.2.0
+pillow>=12.3.0
 opencv-python-headless>=4.8.0
 reportlab>=5.0.0
 rich>=15.0.0
 pyinstaller>=6.20.0
-pypdfium2>=5.11.0
-pypdf>=6.14.2
+pypdf>=6.16.0
 # PyMuPDF (imports as `fitz`): PDF 渲染 / 类型检测 / 页面转 PNG。
 # 被 core/utils.py、core/omr/engine_router.py、core/omr/homr_runner.py 使用；
 # 缺失时上述功能优雅降级（但 PDF 输入无法处理）。
@@ -32,8 +31,13 @@ typing_extensions>=4.0.0
 # 本行保持 gpu 作为默认解析目标，方便开发/CI；分发打包改用 directml 锁定文件。
 onnxruntime-gpu>=1.26.0
 
-# ── homr 引擎运行时依赖（omr_engine/homr 子模块，app.py 直接 import homr.main）──
-musicxml==1.4
+# ── homr 引擎运行时依赖（omr_engine/homr 子模块，core/omr/homr_runner.py 动态
+#    `import homr.main`）──
+# 注意：曾经这里还钉着 `musicxml==1.4`，但全仓库（含 homr 子模块）没有任何
+# `import musicxml`，homr 自己的 pyproject.toml 也不依赖它——纯属误加，已移除。
+# 顺带一提：它的 1.5~1.6.1 全部声明 requires_python "<3.13"，本项目跑 3.14，
+# 就算真需要也装不上。若日后 homr 引入该依赖，请连同 SumisoraOMR.spec 里的
+# collect_all 一起加回。
 rapidocr>=3.7.0          # 标题 OCR；会拉入 opencv-python（完整版）
 requests>=2.32.5
 # SSL：走 Windows/macOS 系统证书库，修复国内网络 MITM 根证书不在 certifi 时的
@@ -49,12 +53,13 @@ truststore>=0.10.0      # 需 Python 3.10+
 #   - 仅支持钢琴独奏转录（模型本身是钢琴专用的，非通用乐器/人声）。
 #   - ~172 MB 模型权重按需下载到 <app_base_dir>/models/piano_transcription/
 #     （首次转换时自动下载，或在「音频识别」页手动点击「下载模型」预先获取）。
-#   - SumisoraOMR.spec 是 gitignored 的本地文件（见 aeb7778 "untrack packaging/
-#     workspace files"），不随仓库同步 —— 每台打包机器都需要手动在其本地 spec
-#     里补上音频依赖的收集声明，否则打包产物里 worker 子进程 import 会失败。
+#   - 音频依赖的收集声明必须显式写进 SumisoraOMR.spec，否则打包产物里 worker
+#     子进程 import 会失败。这些声明**已经在 spec 里**（collect_all('cv2') 之后，
+#     见 spec 的「音频识别引擎」小节），随仓库同步，无需每台机器手动补——
+#     aeb7778 曾把 spec untrack 掉，但 5c62c2a 已重新跟踪。下面保留原文备查，
+#     用意是「不要删」而不是「要加」：
 #     实测（2026-07-10，PyInstaller 6.20.0 + pyinstaller-hooks-contrib 2026.5，
-#     已用真实 mp3 端到端验证转录成功，见 CHANGELOG 0.4.1/0.4.1.1）需要在
-#     collect_all('cv2') 之后加：
+#     已用真实 mp3 端到端验证转录成功，见 CHANGELOG 0.4.1/0.4.1.1）：
 #
 #       hiddenimports += [
 #           'torch', 'librosa', 'soundfile', 'numba', 'llvmlite', 'resampy',

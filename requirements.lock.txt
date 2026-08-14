@@ -25,17 +25,30 @@
 # 已删除：llama_cpp_python, diskcache, Jinja2, MarkupSafe,
 #         nvidia-cublas（无后缀）, nvidia-cuda-nvrtc（无后缀）,
 #         nvidia-cuda-runtime（无后缀）。
+#
+# 2026-08-14 依赖巡检「清理批」（本文件与 requirements.lock.directml.txt 同步改动）：
+#   移除 2 个死依赖——
+#     musicxml==1.4    全仓库（含 omr_engine/homr 子模块）零 `import musicxml`，
+#                      homr 自己的 pyproject.toml 也不依赖它；且 1.5~1.6.1 全部
+#                      声明 requires_python "<3.13"，本项目跑 3.14 根本装不上。
+#     pypdfium2==5.11.0 PDF 预览在 0.5.0 已移到前端 pdf.js，Python 侧零调用点。
+#   小版本升级 14 个：anyio / certifi / cffi / chardet / charset-normalizer /
+#     colorlog / omegaconf / packaging / pillow / protobuf / pypdf / ruff /
+#     tqdm / typing_extensions。
+#   验证：Input/image_test3.png 走 HOMR 端到端跑通，改动前后 .mid / .jianpu.txt /
+#     .source.png 逐字节一致，PDF 字节数一致；归档 MusicXML 只差 music21 每次
+#     运行随机生成的 <score-instrument id>（同环境连跑两次同样会变，与本次改动无关）。
 altgraph==0.17.5
 antlr4-python3-runtime==4.9.3
-anyio==4.13.0
+anyio==4.14.2
 bottle==0.13.4
-certifi==2026.5.20
-cffi==2.1.0
-chardet==7.4.3
-charset-normalizer==3.4.7
+certifi==2026.7.22
+cffi==2.1.1
+chardet==7.5.1
+charset-normalizer==3.5.0
 clr_loader==0.3.1
 colorama==0.4.6
-colorlog==6.10.1
+colorlog==6.12.0
 contourpy==1.3.3
 cycler==0.12.1
 flatbuffers==25.12.19
@@ -54,21 +67,20 @@ mdurl==0.1.2
 more-itertools==11.1.0
 msgpack==1.2.1
 music21==10.5.0
-musicxml==1.4
 numpy==2.5.0
 nvidia-cublas-cu12==12.9.2.10
 nvidia-cuda-nvrtc-cu12==12.9.86
 nvidia-cuda-runtime-cu12==12.9.79
 oauthlib==3.3.1
-omegaconf==2.3.0
+omegaconf==2.3.1
 onnxruntime-gpu==1.26.0
 opencv-python-headless==4.13.0.92
 opencv-python==4.13.0.92
-packaging==26.2
+packaging==26.3
 pefile==2024.8.26
-pillow==12.2.0
+pillow==12.3.0
 pluggy==1.6.0
-protobuf==7.35.0
+protobuf==7.35.1
 proxy_tools==0.1.0
 pyclipper==1.4.0
 pycparser==3.0
@@ -77,8 +89,7 @@ pyinstaller-hooks-contrib==2026.5
 pyinstaller==6.20.0
 PyMuPDF==1.27.2.3
 pyparsing==3.3.2
-pypdf==6.14.2
-pypdfium2==5.11.0
+pypdf==6.16.0
 pytest==9.1.1
 python-dateutil==2.9.0.post0
 pythonnet==3.1.0
@@ -90,12 +101,12 @@ repath==0.9.0
 reportlab==5.0.0
 requests==2.34.2
 rich==15.0.0
-ruff==0.15.20
+ruff==0.16.3
 setuptools==82.0.1
 shapely==2.1.2
 six==1.17.0
-tqdm==4.68.1
+tqdm==4.70.0
 truststore==0.10.4
-typing_extensions==4.15.0
+typing_extensions==4.16.0
 urllib3==2.7.0
 webcolors==25.10.0
