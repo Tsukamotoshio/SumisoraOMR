@@ -14,7 +14,7 @@ This file provides license and attribution notices for third-party components di
 - Upstream: <https://lilypond.org/>
 
 ## music21
-- Version: `10.1.0`
+- Version: `10.5.0`
 - License: BSD-3-Clause
 - Upstream: <https://github.com/cuthbertLab/music21>
 - Documentation: <https://www.music21.org/music21docs/>
@@ -28,7 +28,7 @@ This file provides license and attribution notices for third-party components di
   sharpening, brightness/contrast enhancement) before OMR recognition.
 
 ## ReportLab
-- Version: `4.5.1`
+- Version: `5.0.0`
 - License: BSD-3-Clause
 - Official site: <https://www.reportlab.com/>
 
@@ -43,19 +43,20 @@ This file provides license and attribution notices for third-party components di
   Imported as `pymupdf`; the legacy `fitz` alias is deprecated as of 1.28.
 
 ## OpenCV
-- Version: `4.8.0`
+- Version: `4.13.0` (via `opencv-python` 4.13.0.92)
 - License: Apache-2.0
 - Upstream: <https://github.com/opencv/opencv>
 - Note: Used for advanced image preprocessing and line/staff detection in the OMER pipeline.
 
 ## ONNX Runtime (DirectML)
-- Version: `1.26.0`
+- Version: `1.24.4` (the highest `onnxruntime-directml` release; the
+  development/CI target uses `onnxruntime-gpu` 1.26.0 instead)
 - License: MIT
 - Upstream: <https://github.com/microsoft/onnxruntime>
 - Note: Windows DirectML backend for GPU-accelerated inference used by the Homr engine.
 
 ## Homr
-- Version: `0.1.0` (fork)
+- Version: upstream `v0.7.0` plus fork commits (submodule pinned at `af0eb80`)
 - License: AGPL-3.0
 - Upstream (original): <https://github.com/liebharc/homr>
 - Fork used by this project: <https://github.com/Tsukamotoshio/homr>
@@ -137,6 +138,36 @@ This file provides license and attribution notices for third-party components di
 - Official site: <https://pythonnet.github.io/>
 - Note: Pulled in by pywebview as the .NET bridge used to drive WinForms/WebView2
   on Windows.
+
+## noteDigger
+- Version: fork submodule pinned at `f72303f`
+- License: `GPL-3.0`
+- Copyright: © madderscientist
+- Upstream (original): <https://github.com/madderscientist/noteDigger>
+- Official site: <https://madderscientist.github.io/noteDigger/>
+- Fork used by this project: <https://github.com/Tsukamotoshio/noteDigger>
+- Note: Browser-based piano-roll transcription and correction editor, vendored
+  as a git submodule under `webui/static/vendor/notedigger/` and loaded in an
+  iframe by the audio-transcription page. Its full license text ships in that
+  directory. This product is AGPL-3.0; GPL-3.0 §13 and AGPL-3.0 §13 are the
+  mutual clauses that permit the two to be combined.
+
+## pdf.js
+- Version: `6.1.200`
+- License: Apache-2.0
+- Upstream: <https://github.com/mozilla/pdf.js>
+- Note: Client-side PDF rendering for the in-app preview panes, vendored
+  unmodified at `webui/static/vendor/pdfjs/`. It replaced the Python-side
+  PDFium renderer in v0.5.0, so no PDF rasterisation happens in-process for
+  preview anymore.
+
+## webaudio-tinysynth
+- License: Apache-2.0
+- Copyright: © g200kg
+- Upstream: <https://github.com/g200kg/webaudio-tinysynth>
+- Note: Self-contained General MIDI synthesiser powering the built-in MIDI
+  player on the jianpu and staff preview pages. Vendored unmodified at
+  `webui/static/vendor/tinysynth/`.
 
 ---
 
