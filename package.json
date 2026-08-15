@@ -1,6 +1,6 @@
 {
   "name": "sumisora-omr-webui",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "description": "Dev toolchain: JS lint + tests for webui/static/js (no bundler — the front-end ships ES modules directly, see CLAUDE.md), plus a pinned pyright for the Python type-check CI gate (P2-1).",
   "type": "module",
