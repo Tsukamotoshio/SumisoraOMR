@@ -58,6 +58,23 @@
 #   验证：卸掉这 8 个后，core/webui/gui 全部 50 个模块 import 无一失败；
 #     `python -m webui.main --selftest` 全项通过（含 500 条事件洪泛门）；
 #     pytest 46 passed；PDF 输入走 AUTO→Audiveris 端到端转换成功。
+#
+# 2026-08-15 v0.5.2 发版准备时发现本文件有一个**结构性盲区**：音频识别栈
+#   （torch / librosa / numba / piano_transcription_inference 等）按 requirements.txt
+#   的说明手工安装、**不在本锁定内**，所以任何"从我们自己 import 的包出发做
+#   可达性分析"或"在没装音频栈的环境里 freeze"的做法，都看不见它的约束。
+#   由此产生过三处错误，均已在本次修正：
+#     msgpack==1.2.1   2026-08-14「PDF 库整理批」把它当作 Flet 遗留传递依赖删掉了。
+#                      它同时也是 librosa 的硬依赖：删掉后 librosa.load /
+#                      resample / beat_track 全部 ModuleNotFoundError，音频转简谱
+#                      整条路径不可用。因为 librosa 用 lazy_loader 延迟导入，
+#                      `import librosa` 仍然成功，故障要到真正转录时才爆。
+#     numpy==2.4.6     此前钉 2.5.0，而 numba 0.66.0 硬要求 numpy<2.5
+#                      （`import numba` 直接 ImportError）。在装了音频栈的机器上
+#                      pip 会把 numpy 悄悄降级，锁定形同虚设。
+#     setuptools==70.2.0  此前钉 82.0.1，torch 2.12.1 要求 setuptools<82。
+#   教训：改动本文件后，除了在干净 venv 复现，还必须在**装了音频栈的** venv 里
+#   跑一次 `pip check`——那是唯一能暴露这类冲突的地方。
 altgraph==0.17.5
 antlr4-python3-runtime==4.9.3
 bottle==0.13.4
@@ -81,8 +98,9 @@ markdown-it-py==4.2.0
 matplotlib==3.10.9
 mdurl==0.1.2
 more-itertools==11.1.0
+msgpack==1.2.1
 music21==10.5.0
-numpy==2.5.0
+numpy==2.4.6
 nvidia-cublas-cu12==12.9.2.10
 nvidia-cuda-nvrtc-cu12==12.9.86
 nvidia-cuda-runtime-cu12==12.9.79
@@ -114,7 +132,7 @@ reportlab==5.0.0
 requests==2.34.2
 rich==15.0.0
 ruff==0.16.3
-setuptools==82.0.1
+setuptools==70.2.0
 shapely==2.1.2
 six==1.17.0
 tqdm==4.70.0

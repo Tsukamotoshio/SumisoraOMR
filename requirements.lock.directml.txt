@@ -42,6 +42,23 @@
 #   装到的是当天最新的 sympy/mpmath。现已补钉（版本取自该次干净安装）。
 #   教训：这两份锁定不能纯机械派生，onnxruntime 口味不同，依赖集也不同。
 # 与 requirements.lock.txt 的关系：那份含 onnxruntime-gpu，面向 NVIDIA/开发/CI。
+#
+# 2026-08-15 v0.5.2 发版准备时发现本文件有一个**结构性盲区**：音频识别栈
+#   （torch / librosa / numba / piano_transcription_inference 等）按 requirements.txt
+#   的说明手工安装、**不在本锁定内**，所以任何"从我们自己 import 的包出发做
+#   可达性分析"或"在没装音频栈的环境里 freeze"的做法，都看不见它的约束。
+#   由此产生过三处错误，均已在本次修正：
+#     msgpack==1.2.1   2026-08-14「PDF 库整理批」把它当作 Flet 遗留传递依赖删掉了。
+#                      它同时也是 librosa 的硬依赖：删掉后 librosa.load /
+#                      resample / beat_track 全部 ModuleNotFoundError，音频转简谱
+#                      整条路径不可用。因为 librosa 用 lazy_loader 延迟导入，
+#                      `import librosa` 仍然成功，故障要到真正转录时才爆。
+#     numpy==2.4.6     此前钉 2.5.0，而 numba 0.66.0 硬要求 numpy<2.5
+#                      （`import numba` 直接 ImportError）。在装了音频栈的机器上
+#                      pip 会把 numpy 悄悄降级，锁定形同虚设。
+#     setuptools==70.2.0  此前钉 82.0.1，torch 2.12.1 要求 setuptools<82。
+#   教训：改动本文件后，除了在干净 venv 复现，还必须在**装了音频栈的** venv 里
+#   跑一次 `pip check`——那是唯一能暴露这类冲突的地方。
 altgraph==0.17.5
 antlr4-python3-runtime==4.9.3
 bottle==0.13.4
@@ -66,8 +83,9 @@ matplotlib==3.10.9
 mdurl==0.1.2
 more-itertools==11.1.0
 mpmath==1.3.0
+msgpack==1.2.1
 music21==10.5.0
-numpy==2.5.0
+numpy==2.4.6
 omegaconf==2.3.1
 onnxruntime-directml==1.24.4
 opencv-python-headless==4.13.0.92
@@ -96,7 +114,7 @@ reportlab==5.0.0
 requests==2.34.2
 rich==15.0.0
 ruff==0.16.3
-setuptools==82.0.1
+setuptools==70.2.0
 shapely==2.1.2
 six==1.17.0
 sympy==1.14.0

@@ -51,6 +51,12 @@ truststore>=0.10.0      # 需 Python 3.10+
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 #   pip install piano_transcription_inference torchlibrosa
 # 说明：
+#   - **这套栈不在两份 lock 里，因此它的约束不会出现在任何"对 lock 做可达性
+#     分析"的清理里。** 2026-08-14 就是这样误删了 msgpack（librosa 的硬依赖，
+#     被当成 Flet 遗留），导致音频转简谱整条路径 ModuleNotFoundError；librosa
+#     用 lazy_loader 延迟导入，`import librosa` 照样成功，故障要到真正转录时
+#     才暴露。它同时也钉死了 lock 里的两个版本上限：numba 要 numpy<2.5，
+#     torch 要 setuptools<82。动依赖前先在装了本栈的 venv 里跑 `pip check`。
 #   - 仅支持钢琴独奏转录（模型本身是钢琴专用的，非通用乐器/人声）。
 #   - ~172 MB 模型权重按需下载到 <app_base_dir>/models/piano_transcription/
 #     （首次转换时自动下载，或在「音频识别」页手动点击「下载模型」预先获取）。
