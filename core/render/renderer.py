@@ -447,6 +447,28 @@ def _fix_deprecated_override_syntax(text: str) -> str:
     )
 
 
+def _trailing_score_contexts(text: str, section_end: int) -> str:
+    """Return the sibling contexts jianpu-ly emits after ``END JIANPU STAFF``.
+
+    jianpu-ly 把歌词写成 ``\\new Lyrics = "IX" { \\lyricsto "W" { ... } }``，位置在
+    ``% === END JIANPU STAFF ===`` 标记**之后**、但仍在同一个 ``\\score`` 的
+    ``<< >>`` 里面。sanitize_generated_lilypond_file 重建 score 时只捞
+    BEGIN/END 标记之间的内容，于是这些兄弟 context 被整段丢弃——.jianpu.txt 里的
+    L:/H: 行是对的，jianpu-ly 生成的 .ly 也是对的，唯独重建后的 .ly 没有歌词，
+    所以成品 PDF 从来没显示过歌词（2026-08-15 定位）。
+
+    只在这段区域确实含 ``\\new Lyrics`` 时才返回内容：没有歌词的乐谱这里只有空白，
+    返回空串可让重建结果与修复前逐字节一致。
+    """
+    tail = text[section_end:]
+    # 第一处独占一行的 >> 即当前 \score 的 << 的闭合处；歌词块在它之前。
+    close = re.search(r'^[ \t]*>>[ \t]*$', tail, flags=re.M)
+    region = tail[:close.start()] if close else ''
+    if '\\new Lyrics' not in region:
+        return ''
+    return '\n' + region.strip('\n')
+
+
 def sanitize_generated_lilypond_file(
     ly_path: Path,
     preferred_title: str,
@@ -490,6 +512,7 @@ def sanitize_generated_lilypond_file(
                 preamble
                 + '\n\\score {\n<<\n'
                 + jianpu_section
+                + _trailing_score_contexts(text, match.end())
                 + '\n>>\n\\header{\n  title=""\n  composer=""\n  instrument=""\n  tagline=##f\n}\n\\layout{}\n}\n'
             )
             extra_markup = title_markup + lyrics_markup
