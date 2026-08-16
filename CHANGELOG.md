@@ -7,131 +7,101 @@ All notable changes to SumisoraOMR are documented here. Format follows
 
 ## [0.5.2] - 2026-08-15
 
-Fidelity and hardening release: lyrics finally reach the jianpu output,
-Audiveris moves to 5.11.0, and the jianpu editor stops silently dropping
-repeat barlines and merged voices on re-render. Underneath, the dependency
-set was audited end to end and the CI gates were widened to type-checking
-and the JavaScript front-end.
+Fidelity and hardening release: lyrics reach the jianpu output, Audiveris
+moves to 5.11.0, and the jianpu editor stops silently dropping repeat
+barlines and merged voices on re-render. Underneath, the dependency set was
+audited end to end and the CI gates were widened to type-checking and the
+JavaScript front-end.
 
 ### Added
 - **Lyrics are emitted into the jianpu score.** `JianpuNote` now carries
-  per-note lyrics from music21's own `Lyric` objects, and the generated
-  jianpu-ly text uses native `L:` / `H:` lines, so LilyPond aligns syllables
-  to notes instead of gluing a text block under the staff. The pipeline had
-  carried disabled scaffolding for this since early on; it is replaced rather
-  than re-enabled, because the old path discarded the syllabic
-  (begin/middle/end) information needed to hyphenate words.
-  Real scores do not tag every note — a flute arrangement of Scarborough Fair
-  tags 46 of 200 non-rest notes, with gaps up to 39 notes wide — so untagged
-  notes emit LilyPond's `_` skip token to keep later syllables on the right
-  note. A CJK (`H:`) verse containing a gap is dropped with a log line
-  instead, since jianpu-ly's hanzi-spacing pass strips a bare `_`.
+  per-note lyrics from music21's `Lyric` objects, and the generated jianpu-ly
+  text uses native `L:` / `H:` lines, so LilyPond aligns syllables to notes
+  instead of gluing a text block under the staff. Real scores do not tag every
+  note, so untagged notes emit LilyPond's `_` skip token to keep later
+  syllables on the right note; a CJK (`H:`) verse containing a gap is dropped
+  with a log line instead, since jianpu-ly's hanzi-spacing pass strips a
+  bare `_`.
 
 ### Changed
-- **Audiveris 5.10.2 → 5.11.0** (submodule moves 64 commits to the release
-  tag). A/B'd on three vector PDFs — the input class this project actually
-  aims Audiveris at — after first confirming both versions are deterministic
-  across three consecutive runs. To Zanarkand recovers four bars of melody
-  5.10.2 dropped outright, and loses the three empty bars it had padded with.
-  Bakamitai loses seven spurious empty bars and gains four dynamics, at the
-  cost of one sixteenth note in one bar. Do You Hear the People Sing gains 2
-  tenuto, 2 volta endings and 2 barlines, and loses 1 trill and 1 dynamic.
-  One visible regression on that last score — a newly-detected 3:2 triplet
-  renders as padded sixteenths — is our own gap rather than Audiveris': the
-  jianpu converter has no time-modification handling yet.
+- **Audiveris 5.10.2 → 5.11.0.** A/B'd on three vector PDFs, the input class
+  this project actually aims Audiveris at, after confirming both versions are
+  deterministic across repeated runs. Whole bars of melody that 5.10.2 dropped
+  are recovered, spurious empty bars disappear, and more dynamics, tenuto
+  marks and volta endings are read; the cost is one sixteenth note lost on one
+  score. A newly-detected triplet renders as padded sixteenths — that is our
+  own gap, since the jianpu converter has no time-modification handling yet.
   The JDK floor does not move; it is 25 on both sides.
 - **A failed upscale is now reported as an error rather than a warning.**
-  When neither Real-ESRGAN nor waifu2x can run, the log says so explicitly
-  and names both engines, plus a once-per-process hint distinguishing "no
-  executable found" from "found it, the run failed". Previously the fallback
-  chain logged one mild warning per engine, and the first line read as though
-  the second engine had taken over — on this machine both binaries went
-  missing for a week and every conversion silently ran on the un-upscaled
-  image, which degrades recognition for Audiveris and HOMR alike.
+  When neither Real-ESRGAN nor waifu2x can run, the log says so explicitly and
+  names both engines, plus a once-per-process hint distinguishing "no
+  executable found" from "found it, the run failed". The old fallback chain
+  logged one mild warning per engine, and the first line read as though the
+  second engine had taken over — so a machine missing both binaries silently
+  converted every score from the un-upscaled image.
 - **PyMuPDF 1.27.2.3 → 1.28.2**, with every call site renamed from the
-  deprecated `fitz` alias to `pymupdf`. As of 1.28 the alias prints a
-  deprecation warning on stdout; the worker's JSON IPC was never at risk
-  (`worker_main.py` reassigns `sys.stdout` before importing anything from
-  `core`), but it did put one spurious line in the GUI log panel per worker
-  start. Verified byte-identical rendering across the 16 PDFs in `Input/`.
+  deprecated `fitz` alias to `pymupdf`. The alias prints a deprecation warning
+  on stdout as of 1.28; the worker's JSON IPC was never at risk, but it did put
+  one spurious line in the GUI log panel per worker start.
 - Both READMEs now state the real prerequisites: **JDK 25+** (not 17+, which
-  `find_java_executable()` rejects) and **Python 3.12–3.14** (not 3.10+,
-  which `requirements.lock.txt` does not resolve on).
+  `find_java_executable()` rejects) and **Python 3.12-3.14** (not 3.10+, which
+  `requirements.lock.txt` does not resolve on).
 
 ### Fixed
 - **The jianpu editor dropped repeat barlines and merged voices on
   re-render.** Both are computed from the MusicXML score, which the editor
   never sees — it only has the saved `.jianpu.txt` — so opening a multi-voice
   or repeat-containing score, changing nothing and hitting render silently
-  stripped repeat marks and flattened merged voices onto separate staves,
-  regardless of what was actually edited. The main pipeline now persists both
-  into a `#__jianpu_meta__` header line that the editor parses back and
-  replays. Verified end to end against a score with 6 real repeat barlines:
-  the re-rendered LilyPond carries the identical `\bar ":|."` commands at the
-  identical bar positions as the original conversion.
+  stripped repeat marks and flattened merged voices onto separate staves. The
+  main pipeline now persists both into a `#__jianpu_meta__` header line that
+  the editor parses back and replays.
 - **Uncaught exceptions failed silently.** The crash-log-and-notify safety net
   (`sys.excepthook` / `threading.excepthook`) was lost when `app.py` was
-  deleted in the 0.5.0 rewrite and never reinstated in `webui/main.py`. Main
-  -thread exceptions now log at CRITICAL and raise a native dialog; background
-  -thread exceptions log at ERROR without a dialog, to avoid a dialog storm
-  from one misbehaving worker thread.
-- **The DirectML distribution lock was not reproducible.** Installing
-  `requirements.lock.directml.txt` into a clean venv pulls in `sympy` and
-  `mpmath`, which it never pinned — a packaging machine got whatever versions
-  were current that day. The cause is that the file is derived from
-  `requirements.lock.txt`, and the two ONNX Runtime flavours do not declare
-  the same dependencies: `onnxruntime-directml` requires `sympy` outright
-  while `onnxruntime-gpu` puts it behind an optional extra, so it was never
-  in the venv the lock was frozen from. Both are now pinned and the header
-  records that these two locks cannot be derived purely mechanically.
-- **Both locks disagreed with the audio-transcription stack.** That stack
-  (torch / librosa / numba / piano_transcription_inference) is installed by
-  hand per `requirements.txt` and is deliberately *not* in either lock, so its
-  constraints are invisible to any audit that reasons from the lock alone —
-  which is how three wrong pins survived. `numpy` was pinned at 2.5.0 while
-  numba 0.66.0 hard-requires `<2.5` (a plain `ImportError`), `setuptools` at
-  82.0.1 while torch 2.12.1 requires `<82`, and `msgpack` had been dropped as
-  Flet-era dead weight when it is in fact a hard dependency of librosa —
-  removing it breaks `librosa.load` / `resample` / `beat_track`, and therefore
-  audio→jianpu conversion entirely. librosa's `lazy_loader` means
-  `import librosa` still succeeds, so the failure only surfaces at
-  transcription time. All three are corrected, and both lock headers plus the
-  audio section of `requirements.txt` now record that changing dependencies
-  requires a `pip check` in a venv that *has* the audio stack installed.
+  deleted in the 0.5.0 rewrite and never reinstated in `webui/main.py`.
+  Main-thread exceptions now log at CRITICAL and raise a native dialog;
+  background-thread exceptions log at ERROR without one, to avoid a dialog
+  storm from a single misbehaving worker thread.
+- **Neither lock file was reproducible.** `requirements.lock.directml.txt`
+  never pinned `sympy` / `mpmath`, which `onnxruntime-directml` requires
+  outright while `onnxruntime-gpu` puts them behind an optional extra — so
+  they were absent from the venv the DirectML lock was derived from. Both
+  locks additionally disagreed with the audio-transcription stack, which is
+  installed by hand per `requirements.txt` and deliberately absent from them:
+  `numpy` was pinned at 2.5.0 where numba requires `<2.5`, and `setuptools` at
+  82.0.1 where torch requires `<82`, so pip quietly resolved around the lock on
+  any machine that had the stack. All four pins corrected, and the lock headers
+  now record that these files cannot be derived purely mechanically and that
+  dependency changes need a `pip check` in a venv that *has* the audio stack.
 
 ### Internal
 - **Dependency audit across the whole manifest.** Dropped `musicxml` (no
-  import anywhere, including the homr submodule, and unupgradable — 1.5
-  through 1.6.1 all cap at Python <3.13), `pypdfium2` (zero call sites since
-  0.5.0 moved PDF preview to pdf.js in the WebView), `pypdf` (its only caller
-  was a dead 75-line CJK-title overlay superseded by LilyPond `\markup`
-  injection), and six Flet-era transitive packages that `pip freeze` had
-  carried into the lock after Flet itself was removed. 14 patch/minor bumps
-  alongside. On the JavaScript side, a devDependency refresh clears a
-  high-severity `brace-expansion` advisory that reached the tree only through
-  eslint's glob handling.
-- **CI gains a pyright type-check job**, pinned to `pythonPlatform:
-  "Windows"` so it analyses the same target as a local run — the CI runner is
-  Linux, where typeshed hides `msvcrt` / `os.startfile` / `ctypes.windll` and
-  six correctly-guarded Windows-only call sites looked like errors. A second
-  CI failure is fixed alongside: `tests/test_homr_downloader_url.py` imported
-  the homr submodule unconditionally, which CI deliberately never checks out,
-  failing collection for the entire suite.
-- **`webui/static/js/` gains lint and test tooling** (eslint flat config +
-  `node --test`, two new CI jobs), and the 1806-line `app.js` is split into 12
-  ES modules mirroring `webui/`'s Python service boundaries. The split
-  surfaced and fixed a circular-import temporal-dead-zone crash between
-  `core.js` and `notedigger.js`.
-- **Test coverage** for three behaviours previously guarded only by prose:
-  the golden-file corpus grows from 7 to 11 fixtures (adding tempo, lyrics, a
+  import anywhere, and unupgradable — 1.5 through 1.6.1 all cap at Python
+  <3.13), `pypdfium2` (zero call sites since 0.5.0 moved PDF preview to pdf.js
+  in the WebView), `pypdf` (its only caller was a dead CJK-title overlay
+  superseded by LilyPond `\markup` injection), and six Flet-era transitive
+  packages that `pip freeze` had carried into the lock after Flet was removed.
+  14 patch/minor bumps alongside; a JS devDependency refresh clears a
+  high-severity `brace-expansion` advisory.
+- **CI gains a pyright type-check job**, pinned to `pythonPlatform: "Windows"`
+  so it analyses the same target as a local run — the runner is Linux, where
+  typeshed hides `msvcrt` / `os.startfile` / `ctypes.windll` and six
+  correctly-guarded Windows-only call sites looked like errors. Also fixed:
+  `tests/test_homr_downloader_url.py` imported the homr submodule
+  unconditionally, which CI never checks out, failing collection for the
+  entire suite.
+- **`webui/static/js/` gains lint and test tooling** (eslint + `node --test`,
+  two new CI jobs), and the 1806-line `app.js` is split into 12 ES modules
+  mirroring `webui/`'s Python service boundaries.
+- **Test coverage** for three behaviours previously guarded only by prose: the
+  golden-file corpus grows from 7 to 11 fixtures (adding tempo, lyrics, a
   second multi-voice shape, and anacrusis-plus-minor-key), the transposer's
   rest-position and `--nrp` constraints, and the HOMR flat-layout URL builder
-  against all 6 real weight filenames on both mirrors.
+  on both mirrors.
 - `THIRD_PARTY_NOTICES.md` brought current: version drift corrected on five
   entries, and the three web components vendored since 0.5.0 (noteDigger,
   pdf.js, webaudio-tinysynth) are now attributed.
-- `scripts/sync_version.py` also updates `README.zh.md`'s badge, which had
-  been a manual step at every release.
+- `scripts/sync_version.py` also updates `README.zh.md`'s badge and the npm
+  manifests, all of which were manual steps at every release.
 
 ## [0.5.1] - 2026-07-25
 
