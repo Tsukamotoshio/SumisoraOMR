@@ -531,12 +531,25 @@ class ConversionRunner:
                     _any_error = True
                     err_text = msg.get('message', '')
                     self._state.append_log(t("landing.log_error_prefix", prefix=prefix, err=err_text))
-                    # 该 worker 整批文件均失败（task 级别异常，未进入文件循环）
+                    # 该 worker 剩余未出结果的文件均记为失败。注意 'error' 来自
+                    # worker_main.run_worker() 最外层的 except（worker_main.py:340），
+                    # 它**可以**在若干文件已经成功之后才触发——例如 MusicXML 归档那段就在
+                    # per-file try 之外。所以不能假设"未进入文件循环"：判重要查全部三个桶，
+                    # 否则已成功/已回退的文件会被重新计入 failed。
+                    # _total_fail 也必须按实际 append 次数累加：原先无条件 += 整块长度，
+                    # 即使 dedup 一个都没加，计数照样虚高。
+                    _attributed = {
+                        r.get('file')
+                        for _bucket in ('success', 'fallback', 'failed')
+                        for r in _all_results[_bucket]
+                    }
                     for _f in chunks[worker_id]:
                         _fname = Path(_f).name
-                        if not any(r.get('file') == _fname for r in _all_results['failed']):
-                            _all_results['failed'].append({'file': _fname, 'reason': err_text[:80] or t("landing.process_error")})
-                    _total_fail += len(chunks[worker_id])
+                        if _fname in _attributed:
+                            continue
+                        _all_results['failed'].append({'file': _fname, 'reason': err_text[:80] or t("landing.process_error")})
+                        _attributed.add(_fname)
+                        _total_fail += 1
 
             # 等待所有子进程完全退出，同时检测无声崩溃（无 done/error 消息）
             for i, proc in enumerate(procs):
@@ -559,18 +572,27 @@ class ConversionRunner:
                     _crash_hint = t("landing.crash_hint_code", rc=rc) + (t("landing.crash_hint_tail", tail=_tail[:120]) if _tail else '')
                     self._state.append_log(t("landing.log_worker_crash", worker=i + 1, hint=_crash_hint))
                     _any_error = True
+                    # 只把「这个 worker 分块里尚无任何结果」的文件记为崩溃失败。
+                    # 三个桶存的都是 {'file': ..., ...} 字典，所以判重必须比对 'file' 键：
+                    # 早先这里写成 `_fname in _all_results['success']`（str 与 list[dict]
+                    # 比较，恒为 False），且完全没查 fallback——worker 处理完若干文件后再
+                    # 崩溃时，已成功/已回退的文件会被重新计入 failed，同一文件在结果弹窗里
+                    # 同时出现 ✓ 和 ✗，_total_fail 与 total 也随之虚高。
+                    _attributed = {
+                        r.get('file')
+                        for _bucket in ('success', 'fallback', 'failed')
+                        for r in _all_results[_bucket]
+                    }
                     for _f in chunks[i]:
                         _fname = Path(_f).name
-                        already = (
-                            any(r.get('file') == _fname for r in _all_results['failed'])
-                            or _fname in _all_results['success']
-                        )
-                        if not already:
-                            _all_results['failed'].append({
-                                'file': _fname,
-                                'reason': _crash_hint,
-                            })
-                            _total_fail += 1
+                        if _fname in _attributed:
+                            continue
+                        _all_results['failed'].append({
+                            'file': _fname,
+                            'reason': _crash_hint,
+                        })
+                        _attributed.add(_fname)
+                        _total_fail += 1
 
             if self._state.is_processing:
                 n_success = len(_all_results['success'])
