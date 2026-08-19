@@ -199,6 +199,9 @@ let edGraphicalStale = false;   // 不在图形 tab 时发生过编辑 → 切�
 let edGraphicalSeq = 0;         // 作废迟到的响应（后发先至时不覆盖新结果）
 let edGraphicalRendered = false; // 是否已有一份成功渲染的内容挂在容器里
 let edRenderers = [];           // 每个分段一个 JianpuSVGRender 实例（阶段4.2 高亮要用）
+let edSectionNotes = [];        // 每个分段的 render 音符数组（阶段5.2 命中测试要用）
+let edSectionIdIndex = [];      // 每个分段：data-id → 该分段音符下标
+let edSelection = null;         // { section, anchor, focus }（下标闭区间，anchor 可大可小）
 
 function edScheduleGraphicalRender() {
   if (!edLoaded) return;
@@ -253,6 +256,18 @@ async function edRenderGraphical({ quiet = false } = {}) {
       return new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
     });
     edHighlighted = [];   // 实例全换了，上一轮记的"已高亮音符"作废
+    // 阶段5.2：建 data-id → 该分段音符下标 的索引，供点击命中测试反查。
+    // id 一律用 fork 自己的 noteElementId() 现算，不在这边另写一份同样的公式——
+    // 那样两处一旦漂移（比如哪天量化精度改了），命中测试会静默失灵。
+    edSectionNotes = r.renders.map((render) => render.notes || []);
+    edSectionIdIndex = edSectionNotes.map((notes) => {
+      const map = new Map();
+      notes.forEach((n, i) => map.set(jr.noteElementId(n.start, n.pitch), i));
+      return map;
+    });
+    // 重绘后 DOM 全换、音符下标也可能已经不是原来那个音符了，选中态一律作废。
+    // （5.3 有了常驻模型、ref 稳定之后再谈"编辑后保住选区"。）
+    edSelection = null;
     const scrollables = container.querySelectorAll('.graphical-staff > div');
     scrollables.forEach((d, i) => { if (scrollLefts[i] !== undefined) d.scrollLeft = scrollLefts[i]; });
     edGraphicalRendered = true;
@@ -306,6 +321,84 @@ function edUpdateHighlight() {
   }
 }
 
+// ── 鼠标选择（阶段5.2）────────────────────────────────────────────────────────
+// 选中态**不能**复用 fork 的高亮机制：那套是直接改 `<text>`/`<path>` 的 fill
+// （见 vendor 里的 highlightElement），播放高亮一染色就会把选中色盖掉，反之亦然。
+// 所以选中用另一条视觉通道——在音符分组里插一个垫在最底下的圆角矩形。fork 的
+// highlight/reset 只挑 text/path 处理，碰不到 rect，两者因此可以同时存在：
+// 一个音符可以既"被选中"（蓝底）又"正在响"（红字）。
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+/** 选区归一化成闭区间 [from, to]（anchor 在后、focus 在前时也要正确）。 */
+function edSelectionRange() {
+  if (!edSelection) return null;
+  const { section, anchor, focus } = edSelection;
+  return { section, from: Math.min(anchor, focus), to: Math.max(anchor, focus) };
+}
+
+function edRenderSelection() {
+  const container = $('ed-gr-container');
+  container.querySelectorAll('.jp-sel-rect').forEach((el) => el.remove());
+  const range = edSelectionRange();
+  if (!range) return;
+  const staff = container.children[range.section];
+  if (!staff) return;
+  const notes = edSectionNotes[range.section] || [];
+  for (let i = range.from; i <= range.to; i++) {
+    const note = notes[i];
+    if (!note) continue;
+    const g = staff.querySelector(`g[data-id="${CSS.escape(window.jr.noteElementId(note.start, note.pitch))}"]`);
+    if (!g) continue;
+    let box;
+    try {
+      box = g.getBBox();
+    } catch (_e) {
+      continue;   // 未布局的元素取 bbox 会抛，跳过即可
+    }
+    if (!box || box.width <= 0) continue;
+    const pad = 2;
+    const rect = document.createElementNS(SVGNS, 'rect');
+    rect.setAttribute('class', 'jp-sel-rect');
+    rect.setAttribute('x', `${box.x - pad}`);
+    rect.setAttribute('y', `${box.y - pad}`);
+    rect.setAttribute('width', `${box.width + pad * 2}`);
+    rect.setAttribute('height', `${box.height + pad * 2}`);
+    rect.setAttribute('rx', '3');
+    // 垫到最底下，否则会盖住音符数字。
+    g.insertBefore(rect, g.firstChild);
+  }
+}
+
+function edSetSelection(section, index, extend) {
+  if (extend && edSelection && edSelection.section === section) {
+    edSelection = { section, anchor: edSelection.anchor, focus: index };
+  } else {
+    // Shift 点到了另一个声部：跨谱表选区在音乐上没有意义（那是两条独立声部），
+    // 直接把锚点挪过去、当成在新声部里重新起选。
+    edSelection = { section, anchor: index, focus: index };
+  }
+  edRenderSelection();
+}
+
+function edClearSelection() {
+  if (!edSelection) return;
+  edSelection = null;
+  edRenderSelection();
+}
+
+$('ed-gr-container').addEventListener('click', (e) => {
+  const g = e.target.closest ? e.target.closest('g[data-id]') : null;
+  const staff = e.target.closest ? e.target.closest('.graphical-staff') : null;
+  if (!g || !staff) { edClearSelection(); return; }   // 点空白处 = 取消选择
+  const section = [...$('ed-gr-container').children].indexOf(staff);
+  const index = section >= 0 && edSectionIdIndex[section]
+    ? edSectionIdIndex[section].get(g.getAttribute('data-id'))
+    : undefined;
+  // 命中的可能是休止符块之类没有对应 render 音符的分组——那些不可选。
+  if (index === undefined) { edClearSelection(); return; }
+  edSetSelection(section, index, e.shiftKey);
+});
+
 function edClearHighlight() {
   for (const r of edRenderers) r.clearHighlight();
   edHighlighted = [];
@@ -337,6 +430,14 @@ $('ed-gr-play').addEventListener('click', async () => {
   }
 });
 $('ed-gr-stop').addEventListener('click', () => jianpuPlayer.stop());
+
+// Esc 取消选择——图形区不是输入框，没有别的"退出当前状态"的自然手势。
+// 只在图形 tab 可见时接管，免得抢了别处的 Esc。
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if ($('ed-gr-stage').classList.contains('hidden')) return;
+  edClearSelection();
+});
 
 export function edApplyLoad(r) {
   edLoaded = true;
@@ -378,6 +479,9 @@ export function edApplyLoad(r) {
   edGraphicalStale = false;
   edRenderers = [];             // 容器即将清空，实例引用一并作废
   edHighlighted = [];
+  edSectionNotes = [];
+  edSectionIdIndex = [];
+  edSelection = null;
   $('ed-gr-container').replaceChildren();
   $('ed-gr-ph').parentElement.classList.remove('hidden');
   $('ed-gr-ph').textContent = t('w.ed.graphical_placeholder');

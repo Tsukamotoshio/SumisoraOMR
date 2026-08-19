@@ -144,6 +144,10 @@ button { font-family: inherit; cursor: default; }
 .graphical-container { max-width: 100%; overflow: auto; background: var(--card); border-radius: 8px; padding: 12px; }
 .graphical-container svg { display: block; }
 .graphical-staff + .graphical-staff { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+/* 阶段5.2 选中态：垫在音符底下的色块。用既有的 accent-tint-2 令牌，深浅主题
+   各自已经调好；不新造颜色，也就不会有哪个主题下漏配的问题。fill 走 CSS 而不
+   是写死属性，是为了让它跟着主题切换走。 */
+.jp-sel-rect { fill: var(--accent-tint-2); pointer-events: none; }
 .grtransport { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .grtransport .num { color: var(--muted); font-size: 12px; }
 .preview .placeholder { color: var(--faint); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
