@@ -154,6 +154,10 @@ def build_jianpu_ly_text_from_doc(doc: 'JianpuDoc') -> str:
             line_measures = section.measures[i:i + 4]
             measure_texts = [' '.join(jianpu_note_token(note) for note in m) for m in line_measures]
             header.append(' | '.join(measure_texts) + ' |')
+        # 歌词行跟在本分段所有小节之后（与 build_jianpu_ly_text 的位置一致）。
+        # 歌词锚在音符上（JianpuNote.lyrics），所以图形编辑增删音符时不会错位——
+        # 这正是 B10.4 当初把它设计成按音符存、而不是存成一条独立文本流的理由。
+        header.extend(build_lyric_lines(section.measures))
     return '\n'.join(header)
 
 

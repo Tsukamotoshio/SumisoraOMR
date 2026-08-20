@@ -3,16 +3,26 @@
 leaves after stripping the leading ``#`` comment block) into a JianpuDoc —
 修复计划2与简谱编辑器规划.md's B3 方案 C editor model.
 
-Scope is deliberately the same 🟢 grammar tier documented in
-docs/jianpu-ly-syntax.md — the subset this project's own pipeline actually
-produces (verified against 48 real files). 🟡-tier syntax (valid jianpu-ly
-the pipeline never emits — lyrics, ties, grace notes, dynamics, repeat
-brackets, ...) and ⚪ explicitly-excluded constructs (``LP: ... :LP``,
-``chords=`` and friends) are **not** parsed — a ``JianpuParseError`` is
-raised instead of silently dropping them, per that doc's §3 rule ("解析器
-必须报错，不得静默丢弃或吞入音符名"). Extending coverage to 🟡 syntax is
-future work, not needed for the 48-file round-trip acceptance test this
-stage is scoped to.
+Scope is the 🟢 grammar tier documented in docs/jianpu-ly-syntax.md — the
+subset this project's own pipeline actually produces — **plus lyrics**.
+
+Lyrics were originally excluded along with the rest of the 🟡 tier, but the
+pipeline emits them by default (``ENABLE_LYRICS_OUTPUT``), so every vocal
+score produced a file this parser rejected. Since the graphical editor makes
+the model the source of truth and re-serializes after each edit, rejecting
+them would have meant either locking those files out of graphical editing or
+destroying their lyrics on the first edit. ``JianpuNote.lyrics`` already
+existed for exactly this purpose (see B10.4 in the fix-plan doc: lyrics are
+anchored per note so that inserting or deleting notes cannot desynchronise
+them), and ``primitives.build_lyric_lines`` already wrote them back out, so
+only the reading half was missing — see ``_apply_lyric_line``.
+
+The remaining 🟡-tier syntax (ties, grace notes, dynamics, repeat brackets,
+...) and the ⚪ explicitly-excluded constructs (``LP: ... :LP``, ``chords=``
+and friends) are still **not** parsed — a ``JianpuParseError`` is raised
+rather than silently dropping them, per that doc's §3 rule ("解析器必须报错，
+不得静默丢弃或吞入音符名"). None of them appears in any real file in the
+local corpus.
 
 ``JianpuNote.midi`` is computed after parsing (阶段3.1) via
 ``primitives.jianpu_note_to_midi`` — the reverse of ``note_to_jianpu``'s
@@ -36,6 +46,10 @@ _TIMESIG_RE = re.compile(r"^(\d+)/(\d+)(?:,(\S+))?$")
 _KEY_RE = re.compile(r"^([16])=(\S+)$")
 _TEMPO_RE = re.compile(r"^4=(\d+)$")
 _WHOLE_LINE_VALUE_RE = re.compile(r'^(title=|composer=)')
+# 歌词行：'L:' 非汉字段、'H:' 汉字段（两者的区别与 '_' 语义见 primitives.build_lyric_lines）
+_LYRIC_LINE_RE = re.compile(r'^([LH]):\s*(.*)$')
+# 第 N 段的前缀 'N. '；第 1 段省略前缀（同 build_lyric_lines 的写法）
+_LYRIC_STANZA_RE = re.compile(r'^(\d+)\.\s+(.*)$')
 
 _PREFIX_QL = {'': 1.0, 'q': 0.5, 's': 0.25, 'd': 0.125}
 
@@ -78,9 +92,12 @@ def _tokenize(text: str) -> list[_Word]:
             continue
         first_word = trimmed.split(None, 1)[0]
         if first_word in ('L:', 'H:'):
-            # 歌词行属 🟡（docs §2）——本解析器不覆盖，整行报错定位到行首。
+            # 歌词行整行取值（同 title=/composer= 的处理思路）：音节里可能带空格
+            # 以外的任何东西，按空白拆词再拼回去没有意义。真正的对齐在
+            # _apply_lyric_line() 里做。
             col = len(line) - len(trimmed) + 1
-            raise JianpuParseError('歌词行（L:/H:）不在阶段2解析器覆盖范围内', line_no, col, first_word)
+            words.append(_Word(trimmed, line_no, col))
+            continue
         for m in re.finditer(r'\S+', line):
             words.append(_Word(m.group(0), line_no, m.start() + 1))
     return words
@@ -112,6 +129,45 @@ def _decode_note_or_dash(word: _Word) -> JianpuNote:
     raise JianpuParseError('非法记号，不属于本解析器覆盖的 🟢 文法', word.line, word.col, word.text)
 
 
+def _apply_lyric_line(section: JianpuSection, line: str) -> None:
+    """Attach one ``L:``/``H:`` line's syllables to *section*'s notes.
+
+    Exact inverse of ``primitives.build_lyric_lines`` — read that function's
+    docstring for the format's reasoning; this one only has to undo it:
+
+    * tokens are positional over the section's **non-rest** notes, in order
+      (rests consume no token; continuation dashes do, since they are not rests);
+    * ``_`` means "this note has no syllable in this verse" — skip it, do not
+      shift everything after it;
+    * a trailing ``-`` means the syllable continues into the next one;
+    * a leading ``N.`` marks verse N; verse 1 omits the prefix.
+
+    Deliberately tolerant about length: a line with more tokens than notes (or
+    fewer) attaches what it can rather than raising. Lyrics are decoration on
+    top of the notes — a miscount should never cost the user the whole file,
+    which is the same 不阻断 stance the validation layer takes (B5 校验层).
+    """
+    match = _LYRIC_LINE_RE.match(line)
+    if not match:
+        return
+    rest = match.group(2)
+    verse = 1
+    stanza = _LYRIC_STANZA_RE.match(rest)
+    if stanza:
+        verse = int(stanza.group(1))
+        rest = stanza.group(2)
+    targets = [note for measure in section.measures for note in measure if not note.is_rest]
+    # strict=False is the point: a lyric line that does not line up with the
+    # note count attaches what it can (see the tolerance note above).
+    for note, token in zip(targets, rest.split(), strict=False):
+        if token == '_':
+            continue
+        hyphenated = token.endswith('-')
+        text = token[:-1] if hyphenated else token
+        if text:
+            note.lyrics[verse] = (text, hyphenated)
+
+
 def parse_jianpu_ly_text(body: str) -> JianpuDoc:
     """Parse jianpu-ly body text into a JianpuDoc.
 
@@ -126,6 +182,7 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
     sections: list[JianpuSection] = []
     current_section: JianpuSection | None = None
     current_measure: list[JianpuNote] = []
+    pending_lyrics: list[tuple[JianpuSection, str]] = []
 
     def close_measure_on_bar() -> None:
         """`|` always ends a measure — even an empty one (`| |`) is a real,
@@ -175,12 +232,22 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
             current_section = JianpuSection(time_sig=text)
             sections.append(current_section)
             continue
+        if _LYRIC_LINE_RE.match(text):
+            # 歌词行出现在**本分段所有小节之后**（build_lyric_lines 是在每段
+            # 小节写完后才 extend 上去的），所以这里先攒着，等整篇读完、所有
+            # 小节都归位了再统一对齐——免得撞上"最后一小节还没收尾"的时序。
+            if current_section is not None:
+                pending_lyrics.append((current_section, text))
+            continue
         if current_section is None:
             # 拍号缺失（不应发生在真实文件里,但要给出可定位的错误而不是 None 解引用）
             raise JianpuParseError('小节内容出现在拍号声明之前', word.line, word.col, text)
         current_measure.append(_decode_note_or_dash(word))
 
     flush_pending_defensively()
+
+    for section, lyric_line in pending_lyrics:
+        _apply_lyric_line(section, lyric_line)
 
     key_tonic_semitone = key_header_tonic_semitone(key_header)
     for section in sections:

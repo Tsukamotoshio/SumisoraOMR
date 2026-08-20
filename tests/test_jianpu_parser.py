@@ -139,9 +139,52 @@ def test_historical_ocr_garbage_tokens_raise():
             parse_jianpu_ly_text(f'4/4\n\n{bad} 1 |\n')
 
 
-def test_lyric_lines_are_out_of_scope_and_raise():
-    with pytest.raises(JianpuParseError):
-        parse_jianpu_ly_text('4/4\n\n1 2 3 4 |\nL: syl- la- ble\n')
+def test_lyric_lines_attach_syllables_to_notes():
+    # 阶段5.2.5: lyrics are parsed into JianpuNote.lyrics (they used to raise).
+    # Alignment is positional over non-rest notes, mirroring build_lyric_lines.
+    doc = parse_jianpu_ly_text('4/4\n\n1 2 3 4 |\nL: syl- la- ble\n')
+    notes = doc.sections[0].measures[0]
+    assert notes[0].lyrics == {1: ('syl', True)}, 'trailing hyphen means "same word as next"'
+    assert notes[1].lyrics == {1: ('la', True)}
+    assert notes[2].lyrics == {1: ('ble', False)}
+    assert notes[3].lyrics == {}, 'no token left for the 4th note'
+
+
+def test_lyric_underscore_skips_a_note_without_shifting_the_rest():
+    doc = parse_jianpu_ly_text('4/4\n\n1 2 3 4 |\nL: one _ three\n')
+    notes = doc.sections[0].measures[0]
+    assert notes[0].lyrics == {1: ('one', False)}
+    assert notes[1].lyrics == {}, '_ means this note has no syllable'
+    assert notes[2].lyrics == {1: ('three', False)}, 'and the next syllable does not slide onto it'
+
+
+def test_lyric_rests_consume_no_syllable():
+    doc = parse_jianpu_ly_text('4/4\n\n1 0 2 |\nL: aa bb\n')
+    notes = doc.sections[0].measures[0]
+    assert notes[0].lyrics == {1: ('aa', False)}
+    assert notes[1].lyrics == {}, 'the rest is skipped entirely'
+    assert notes[2].lyrics == {1: ('bb', False)}
+
+
+def test_lyric_verse_numbers_and_cjk_prefix():
+    doc = parse_jianpu_ly_text('4/4\n\n1 2 |\nL: one two\nL: 2. uno dos\nH: 3. 一 二\n')
+    notes = doc.sections[0].measures[0]
+    assert notes[0].lyrics == {1: ('one', False), 2: ('uno', False), 3: ('一', False)}
+    assert notes[1].lyrics == {1: ('two', False), 2: ('dos', False), 3: ('二', False)}
+
+
+def test_lyric_line_longer_than_the_music_is_tolerated():
+    # 不阻断原则: a miscount must not cost the user the file.
+    doc = parse_jianpu_ly_text('4/4\n\n1 2 |\nL: a b c d e\n')
+    notes = doc.sections[0].measures[0]
+    assert [n.lyrics[1][0] for n in notes] == ['a', 'b']
+
+
+def test_lyrics_belong_to_their_own_section():
+    doc = parse_jianpu_ly_text(
+        '4/4\n\n1 2 |\nL: aa bb\nNextPart\n4/4\n\n3 4 |\nL: cc dd\n')
+    assert doc.sections[0].measures[0][0].lyrics == {1: ('aa', False)}
+    assert doc.sections[1].measures[0][0].lyrics == {1: ('cc', False)}
 
 
 def test_excluded_lilypond_block_raises():
@@ -149,11 +192,10 @@ def test_excluded_lilypond_block_raises():
         parse_jianpu_ly_text('4/4\n\nLP:\nsome code\n:LP\n1 2 3 4 |\n')
 
 
-# "Scarborough Fair-Flauta" is the one golden fixture with real lyric lines
-# (L:/H:) — 🟡-tier syntax this stage's parser deliberately doesn't cover
-# (see parser.py's module docstring). Expected to raise; everything else
-# in the golden set is pure 🟢 grammar and must parse cleanly.
-_KNOWN_OUT_OF_SCOPE = {'Scarborough Fair-Flauta.jly.txt'}
+# Every golden fixture now parses: "Scarborough Fair-Flauta" used to be the one
+# exception because of its L:/H: lyric lines, which 阶段5.2.5 taught the parser
+# to read into JianpuNote.lyrics instead of rejecting.
+_KNOWN_OUT_OF_SCOPE: set[str] = set()
 
 
 def test_parses_all_golden_fixtures_without_raising():
