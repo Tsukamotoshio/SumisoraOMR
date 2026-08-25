@@ -19,10 +19,17 @@ import re
 import shutil
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from core.app.backend import build_dir, editor_workspace_dir, output_dir
-from core.notation.jianpu import JianpuParseError, jianpu_section_to_render_json, parse_jianpu_ly_text
+from core.notation.jianpu import (
+    JianpuParseError,
+    build_jianpu_ly_text_from_doc,
+    jianpu_doc_from_dict,
+    jianpu_doc_to_dict,
+    jianpu_section_to_render_json,
+    parse_jianpu_ly_text,
+)
 from core.utils import log_message
 
 from .events import EventPusher
@@ -267,11 +274,41 @@ class EditorService:
             return {'ok': False, 'error': 'parse_error', 'message': str(exc), 'line': exc.line, 'col': exc.col}
         if not doc.sections:
             return {'ok': False, 'error': 'empty'}
-        renders = [
+        return {'ok': True, 'renders': self._renders_of(doc), 'doc': jianpu_doc_to_dict(doc)}
+
+    def _renders_of(self, doc) -> list:
+        return [
             jianpu_section_to_render_json(section, doc.key_header, doc.tempo)
             for section in doc.sections
         ]
-        return {'ok': True, 'renders': renders}
+
+    def apply_doc(self, doc_raw: Any) -> dict:
+        """Serialize an edited model back to text, and re-project it for drawing.
+
+        The other half of ``graphical_render_data``: that one hands the
+        front-end the model, this one takes it back after the 阶段5.1 command
+        stack has edited it. Returning **both** the text and the render JSON
+        from the same ``JianpuDoc`` is deliberate — the textarea and the SVG
+        are two projections of one model (B4's first non-negotiable), so
+        deriving them in one place is what keeps them from disagreeing.
+
+        Note that the caller only ever holds a document that came out of a
+        successful parse, which is what keeps files carrying syntax the parser
+        rejects (🟡-tier beyond lyrics) out of this path entirely: no doc is
+        ever produced for them, so nothing can be serialized over the top of
+        them and their text stays authoritative.
+        """
+        if self._current is None:
+            return {'ok': False, 'error': 'no_file'}
+        try:
+            doc = jianpu_doc_from_dict(doc_raw)
+            if not doc.sections:
+                return {'ok': False, 'error': 'empty'}
+            text = build_jianpu_ly_text_from_doc(doc)
+        except Exception as exc:  # noqa: BLE001 — a lost edit is worse than a reported one
+            log_message(f'[webui] 简谱模型序列化失败：{exc}', logging.WARNING)
+            return {'ok': False, 'error': str(exc)}
+        return {'ok': True, 'text': text, 'renders': self._renders_of(doc)}
 
     # ── 预览渲染（txt → LilyPond → PDF；完成推 editor_preview_ready）─────────
 

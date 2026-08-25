@@ -48,6 +48,7 @@ from .extract import (
 from ...config import JianpuDoc, JianpuNote, JianpuSection  # re-export for callers that import them from here
 from .parser import JianpuParseError, parse_jianpu_ly_text
 from .render_json import jianpu_section_to_render_json
+from .doc_json import jianpu_doc_from_dict, jianpu_doc_to_dict
 
 
 def choose_measures_per_line(measures: list[list[JianpuNote]]) -> int:
