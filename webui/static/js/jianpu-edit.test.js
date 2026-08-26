@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 
 import {
   EditHistory, applyCommand, getNote, nextRef, noteRef, prevRef, refEquals,
+  steppedDuration,
 } from './jianpu-edit.js';
 
 function note(symbol, extra = {}) {
@@ -327,5 +328,60 @@ test('200 random do/undo/redo steps agree with a naive snapshot implementation',
       }
     }
     assert.deepEqual(doc, refDoc, `documents diverged at step ${step}`);
+  }
+});
+
+// ── steppedDuration: what +/- does to a note's value ────────────────────────
+
+test('steppedDuration halves and doubles the note value', () => {
+  const at = (duration) => ({ duration, duration_dots: 0 });
+  assert.deepEqual(steppedDuration(at(1.0), +1), { duration: 2.0, duration_dots: 0 });
+  assert.deepEqual(steppedDuration(at(1.0), -1), { duration: 0.5, duration_dots: 0 });
+  assert.deepEqual(steppedDuration(at(0.25), -1), { duration: 0.125, duration_dots: 0 });
+  assert.deepEqual(steppedDuration(at(2.0), +1), { duration: 4.0, duration_dots: 0 });
+});
+
+test('steppedDuration stops at the ends of the ladder instead of wrapping', () => {
+  assert.equal(steppedDuration({ duration: 0.125, duration_dots: 0 }, -1), null);
+  assert.equal(steppedDuration({ duration: 4.0, duration_dots: 0 }, +1), null);
+});
+
+test('steppedDuration keeps the dot, stepping the underlying value', () => {
+  // A dotted quarter (1.5) doubled is a dotted half (3.0), not 3.0 undotted.
+  assert.deepEqual(
+    steppedDuration({ duration: 1.5, duration_dots: 1 }, +1),
+    { duration: 3.0, duration_dots: 1 });
+  assert.deepEqual(
+    steppedDuration({ duration: 1.5, duration_dots: 1 }, -1),
+    { duration: 0.75, duration_dots: 1 });
+});
+
+test('steppedDuration drops a dot that the notation cannot express', () => {
+  // A dotted half (3.0) doubled would be a dotted whole (6.0), which is not a
+  // value jianpu_note_token knows; emitting it would be silently rewritten to
+  // something else, so the dot goes instead.
+  assert.deepEqual(
+    steppedDuration({ duration: 3.0, duration_dots: 1 }, +1),
+    { duration: 4.0, duration_dots: 0 });
+});
+
+test('steppedDuration tolerates the float noise a dot introduces', () => {
+  // 0.75/1.5 divide back to exact halves, but 0.375 and 0.1875 do not always
+  // survive a round trip cleanly; the nearest-rung search must still land right.
+  assert.deepEqual(
+    steppedDuration({ duration: 0.375, duration_dots: 1 }, -1),
+    { duration: 0.1875, duration_dots: 1 });
+  assert.deepEqual(
+    steppedDuration({ duration: 0.1875, duration_dots: 1 }, +1),
+    { duration: 0.375, duration_dots: 1 });
+});
+
+test('steppedDuration handles every ladder rung round trip', () => {
+  const ladder = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0];
+  for (let i = 0; i < ladder.length - 1; i++) {
+    const up = steppedDuration({ duration: ladder[i], duration_dots: 0 }, +1);
+    assert.equal(up.duration, ladder[i + 1], `up from ${ladder[i]}`);
+    const back = steppedDuration(up, -1);
+    assert.equal(back.duration, ladder[i], `back down to ${ladder[i]}`);
   }
 });

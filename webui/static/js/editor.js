@@ -8,6 +8,7 @@ import { $, api, t, toast, showPage } from './core.js';
 import { PdfView } from './pdfview.js';
 import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
+import { EditHistory, noteRef, steppedDuration } from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
 const edRefView = new PdfView($('ed-ref-canvas'), $('ed-ref-stage'), null);
@@ -188,6 +189,46 @@ function edLoadJianpuRenderLib() {
   return _jianpuRenderLibPromise;
 }
 
+/**
+ * 把一组 renders 画到容器里。两条路都走它：文本改动后的重新解析（阶段3.6），
+ * 以及图形编辑后由模型直接算出的新投影（阶段5.3b）。两者共用同一段绘制代码，
+ * 才不会出现"从文本来的画法"和"从模型来的画法"两套逐渐走样的实现。
+ */
+async function edDrawRenders(renders) {
+  const jr = await edLoadJianpuRenderLib();
+  const container = $('ed-gr-container');
+  // 重绘会重建全部 DOM，横向滚动位置会归零；先记下来再还原，否则用户每敲一个
+  // 字都会被弹回谱面开头。JianpuRender 自己在容器里套了一层可滚动 div。
+  const scrollLefts = [...container.querySelectorAll('.graphical-staff > div')].map((d) => d.scrollLeft);
+  container.replaceChildren();
+  // 阶段3.5：每个 NextPart 分段各自一个独立 renderer 实例，纵向堆叠成多行
+  // 谱表——JianpuRender 本身没有"同一谱表多声部叠放"的概念（见 B9.3.1 spike
+  // 结论），这是本项目自己在外层做的编排，不是改 fork 内部。
+  edRenderers = renders.map((render) => {
+    const staff = document.createElement('div');
+    staff.className = 'graphical-staff';
+    container.appendChild(staff);
+    // 留住实例：阶段4.2 的播放高亮要对每个分段调它自己的 redraw(note, true)。
+    return new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
+  });
+  edHighlighted = [];   // 实例全换了，上一轮记的"已高亮音符"作废
+  // 阶段5.2：建 data-id → 该分段音符下标 的索引，供点击命中测试反查。
+  // id 一律用 fork 自己的 noteElementId() 现算，不在这边另写一份同样的公式——
+  // 那样两处一旦漂移（比如哪天量化精度改了），命中测试会静默失灵。
+  edSectionNotes = renders.map((render) => render.notes || []);
+  edSectionIdIndex = edSectionNotes.map((notes) => {
+    const map = new Map();
+    notes.forEach((n, i) => map.set(jr.noteElementId(n.start, n.pitch), i));
+    return map;
+  });
+  const scrollables = container.querySelectorAll('.graphical-staff > div');
+  scrollables.forEach((d, i) => { if (scrollLefts[i] !== undefined) d.scrollLeft = scrollLefts[i]; });
+  // 阶段4.1：播放引擎吃的是同一份 renders 数据（声音与画面同源）。
+  // load() 会停掉正在进行的播放——内容已经变了，继续按旧时间轴放会驴唇不对马嘴。
+  jianpuPlayer.load(renders);
+  edSyncTransport();
+}
+
 // 阶段3.6 实时更新：输入 → 防抖 → 重新解析并重绘。
 // 防抖而不是逐键立即重绘，是因为解析在 Python 侧（阶段2 的解析器是唯一事实源，
 // 不在前端重写一份），每次都要走一趟 pywebview 桥 IPC；逐键触发只会堆积一串
@@ -202,6 +243,8 @@ let edRenderers = [];           // 每个分段一个 JianpuSVGRender 实例（�
 let edSectionNotes = [];        // 每个分段的 render 音符数组（阶段5.2 命中测试要用）
 let edSectionIdIndex = [];      // 每个分段：data-id → 该分段音符下标
 let edSelection = null;         // { section, anchor, focus }（下标闭区间，anchor 可大可小）
+let edDoc = null;               // 常驻模型（阶段5.3a 起由桥送来，事实源）
+let edHistory = null;           // 该模型上的撤销/重做栈（阶段5.1）
 
 function edScheduleGraphicalRender() {
   if (!edLoaded) return;
@@ -220,7 +263,6 @@ function edScheduleGraphicalRender() {
 async function edRenderGraphical({ quiet = false } = {}) {
   if (!edLoaded) return;
   const ph = $('ed-gr-ph');
-  const container = $('ed-gr-container');
   const seq = ++edGraphicalSeq;
   edGraphicalStale = false;
   if (!quiet || !edGraphicalRendered) {
@@ -239,43 +281,18 @@ async function edRenderGraphical({ quiet = false } = {}) {
     return;
   }
   try {
-    const jr = await edLoadJianpuRenderLib();
     if (seq !== edGraphicalSeq) return;
-    // 重绘会重建全部 DOM，横向滚动位置会归零；先记下来再还原，否则用户每敲一个
-    // 字都会被弹回谱面开头。JianpuRender 自己在容器里套了一层可滚动 div。
-    const scrollLefts = [...container.querySelectorAll('.graphical-staff > div')].map((d) => d.scrollLeft);
-    container.replaceChildren();
-    // 阶段3.5：每个 NextPart 分段各自一个独立 renderer 实例，纵向堆叠成多行
-    // 谱表——JianpuRender 本身没有"同一谱表多声部叠放"的概念（见 B9.3.1 spike
-    // 结论），这是本项目自己在外层做的编排，不是改 fork 内部。
-    edRenderers = r.renders.map((render) => {
-      const staff = document.createElement('div');
-      staff.className = 'graphical-staff';
-      container.appendChild(staff);
-      // 留住实例：阶段4.2 的播放高亮要对每个分段调它自己的 redraw(note, true)。
-      return new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
-    });
-    edHighlighted = [];   // 实例全换了，上一轮记的"已高亮音符"作废
-    // 阶段5.2：建 data-id → 该分段音符下标 的索引，供点击命中测试反查。
-    // id 一律用 fork 自己的 noteElementId() 现算，不在这边另写一份同样的公式——
-    // 那样两处一旦漂移（比如哪天量化精度改了），命中测试会静默失灵。
-    edSectionNotes = r.renders.map((render) => render.notes || []);
-    edSectionIdIndex = edSectionNotes.map((notes) => {
-      const map = new Map();
-      notes.forEach((n, i) => map.set(jr.noteElementId(n.start, n.pitch), i));
-      return map;
-    });
-    // 重绘后 DOM 全换、音符下标也可能已经不是原来那个音符了，选中态一律作废。
-    // （5.3 有了常驻模型、ref 稳定之后再谈"编辑后保住选区"。）
+    await edDrawRenders(r.renders);
+    // 阶段5.3a：常驻模型。文本侧发生改动 → 整份模型换新（文本是这一次编辑的
+    // 源头）；图形侧编辑则反过来由模型生成文本。任一时刻只有一个方向在动，
+    // 这样就不存在"两份表示互相同步"那种永远修不完的 bug（B4 第1条）。
+    edDoc = r.doc || null;
+    edHistory = edDoc ? new EditHistory(edDoc) : null;
+    // 文本重解析后音符下标可能已不指向原来那个音符，选中态作废。
     edSelection = null;
-    const scrollables = container.querySelectorAll('.graphical-staff > div');
-    scrollables.forEach((d, i) => { if (scrollLefts[i] !== undefined) d.scrollLeft = scrollLefts[i]; });
+    edRenderSelection();
     edGraphicalRendered = true;
     ph.parentElement.classList.add('hidden');
-    // 阶段4.1：播放引擎吃的是同一份 renders 数据（声音与画面同源）。
-    // load() 会停掉正在进行的播放——文本已经变了，继续按旧时间轴放会驴唇不对马嘴。
-    jianpuPlayer.load(r.renders);
-    edSyncTransport();
   } catch (e) {
     edGraphicalRendered = false;
     ph.parentElement.classList.remove('hidden');
@@ -399,6 +416,128 @@ $('ed-gr-container').addEventListener('click', (e) => {
   edSetSelection(section, index, e.shiftKey);
 });
 
+// ── 键盘编辑（阶段5.3b）──────────────────────────────────────────────────────
+// 一次按键 → 一条语义命令 → 命令栈（阶段5.1）改常驻模型 → 模型过桥序列化
+// （阶段5.3a）→ 回来的文本灌进 textarea、回来的 renders 直接重画。
+// 注意方向：**模型是事实源**，文本和图形都是它的投影。所以这里不去拼文本、
+// 也不重新解析，只把模型算出来的结果铺到两个视图上。
+
+/** 选中焦点音符在模型里的地址（渲染投影是有损的，靠 Python 带回的 ref 反查）。 */
+function edFocusedRef() {
+  if (!edSelection) return null;
+  const notes = edSectionNotes[edSelection.section] || [];
+  const note = notes[edSelection.focus];
+  if (!note || !note.ref) return null;
+  return noteRef(edSelection.section, note.ref.measure, note.ref.index);
+}
+
+/** 编辑后把选区落回同一个音符；音符已被删掉时退而选原位置上的那个。 */
+function edReselect(ref, fallbackIndex) {
+  if (!ref) return;
+  const notes = edSectionNotes[ref.section] || [];
+  let index = notes.findIndex(
+    (n) => n.ref && n.ref.measure === ref.measure && n.ref.index === ref.index);
+  if (index < 0) index = Math.min(fallbackIndex, notes.length - 1);
+  if (index < 0) { edSelection = null; edRenderSelection(); return; }
+  edSelection = { section: ref.section, anchor: index, focus: index };
+  edRenderSelection();
+}
+
+/** 把当前模型送去序列化，并用返回结果刷新两个视图。 */
+async function edPushModel(keepRef, fallbackIndex) {
+  const r = await api().editor_apply_doc(edDoc);
+  if (!r.ok) {
+    toast(t('w.ed.edit_failed', { e: r.error || '' }), { severity: 'error' });
+    return;
+  }
+  // 程序化赋值不会触发 'input' 事件，所以不会反过来又踢一次"文本改了→重解析"
+  // 的防抖链路（那会把刚生成的模型再解析一遍，白跑且可能覆盖选区）。代价是
+  // input 处理器顺带做的那几件事得在这里自己做一遍。
+  const ta = $('ed-text');
+  ta.value = r.text;
+  edSetDirty(true);
+  edUpdateGutter();
+  edRunLint();
+  clearTimeout(edGraphicalTimer);   // 作废可能还在等的那次文本触发重绘
+  await edDrawRenders(r.renders);
+  edReselect(keepRef, fallbackIndex);
+}
+
+/** 执行一条命令：命令被拒绝（地址无效、休止符不能加升降号等）就什么都不做。 */
+async function edRunCommand(cmd) {
+  if (!edDoc || !edHistory || !cmd) return;
+  const keepRef = cmd.ref;
+  const fallbackIndex = edSelection ? edSelection.focus : 0;
+  if (!edHistory.do(cmd)) return;
+  await edPushModel(keepRef, fallbackIndex);
+}
+
+async function edUndoRedo(redo) {
+  if (!edDoc || !edHistory) return;
+  const keepRef = edFocusedRef();
+  const fallbackIndex = edSelection ? edSelection.focus : 0;
+  if (!(redo ? edHistory.redo() : edHistory.undo())) return;
+  await edPushModel(keepRef, fallbackIndex);
+}
+
+/** 按键 → 命令。返回 null 表示这个键与编辑无关，交回给浏览器。 */
+function edCommandForKey(e, ref) {
+  const note = edSectionNotes[edSelection.section][edSelection.focus];
+  if (e.key >= '1' && e.key <= '7') return { type: 'set_pitch', ref, symbol: e.key };
+  if (e.key === '0') return { type: 'set_rest', ref };
+  if (e.key === 'ArrowUp') return { type: 'set_octave', ref, delta: 1 };
+  if (e.key === 'ArrowDown') return { type: 'set_octave', ref, delta: -1 };
+  if (e.key === '.') return { type: 'toggle_dot', ref };
+  if (e.key === '#') return { type: 'set_accidental', ref, accidental: '#' };
+  if (e.key === 'b') return { type: 'set_accidental', ref, accidental: 'b' };
+  if (e.key === 'n') return { type: 'set_accidental', ref, accidental: '' };
+  if (e.key === 'Delete' || e.key === 'Backspace') return { type: 'delete_note', ref };
+  if (e.key === '+' || e.key === '=' || e.key === '-') {
+    // 时值靠模型里的当前值算下一档，而不是靠渲染投影里的 length——投影已经把
+    // 延音横线折进前一个音符，读它会算错。
+    const model = edDoc.sections[ref.section].measures[ref.measure][ref.index];
+    const next = steppedDuration(model || note, e.key === '-' ? -1 : 1);
+    return next ? { type: 'set_duration', ref, ...next } : null;
+  }
+  return null;
+}
+
+document.addEventListener('keydown', (e) => {
+  if ($('ed-gr-stage').classList.contains('hidden')) return;
+  // 文本框有它自己的键盘语义（也有自己的撤销栈），不抢。
+  if (e.target === $('ed-text')) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    edUndoRedo(e.shiftKey);   // Ctrl+Shift+Z = 重做，与多数编辑器一致
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault();
+    edUndoRedo(true);
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // 左右方向键移动选择，不改内容。
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && edSelection) {
+    const notes = edSectionNotes[edSelection.section] || [];
+    const next = edSelection.focus + (e.key === 'ArrowRight' ? 1 : -1);
+    if (next >= 0 && next < notes.length) {
+      e.preventDefault();
+      edSetSelection(edSelection.section, next, e.shiftKey);
+    }
+    return;
+  }
+
+  const ref = edFocusedRef();
+  if (!ref) return;
+  const cmd = edCommandForKey(e, ref);
+  if (!cmd) return;
+  e.preventDefault();
+  edRunCommand(cmd);
+});
+
 function edClearHighlight() {
   for (const r of edRenderers) r.clearHighlight();
   edHighlighted = [];
@@ -482,6 +621,8 @@ export function edApplyLoad(r) {
   edSectionNotes = [];
   edSectionIdIndex = [];
   edSelection = null;
+  edDoc = null;                 // 换文件：旧模型与它的撤销历史一并作废
+  edHistory = null;
   $('ed-gr-container').replaceChildren();
   $('ed-gr-ph').parentElement.classList.remove('hidden');
   $('ed-gr-ph').textContent = t('w.ed.graphical_placeholder');

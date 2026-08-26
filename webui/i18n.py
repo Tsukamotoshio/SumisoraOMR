@@ -342,6 +342,7 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.pause": {"zh": "暂停", "en": "Pause"},
     "w.ed.stop": {"zh": "停止", "en": "Stop"},
     "w.ed.play_failed": {"zh": "播放失败：{e}", "en": "Playback failed: {e}"},
+    "w.ed.edit_failed": {"zh": "编辑写回失败：{e}", "en": "Failed to apply the edit: {e}"},
     "w.ed.empty": {"zh": "从「简谱预览」页对某个文件点「编辑」进入，\n或点上方「打开」选择 .jianpu.txt",
                    "en": "Enter via \"Edit\" on a file in the Jianpu page,\nor click \"Open\" to pick a .jianpu.txt"},
     "w.ed.no_source": {"zh": "未找到参考图（原始乐谱图像）", "en": "No reference image found"},

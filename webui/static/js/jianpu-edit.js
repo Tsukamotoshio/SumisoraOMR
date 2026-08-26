@@ -20,6 +20,48 @@
 /** 八度点最多叠 3 层（与 B5 渲染层"可叠 2–3 层"一致）。 */
 const MAX_OCTAVE_DOTS = 3;
 
+// 时值阶梯：能被单个音符表达的**未附点**时值，从最短到最长。
+// 上限 4.0 / 下限 0.125 来自 core/config.py 的 ALLOWED_JIANPU_DURATIONS——
+// 序列化器 jianpu_note_token 只认这张表里的值，超出的会掉进兜底分支变成别的
+// 时值。注意 2.0/3.0/4.0 在文本里是靠"音符 + 延音横线"表达的（`1 -`），
+// 序列化器会自己展开，所以这里可以照常当成单个音符的时值来处理。
+const DURATION_LADDER = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0];
+// 附点 = 基础时值的 1.5 倍。3.0（附点二分）在表内，6.0 不在——所以从 4.0
+// 起步的附点无法表达，这种情况下只能把附点去掉。
+const DOTTED_ALLOWED = new Set([0.1875, 0.375, 0.75, 1.5, 3.0]);
+
+/**
+ * 按 `+` / `-` 改时值时的下一档取值。
+ *
+ * 音乐上"加长/缩短一档"指的是**基础时值**翻倍或减半，附点是独立的修饰——
+ * 所以先把附点除掉、在阶梯上挪一格、再把附点加回去。若加回去之后的值不在
+ * 允许表内（例如 4.0 的附点是 6.0），就只能丢掉附点：宁可少一个附点，也不
+ * 能写出一个序列化器认不出、会被悄悄换成别的时值的数。
+ *
+ * @param {{duration:number, duration_dots:number}} note
+ * @param {number} direction +1 加长，-1 缩短
+ * @returns {{duration:number, duration_dots:number}|null} 已在两端时返回 null
+ */
+export function steppedDuration(note, direction) {
+  const dotted = (note.duration_dots || 0) > 0;
+  const base = dotted ? (note.duration || 0) / 1.5 : (note.duration || 0);
+  // 找最接近的一档，容忍浮点误差（时值是 1.5 除出来的，不会是精确的二进制小数）
+  let index = 0;
+  let best = Infinity;
+  DURATION_LADDER.forEach((value, i) => {
+    const distance = Math.abs(value - base);
+    if (distance < best) { best = distance; index = i; }
+  });
+  const next = index + (direction > 0 ? 1 : -1);
+  if (next < 0 || next >= DURATION_LADDER.length) return null;
+  const nextBase = DURATION_LADDER[next];
+  const nextDotted = dotted && DOTTED_ALLOWED.has(nextBase * 1.5);
+  return {
+    duration: nextDotted ? nextBase * 1.5 : nextBase,
+    duration_dots: nextDotted ? 1 : 0,
+  };
+}
+
 // ── 寻址（B5③ 光标模型的位置定义：声部/小节/音符索引）─────────────────────────
 
 /** 构造一个音符地址。 */

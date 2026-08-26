@@ -59,8 +59,8 @@ def jianpu_section_to_render_json(
     """
     notes: list[dict] = []
     start = 0.0
-    for measure in section.measures:
-        for note in measure:
+    for measure_index, measure in enumerate(section.measures):
+        for note_index, note in enumerate(measure):
             if note.is_rest:
                 start += note.duration
                 continue
@@ -73,6 +73,17 @@ def jianpu_section_to_render_json(
                 notes.append({
                     'start': start, 'length': note.duration,
                     'pitch': note.midi, 'intensity': 80,
+                    # Where this drawn note came from in the model. The
+                    # projection is lossy — rests vanish, dashes fold into the
+                    # note before them — so a drawn note's position in this
+                    # list says nothing about its position in the document.
+                    # An editor clicking a note has to get back to the model
+                    # somehow, and carrying the answer here keeps the rules
+                    # for what gets skipped or merged in exactly one place;
+                    # re-deriving them on the front-end would be a second copy
+                    # to keep in step. JianpuRender ignores fields it does not
+                    # know about, so this rides along harmlessly.
+                    'ref': {'measure': measure_index, 'index': note_index},
                 })
             start += note.duration
 
