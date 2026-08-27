@@ -8,7 +8,9 @@ import { $, api, t, toast, showPage } from './core.js';
 import { PdfView } from './pdfview.js';
 import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
-import { EditHistory, noteRef, steppedDuration } from './jianpu-edit.js';
+import {
+  EditHistory, insertConsumingCommands, noteRef, steppedDuration,
+} from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
 const edRefView = new PdfView($('ed-ref-canvas'), $('ed-ref-stage'), null);
@@ -216,6 +218,8 @@ async function edDrawRenders(renders) {
   // id 一律用 fork 自己的 noteElementId() 现算，不在这边另写一份同样的公式——
   // 那样两处一旦漂移（比如哪天量化精度改了），命中测试会静默失灵。
   edSectionNotes = renders.map((render) => render.notes || []);
+  // 阶段5.4：槽位（含休止符与延音横线）是录入光标的落点，音符投影里没有它们。
+  edSectionSlots = renders.map((render) => render.slots || []);
   edSectionIdIndex = edSectionNotes.map((notes) => {
     const map = new Map();
     notes.forEach((n, i) => map.set(jr.noteElementId(n.start, n.pitch), i));
@@ -461,6 +465,7 @@ async function edPushModel(keepRef, fallbackIndex) {
   clearTimeout(edGraphicalTimer);   // 作废可能还在等的那次文本触发重绘
   await edDrawRenders(r.renders);
   edReselect(keepRef, fallbackIndex);
+  edRenderCursor();
 }
 
 /** 执行一条命令：命令被拒绝（地址无效、休止符不能加升降号等）就什么都不做。 */
@@ -502,6 +507,249 @@ function edCommandForKey(e, ref) {
   return null;
 }
 
+// ── 录入模式（阶段5.4，B5① 已定的"甲：显式双模式"）──────────────────────────
+// 两种模式泾渭分明，照抄 MuseScore 的心智模型：
+//   选择模式（默认）：按 1–7 是**改**光标所在音符的音高；
+//   录入模式（Shift+N 进出）：按 1–7 是**插入**一个新音符，光标随之前进。
+// 同一个键在两种模式下做两件事，正是显式双模式的全部意义——不必为"插入"另找
+// 一套组合键，代价是用户得知道自己在哪个模式里，所以模式必须一眼可见（工具条
+// 上的胶囊标签 + 谱面上闪烁的插入光标）。
+//
+// 为什么是 Shift+N 而不是裸 n：小写 n 在选择模式下已经是"还原号"（本位音），
+// 那是 B5④ 定的常用键。大写 N 与计划里写的"N 键"字面一致，又不与之冲突。
+//
+// 光标与选中是两个东西。选中指向**一个已存在的音符**，只能落在画得出来的音符
+// 上；而录入光标指向**下一个音符会插进哪里**，必须能停在休止符和延音横线上——
+// 空白谱通篇就只有这两样东西（4/4 的空小节是 `0 - - -`，解析成 1 个休止符 +
+// 3 个延音横线），光标要是也只能停在音符上，在空白谱上就无处可去，而"从零录入
+// 一个小节"恰恰是本阶段的验收目标。这就是 Python 侧除 notes 之外还要送一份
+// slots（每个模型音符一个，含休止符与横线）的原因。
+
+let edInputMode = false;
+let edCursor = null;            // 模型地址 {section, measure, index}；index 可等于小节长度（末尾追加位）
+let edSectionSlots = [];        // 每个分段的槽位数组（Python 送来，含休止符/横线）
+// 录入时的"当前音符属性"，沿用 MuseScore 的黏滞语义：设一次，之后每个新音符都
+// 用它，直到再改。比"每个音符敲完再修"少一半按键，也让 1234 连打的结果可预期。
+let edInputAttrs = { duration: 1.0, duration_dots: 0, octave: 0, accidental: '' };
+
+/** 取某个分段的槽位数组。 */
+function edSlotsOf(section) {
+  return edSectionSlots[section] || [];
+}
+
+/** 光标所在槽位的起始时刻（四分音符为单位）；末尾追加位取谱段总长。 */
+function edCursorStart() {
+  if (!edCursor) return null;
+  const slots = edSlotsOf(edCursor.section);
+  const hit = slots.find(
+    (s) => s.ref.measure === edCursor.measure && s.ref.index === edCursor.index);
+  if (hit) return hit.start;
+  // 追加位：落在最后一个槽位的末尾。
+  const before = slots.filter(
+    (s) => s.ref.measure < edCursor.measure
+      || (s.ref.measure === edCursor.measure && s.ref.index < edCursor.index));
+  if (!before.length) return slots.length ? slots[0].start : 0;
+  const last = before[before.length - 1];
+  return last.start + (last.duration || 0);
+}
+
+/**
+ * 把一个时刻换算成谱面上的 x 坐标。
+ *
+ * 靠 fork 给每个块留的 `data-block-start` 反查：找到起点不晚于该时刻的最后一
+ * 个块，再按时刻在块内的比例插值。为什么要插值而不是直接用块的左边缘——
+ * JianpuRender 会把一段连续的空隙**合并成一个休止块**，空白小节的四个槽位很
+ * 可能只对应一个块；不插值的话四个光标位置会叠在同一个 x 上，看起来像没动。
+ * 块长从下一个块的起点推出来，全程只依赖 DOM，不去猜 fork 内部怎么切块。
+ */
+function edCaretGeometry(staff, atStart) {
+  const groups = [...staff.querySelectorAll('[data-block-start]')]
+    .map((el) => ({ el, start: parseFloat(el.getAttribute('data-block-start')) }))
+    .filter((b) => Number.isFinite(b.start))
+    .sort((a, b) => a.start - b.start);
+  if (!groups.length) return null;
+
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const b of groups) {
+    try {
+      b.box = b.el.getBBox();
+    } catch (_e) {
+      b.box = null;                 // 未布局的元素取 bbox 会抛
+    }
+    if (b.box && b.box.height > 0) {
+      minY = Math.min(minY, b.box.y);
+      maxY = Math.max(maxY, b.box.y + b.box.height);
+    }
+  }
+  if (!Number.isFinite(minY)) return null;
+
+  let i = 0;
+  while (i + 1 < groups.length && groups[i + 1].start <= atStart + 1e-9) i++;
+  const block = groups[i];
+  if (!block.box) return null;
+  const next = groups[i + 1];
+  const span = next ? next.start - block.start : 0;
+  const ratio = span > 1e-9 ? Math.min(1, Math.max(0, (atStart - block.start) / span)) : 0;
+  const pad = 4;
+  return {
+    x: block.box.x + ratio * block.box.width,
+    y: minY - pad,
+    height: (maxY - minY) + pad * 2,
+  };
+}
+
+function edRenderCursor() {
+  const container = $('ed-gr-container');
+  container.querySelectorAll('.jp-caret').forEach((el) => el.remove());
+  if (!edInputMode || !edCursor) return;
+  const staff = container.children[edCursor.section];
+  if (!staff) return;
+  const at = edCursorStart();
+  if (at === null) return;
+  const geom = edCaretGeometry(staff, at);
+  if (!geom) return;
+  const svg = staff.querySelector('svg');
+  if (!svg) return;
+  const rect = document.createElementNS(SVGNS, 'rect');
+  rect.setAttribute('class', 'jp-caret');
+  rect.setAttribute('x', `${geom.x - 1}`);
+  rect.setAttribute('y', `${geom.y}`);
+  rect.setAttribute('width', '2');
+  rect.setAttribute('height', `${geom.height}`);
+  svg.appendChild(rect);
+}
+
+/** 工具条上的模式标签：模式 + 当前时值/八度/临时记号，一眼看全录入状态。 */
+function edRenderModeChip() {
+  const chip = $('ed-gr-mode');
+  chip.classList.toggle('hidden', !edInputMode);
+  if (!edInputMode) return;
+  const { duration, duration_dots: dots, octave, accidental } = edInputAttrs;
+  const beats = dots > 0 ? `${duration / 1.5}.` : `${duration}`;
+  const marks = (accidental || '')
+    + (octave > 0 ? '↑'.repeat(octave) : '')
+    + (octave < 0 ? '↓'.repeat(-octave) : '');
+  chip.textContent = `${t('w.ed.input_mode')} ${beats}${marks ? ' ' + marks : ''}`;
+}
+
+/** 把光标挪到合法位置：越过小节末尾就进下一小节，全谱末尾停在追加位。 */
+function edNormalizeCursor() {
+  if (!edCursor || !edDoc) return;
+  const section = edDoc.sections[edCursor.section];
+  if (!section) { edCursor = null; return; }
+  let { measure, index } = edCursor;
+  while (measure < section.measures.length - 1 && index >= section.measures[measure].length) {
+    index -= section.measures[measure].length;
+    measure += 1;
+  }
+  const last = section.measures[measure] || [];
+  // 末小节允许 index === 长度（追加位），这样谱尾还能继续往后录。
+  index = Math.max(0, Math.min(index, last.length));
+  edCursor = { section: edCursor.section, measure, index };
+}
+
+function edMoveCursor(delta) {
+  if (!edCursor || !edDoc) return;
+  const section = edDoc.sections[edCursor.section];
+  if (!section) return;
+  let { measure, index } = edCursor;
+  index += delta;
+  while (index < 0 && measure > 0) {
+    measure -= 1;
+    index += section.measures[measure].length;
+  }
+  edCursor = { section: edCursor.section, measure, index: Math.max(0, index) };
+  edNormalizeCursor();
+  edRenderCursor();
+}
+
+function edSetInputMode(on) {
+  edInputMode = !!on;
+  if (edInputMode) {
+    // 进入录入模式：从当前选中的音符起录；没有选中就从谱头起。
+    const ref = edFocusedRef();
+    edCursor = ref
+      ? { section: ref.section, measure: ref.measure, index: ref.index }
+      : { section: 0, measure: 0, index: 0 };
+    edNormalizeCursor();
+    toast(t('w.ed.input_mode_on'));
+  } else {
+    edCursor = null;
+    toast(t('w.ed.input_mode_off'));
+  }
+  edRenderModeChip();
+  edRenderCursor();
+}
+
+/** 用当前黏滞属性造一个待插入的音符。 */
+function edNoteToInsert(symbol) {
+  const isRest = symbol === '0';
+  return {
+    symbol,
+    accidental: isRest ? '' : edInputAttrs.accidental,
+    upper_dots: isRest ? 0 : Math.max(0, edInputAttrs.octave),
+    lower_dots: isRest ? 0 : Math.max(0, -edInputAttrs.octave),
+    duration: edInputAttrs.duration,
+    duration_dots: edInputAttrs.duration_dots,
+    // midi 是派生字段：Python 侧 jianpu_doc_from_dict 会按 key_header 重算，
+    // 前端算一份只会多一处能与它不一致的地方。
+    midi: null,
+    is_rest: isRest,
+    lyrics: {},
+  };
+}
+
+/** 在光标处录入一个音符（决议"丙"：插入并从后面吃掉同样的时值），光标前进。 */
+async function edInsertAtCursor(symbol) {
+  if (!edDoc || !edHistory || !edCursor) return;
+  const at = noteRef(edCursor.section, edCursor.measure, edCursor.index);
+  const cmds = insertConsumingCommands(edDoc, at, edNoteToInsert(symbol));
+  if (!cmds || !edHistory.doGroup(cmds)) return;
+  edCursor = { section: at.section, measure: at.measure, index: at.index + 1 };
+  edNormalizeCursor();
+  await edPushModel(null, 0);
+}
+
+/** 录入模式下的按键；返回 true 表示已处理（调用方据此 preventDefault）。 */
+function edInputModeKey(e) {
+  if (e.key >= '0' && e.key <= '7') { edInsertAtCursor(e.key); return true; }
+  if (e.key === 'ArrowLeft') { edMoveCursor(-1); return true; }
+  if (e.key === 'ArrowRight') { edMoveCursor(1); return true; }
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    // 八度是黏滞属性，不是改已录入的音符——与时值一致，整段都按同一个八度录。
+    const delta = e.key === 'ArrowUp' ? 1 : -1;
+    edInputAttrs.octave = Math.max(-3, Math.min(3, edInputAttrs.octave + delta));
+    edRenderModeChip();
+    return true;
+  }
+  if (e.key === '+' || e.key === '=' || e.key === '-') {
+    const next = steppedDuration(edInputAttrs, e.key === '-' ? -1 : 1);
+    if (next) { Object.assign(edInputAttrs, next); edRenderModeChip(); }
+    return true;
+  }
+  if (e.key === '.') {
+    const dotted = edInputAttrs.duration_dots > 0;
+    edInputAttrs.duration_dots = dotted ? 0 : 1;
+    edInputAttrs.duration = dotted ? edInputAttrs.duration / 1.5 : edInputAttrs.duration * 1.5;
+    edRenderModeChip();
+    return true;
+  }
+  if (e.key === '#' || e.key === 'b' || e.key === 'n') {
+    edInputAttrs.accidental = e.key === 'n' ? '' : e.key;
+    edRenderModeChip();
+    return true;
+  }
+  if (e.key === 'Backspace') {
+    // 打字时的"退格"就该是"收回我刚敲的那个"。撤销正好是这个意思，而且因为
+    // 一次录入是一个命令组，被吃掉的休止符会连同插入一起还原——手写一个"删掉
+    // 前一个音符"反而做不到这件事。
+    edUndoRedo(false).then(() => edMoveCursor(-1));
+    return true;
+  }
+  return false;
+}
+
 document.addEventListener('keydown', (e) => {
   if ($('ed-gr-stage').classList.contains('hidden')) return;
   // 文本框有它自己的键盘语义（也有自己的撤销栈），不抢。
@@ -518,6 +766,14 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // 模式切换先于一切内容按键：Shift+N 进出录入模式，Esc 只退出。
+  if (e.key === 'N') { e.preventDefault(); edSetInputMode(!edInputMode); return; }
+  if (e.key === 'Escape' && edInputMode) { e.preventDefault(); edSetInputMode(false); return; }
+  if (edInputMode) {
+    if (edInputModeKey(e)) e.preventDefault();
+    return;   // 录入模式下不再走下面那套"改选中音符"的键位
+  }
 
   // 左右方向键移动选择，不改内容。
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && edSelection) {
@@ -620,7 +876,10 @@ export function edApplyLoad(r) {
   edHighlighted = [];
   edSectionNotes = [];
   edSectionIdIndex = [];
+  edSectionSlots = [];
   edSelection = null;
+  edInputMode = false;          // 换文件不该带着上一份谱子的录入状态
+  edCursor = null;
   edDoc = null;                 // 换文件：旧模型与它的撤销历史一并作废
   edHistory = null;
   $('ed-gr-container').replaceChildren();

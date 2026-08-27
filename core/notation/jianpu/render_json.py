@@ -58,9 +58,25 @@ def jianpu_section_to_render_json(
     has none, matching what jianpu-ly itself assumes for a header-less score.
     """
     notes: list[dict] = []
+    slots: list[dict] = []
     start = 0.0
     for measure_index, measure in enumerate(section.measures):
         for note_index, note in enumerate(measure):
+            # One entry per model note, including the rests and continuation
+            # dashes that never become drawn notes. An editing cursor has to be
+            # able to sit on those: a freshly created blank score is nothing
+            # but rests and dashes, so a cursor built on drawn notes alone
+            # would have nowhere to go on the very score the user most needs
+            # to type into. `start` is what ties a slot back to something on
+            # screen — it is the same quarter-note clock the renderer lays its
+            # blocks out on.
+            slots.append({
+                'start': start,
+                'ref': {'measure': measure_index, 'index': note_index},
+                'duration': note.duration,
+                'is_rest': note.is_rest,
+                'is_dash': note.symbol == '-',
+            })
             if note.is_rest:
                 start += note.duration
                 continue
@@ -90,6 +106,15 @@ def jianpu_section_to_render_json(
     numerator, denominator = _parse_time_sig(section.time_sig)
     return {
         'notes': notes,
+        'slots': slots,
+        # The score's real length in quarters, which is not what the notes add
+        # up to: rests and everything after the last note are missing from
+        # `notes` by design. The renderer infers length from the notes alone
+        # and so draws nothing past the final one — an all-rest blank score
+        # comes out as an empty staff, with no rests for a cursor to stand on.
+        # Our fork of JianpuRender reads this to fill the tail (see its
+        # jianpu_info.ts `totalLength`).
+        'totalLength': start,
         'keySignatures': [{'start': 0, 'key': key_header_tonic_semitone(key_header)}],
         'timeSignatures': [{'start': 0, 'numerator': numerator, 'denominator': denominator}],
         'tempos': [{'start': 0, 'qpm': tempo if tempo > 0 else DEFAULT_PLAYBACK_TEMPO}],

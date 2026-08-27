@@ -148,6 +148,15 @@ button { font-family: inherit; cursor: default; }
    各自已经调好；不新造颜色，也就不会有哪个主题下漏配的问题。fill 走 CSS 而不
    是写死属性，是为了让它跟着主题切换走。 */
 .jp-sel-rect { fill: var(--accent-tint-2); pointer-events: none; }
+/* 录入光标（阶段5.4）。它落在音符**之间**，不是落在音符上——选中框标的是
+   "这个音符"，插入光标标的是"下一个音符会进到这里"，两者语义不同，视觉上
+   也要能同时出现，所以走的是各自独立的图元。1s 闪烁是文本光标的通用约定，
+   在一屏静止的谱面上足以让人一眼找到它。 */
+.jp-caret { fill: var(--accent); pointer-events: none; animation: jp-caret-blink 1s step-end infinite; }
+@keyframes jp-caret-blink { 50% { opacity: .15; } }
+@media (prefers-reduced-motion: reduce) { .jp-caret { animation: none; } }
+.grtransport .inputmode { color: var(--accent); font-size: 12px; font-weight: 600;
+  border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; }
 .grtransport { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .grtransport .num { color: var(--muted); font-size: 12px; }
 .preview .placeholder { color: var(--faint); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }

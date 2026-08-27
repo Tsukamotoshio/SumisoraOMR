@@ -83,3 +83,56 @@ def test_tempo_falls_back_to_the_project_default_when_absent():
     assert doc.tempo == 0, 'no 4=N line means JianpuDoc.tempo stays 0'
     render = jianpu_section_to_render_json(doc.sections[0], doc.key_header, doc.tempo)
     assert render['tempos'] == [{'start': 0, 'qpm': DEFAULT_PLAYBACK_TEMPO}]
+
+
+def test_slots_cover_every_model_note_including_rests_and_dashes():
+    # A cursor has to be able to sit on rests and dashes: a blank score is made
+    # of nothing else, and that is exactly the score a user needs to type into.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n0 - - - |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert render['notes'] == [], 'a whole-measure rest draws no notes at all'
+    assert [s['ref'] for s in render['slots']] == [_ref(0, 0), _ref(0, 1), _ref(0, 2), _ref(0, 3)]
+    assert [s['start'] for s in render['slots']] == [0.0, 1.0, 2.0, 3.0]
+    assert [s['is_rest'] for s in render['slots']] == [True, False, False, False]
+    assert [s['is_dash'] for s in render['slots']] == [False, True, True, True]
+
+
+def test_slot_starts_match_the_drawn_note_starts():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 0 q2 q3 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    by_ref = {(s['ref']['measure'], s['ref']['index']): s['start'] for s in render['slots']}
+    for note in render['notes']:
+        key = (note['ref']['measure'], note['ref']['index'])
+        assert by_ref[key] == note['start'], f'slot and drawn note disagree at {key}'
+
+
+def test_slots_span_measures_and_accumulate_time_continuously():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 | 3 4 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert [(s['ref']['measure'], s['ref']['index'], s['start']) for s in render['slots']] == [
+        (0, 0, 0.0), (0, 1, 1.0), (1, 0, 2.0), (1, 1, 3.0),
+    ]
+
+
+def test_total_length_covers_rests_the_note_list_omits():
+    # The notes stop at beat 1, but the score is four beats long. Without this
+    # the renderer sizes the score by its notes and draws nothing after the
+    # last one — no trailing rests, and so nowhere for an editing cursor to go.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 0 0 0 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert render['notes'][-1]['start'] + render['notes'][-1]['length'] == 1.0
+    assert render['totalLength'] == 4.0
+
+
+def test_total_length_of_an_all_rest_score_is_still_its_real_length():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n0 - - - | 0 - - - |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert render['notes'] == []
+    assert render['totalLength'] == 8.0
+
+
+def test_total_length_matches_the_end_of_the_last_slot():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n3/4\n\n1 2 3 | q4 q5 6 7 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    last = render['slots'][-1]
+    assert render['totalLength'] == last['start'] + last['duration']

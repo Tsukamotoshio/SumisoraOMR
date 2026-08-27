@@ -5,8 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  EditHistory, applyCommand, getNote, nextRef, noteRef, prevRef, refEquals,
-  steppedDuration,
+  EditHistory, applyCommand, getNote, insertConsumingCommands, nextRef, noteRef,
+  prevRef, refEquals, steppedDuration,
 } from './jianpu-edit.js';
 
 function note(symbol, extra = {}) {
@@ -384,4 +384,174 @@ test('steppedDuration handles every ladder rung round trip', () => {
     const back = steppedDuration(up, -1);
     assert.equal(back.duration, ladder[i], `back down to ${ladder[i]}`);
   }
+});
+
+// ── grouped commands + note entry (阶段5.4) ──────────────────────────────────
+
+// A blank 4/4 measure is not one four-beat rest: jianpu-ly writes it `0 - - -`,
+// which parses to a one-beat rest followed by three one-beat continuation
+// dashes. Every note-entry test below starts from that real shape.
+function blankDoc(beats = 4) {
+  const measure = [note('0')];
+  for (let i = 1; i < beats; i++) measure.push(note('-'));
+  measure.forEach((n) => { n.midi = null; });
+  measure[0].is_rest = true;
+  return {
+    title: 'T', composer: '', key_header: '1=C', tempo: 120,
+    sections: [{ time_sig: beats + '/4', measures: [measure] }],
+  };
+}
+
+const symbolsOf = (doc, m = 0) => doc.sections[0].measures[m].map((n) => n.symbol);
+const beatsOf = (doc, m = 0) => doc.sections[0].measures[m]
+  .reduce((sum, n) => sum + n.duration, 0);
+
+test('doGroup applies every command and undoes them all as one step', () => {
+  const doc = makeDoc();
+  const history = new EditHistory(doc);
+  const before = clone(doc);
+  assert.ok(history.doGroup([
+    { type: 'set_pitch', ref: noteRef(0, 0, 0), symbol: '5' },
+    { type: 'set_octave', ref: noteRef(0, 0, 0), delta: 1 },
+    { type: 'delete_note', ref: noteRef(0, 0, 1) },
+  ]));
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).symbol, '5');
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).upper_dots, 1);
+  assert.equal(doc.sections[0].measures[0].length, 1);
+
+  // One Ctrl+Z, not three — the group is a single semantic operation (B5③).
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before);
+  assert.ok(!history.canUndo, 'three commands consumed exactly one undo slot');
+  assert.ok(history.redo());
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).symbol, '5');
+  assert.equal(doc.sections[0].measures[0].length, 1);
+});
+
+test('doGroup rolls back completely when a later command fails', () => {
+  const doc = makeDoc();
+  const history = new EditHistory(doc);
+  const before = clone(doc);
+  // Second command addresses a measure that does not exist.
+  assert.ok(!history.doGroup([
+    { type: 'set_pitch', ref: noteRef(0, 0, 0), symbol: '5' },
+    { type: 'set_pitch', ref: noteRef(0, 9, 0), symbol: '5' },
+  ]));
+  assert.deepEqual(doc, before, 'half an operation must not survive');
+  assert.ok(!history.canUndo, 'a failed group leaves nothing to undo');
+});
+
+test('doGroup rejects an empty command list', () => {
+  const history = new EditHistory(makeDoc());
+  assert.ok(!history.doGroup([]));
+  assert.ok(!history.doGroup(null));
+  assert.ok(!history.canUndo);
+});
+
+test('grouped and single-command history entries interleave correctly', () => {
+  const doc = makeDoc();
+  const history = new EditHistory(doc);
+  history.do({ type: 'set_pitch', ref: noteRef(0, 0, 0), symbol: '4' });
+  const afterSingle = clone(doc);
+  history.doGroup([
+    { type: 'set_pitch', ref: noteRef(0, 0, 1), symbol: '5' },
+    { type: 'set_octave', ref: noteRef(0, 0, 1), delta: -1 },
+  ]);
+  assert.ok(history.undo());
+  assert.deepEqual(doc, afterSingle, 'undoing the group leaves the single edit');
+  assert.ok(history.undo());
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).symbol, '1');
+});
+
+test('entering a quarter note on a blank measure consumes the rest, not the length', () => {
+  const doc = blankDoc();
+  const cmds = insertConsumingCommands(doc, noteRef(0, 0, 0), note('1'));
+  assert.ok(new EditHistory(doc).doGroup(cmds));
+  assert.deepEqual(symbolsOf(doc), ['1', '-', '-', '-']);
+  assert.equal(beatsOf(doc), 4, 'the measure is still four beats long');
+});
+
+test('four keypresses fill a blank 4/4 measure exactly', () => {
+  const doc = blankDoc();
+  const history = new EditHistory(doc);
+  ['1', '2', '3', '4'].forEach((symbol, i) => {
+    const cmds = insertConsumingCommands(doc, noteRef(0, 0, i), note(symbol));
+    assert.ok(history.doGroup(cmds), 'keypress ' + i + ' applied');
+  });
+  assert.deepEqual(symbolsOf(doc), ['1', '2', '3', '4']);
+  assert.equal(beatsOf(doc), 4);
+});
+
+test('a short note shrinks the slot it lands on instead of deleting it', () => {
+  const doc = blankDoc();
+  const eighth = note('1', { duration: 0.5 });
+  assert.ok(new EditHistory(doc).doGroup(insertConsumingCommands(doc, noteRef(0, 0, 0), eighth)));
+  assert.deepEqual(symbolsOf(doc), ['1', '0', '-', '-', '-']);
+  const rest = doc.sections[0].measures[0][1];
+  assert.equal(rest.duration, 0.5, 'the one-beat rest gave up half a beat');
+  assert.equal(beatsOf(doc), 4, 'total unchanged — that is the whole point of 丙');
+});
+
+test('eighth notes fill a blank 4/4 measure halfway, still four beats', () => {
+  const doc = blankDoc();
+  const history = new EditHistory(doc);
+  ['1', '2', '3', '4'].forEach((symbol, i) => {
+    const cmds = insertConsumingCommands(doc, noteRef(0, 0, i), note(symbol, { duration: 0.5 }));
+    assert.ok(history.doGroup(cmds));
+  });
+  assert.deepEqual(symbolsOf(doc).slice(0, 4), ['1', '2', '3', '4']);
+  assert.equal(beatsOf(doc), 4, 'two beats of notes plus two beats of rest');
+});
+
+test('a long note swallows several slots at once', () => {
+  const doc = blankDoc();
+  const half = note('1', { duration: 2.0 });
+  assert.ok(new EditHistory(doc).doGroup(insertConsumingCommands(doc, noteRef(0, 0, 0), half)));
+  assert.deepEqual(symbolsOf(doc), ['1', '-', '-'], 'ate the rest and one dash');
+  assert.equal(beatsOf(doc), 4);
+});
+
+test('entry stops eating at a real note rather than displacing it', () => {
+  const doc = blankDoc();
+  doc.sections[0].measures[0][2] = note('5');       // 0 - 5 -
+  const half = note('1', { duration: 2.0 });
+  assert.ok(new EditHistory(doc).doGroup(insertConsumingCommands(doc, noteRef(0, 0, 0), half)));
+  // Only the rest and the dash before the '5' were consumed; the '5' survives,
+  // and the measure runs over — B5② says warn, never silently adjust.
+  assert.deepEqual(symbolsOf(doc), ['1', '5', '-']);
+  assert.equal(beatsOf(doc), 4);
+});
+
+test('entry that cannot find enough to eat overfills rather than refusing', () => {
+  const doc = blankDoc(2);                          // 0 -   (two beats)
+  const whole = note('1', { duration: 4.0 });
+  assert.ok(new EditHistory(doc).doGroup(insertConsumingCommands(doc, noteRef(0, 0, 0), whole)));
+  assert.deepEqual(symbolsOf(doc), ['1']);
+  assert.equal(beatsOf(doc), 4, 'a 2/4 measure now holds 4 beats — the linter warns');
+});
+
+test('one keypress is one undo, however many slots it touched', () => {
+  const doc = blankDoc();
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  history.doGroup(insertConsumingCommands(doc, noteRef(0, 0, 0), note('1', { duration: 2.0 })));
+  assert.deepEqual(symbolsOf(doc), ['1', '-', '-']);
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before, 'delete+delete+insert all came back together');
+  assert.ok(history.redo());
+  assert.deepEqual(symbolsOf(doc), ['1', '-', '-']);
+});
+
+test('insertConsumingCommands reports an invalid address instead of guessing', () => {
+  const doc = blankDoc();
+  assert.equal(insertConsumingCommands(doc, noteRef(0, 9, 0), note('1')), null);
+  assert.equal(insertConsumingCommands(doc, noteRef(9, 0, 0), note('1')), null);
+  assert.equal(insertConsumingCommands(doc, noteRef(0, 0, 99), note('1')), null);
+});
+
+test('appending at the end of a measure has nothing to consume and just inserts', () => {
+  const doc = blankDoc();
+  doc.sections[0].measures[0] = [note('1')];
+  assert.ok(new EditHistory(doc).doGroup(insertConsumingCommands(doc, noteRef(0, 0, 1), note('2'))));
+  assert.deepEqual(symbolsOf(doc), ['1', '2']);
 });

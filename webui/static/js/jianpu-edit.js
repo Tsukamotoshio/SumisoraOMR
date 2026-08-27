@@ -229,8 +229,12 @@ export function applyCommand(doc, cmd) {
 export class EditHistory {
   constructor(doc) {
     this.doc = doc;
-    this._undo = [];   // 栈顶：撤销最近一次操作的命令
-    this._redo = [];   // 栈顶：重做最近一次撤销的命令
+    // 两个栈里存的都是**命令数组**，不是单条命令。一次语义操作可能由好几条
+    // 原始命令组成（比如"插入一个音符并从后面吃掉同样的时值"要先删/缩后插），
+    // 而 B5③ 要求撤销的粒度是**一次语义操作**而不是一次原始命令——用户按一次
+    // 键，按一次 Ctrl+Z 就该整个退回去。单条命令只是长度为 1 的数组。
+    this._undo = [];
+    this._redo = [];
   }
 
   get canUndo() { return this._undo.length > 0; }
@@ -238,30 +242,51 @@ export class EditHistory {
 
   /** 执行一条命令；成功返回 true。执行新命令会让重做栈立即失效。 */
   do(cmd) {
-    const inverse = applyCommand(this.doc, cmd);
-    if (!inverse) return false;
-    this._undo.push(inverse);
+    return this.doGroup([cmd]);
+  }
+
+  /**
+   * 把若干条命令作为**一个**撤销单位执行。
+   * 中途有任何一条失败就把已经做掉的部分原样退回，不留半截状态——半个操作
+   * 落在文档里比操作没发生更糟。
+   */
+  doGroup(cmds) {
+    if (!Array.isArray(cmds) || !cmds.length) return false;
+    const inverses = [];
+    for (const cmd of cmds) {
+      const inverse = applyCommand(this.doc, cmd);
+      if (!inverse) {
+        for (let i = inverses.length - 1; i >= 0; i--) applyCommand(this.doc, inverses[i]);
+        return false;
+      }
+      inverses.push(inverse);
+    }
+    this._undo.push(inverses);
     // 撤销之后又做了新改动，原来的"未来"已经不成立了——保留它会让重做重放到
     // 一个不存在的分支上。这是编辑器的通用语义。
     this._redo.length = 0;
     return true;
   }
 
-  undo() {
-    const cmd = this._undo.pop();
-    if (!cmd) return false;        // 空栈时是安全的 no-op，不抛异常
-    const inverse = applyCommand(this.doc, cmd);
-    if (!inverse) return false;
-    this._redo.push(inverse);
-    return true;
-  }
+  undo() { return this._step(this._undo, this._redo); }
 
-  redo() {
-    const cmd = this._redo.pop();
-    if (!cmd) return false;
-    const inverse = applyCommand(this.doc, cmd);
-    if (!inverse) return false;
-    this._undo.push(inverse);
+  redo() { return this._step(this._redo, this._undo); }
+
+  /**
+   * 撤销与重做是同一件事：把栈顶那组命令**倒序**施加回去，再把这一趟得到的
+   * 逆压到另一个栈上。倒序是必须的——组内命令有先后依赖（先删后插），退回去
+   * 自然要从最后一步开始。两个方向完全对称，所以共用一个实现。
+   */
+  _step(from, to) {
+    const group = from.pop();
+    if (!group) return false;      // 空栈时是安全的 no-op，不抛异常
+    const inverses = [];
+    for (let i = group.length - 1; i >= 0; i--) {
+      const inverse = applyCommand(this.doc, group[i]);
+      if (!inverse) return false;
+      inverses.push(inverse);
+    }
+    to.push(inverses);
     return true;
   }
 
@@ -269,4 +294,48 @@ export class EditHistory {
     this._undo.length = 0;
     this._redo.length = 0;
   }
+}
+
+/**
+ * 在 *ref* 处插入 *note*，并从紧随其后的休止符/延音横线里吃掉同样多的时值，
+ * 使小节总长不变（阶段5.4 决议"丙"）。返回一组命令，交给 EditHistory.doGroup
+ * 作为一次撤销单位执行；地址无效时返回 null。
+ *
+ * 为什么要"吃掉"：空白谱是由整小节休止符构成的（`0 - - -` 解析成 1 个休止符
+ * + 3 个延音横线），纯插入会让原有休止符原封不动地留着，小节越填越胀；而按
+ * 槽位覆写又只能写出槽位自带的时值，八分音符根本录不进去。
+ *
+ * 只吃休止符和延音横线，**遇到真实音符就停**——那属于"补一个漏掉的音"，把后
+ * 面的音符挤掉不是用户的意思。吃不够时也照插不误，让小节超拍，由校验层报黄
+ * 警告（B5② 不阻断原则）。
+ */
+export function insertConsumingCommands(doc, ref, note) {
+  const section = doc && doc.sections ? doc.sections[ref.section] : null;
+  const measure = section && section.measures ? section.measures[ref.measure] : null;
+  if (!measure || ref.index > measure.length) return null;
+
+  const TOL = 1e-9;
+  const cmds = [];
+  let remaining = note.duration || 0;
+  // 读指针在原数组上前进；而删除命令始终指向同一个下标——每删掉一个，后面的
+  // 元素就顶上来，所以下标不动才是对的。
+  let read = ref.index;
+  const at = noteRef(ref.section, ref.measure, ref.index);
+  while (remaining > TOL && read < measure.length) {
+    const item = measure[read];
+    if (!item.is_rest && item.symbol !== '-') break;
+    if ((item.duration || 0) <= remaining + TOL) {
+      cmds.push({ type: 'delete_note', ref: at });
+      remaining -= item.duration || 0;
+      read += 1;
+    } else {
+      cmds.push({
+        type: 'set_duration', ref: at,
+        duration: item.duration - remaining, duration_dots: 0,
+      });
+      remaining = 0;
+    }
+  }
+  cmds.push({ type: 'insert_note', ref: at, note });
+  return cmds;
 }
