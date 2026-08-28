@@ -142,6 +142,95 @@ function measureOf(doc, ref) {
   return (section.measures || [])[ref.measure] || null;
 }
 
+function sectionOf(doc, at) {
+  return (doc && doc.sections ? doc.sections[at.section] : null) || null;
+}
+
+// ── 小节级操作（阶段5.5：小节插入/删除）────────────────────────────────────────
+
+// 与 core/config.py 的 ALLOWED_JIANPU_DURATIONS 逐项一致（降序，供贪心填充用）。
+// 之所以在这里也写一份而不是过桥问 Python：插入小节是模型层的同步编辑，跟
+// jianpu-edit.js 全文件"零桥接"的设计一致（B7 风险6——把撤销/重做独立于渲染
+// 设计，就是为了不依赖任何异步往返）。两处列表分别有测试兜底（Python 侧的
+// split_duration_chunks 单测、这里对已知拍号的直接断言），漂移会被测试挡住。
+const ALLOWED_DURATIONS_DESC = [4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125];
+const DOTTED_DURATIONS = new Set([1.5, 0.75, 0.375, 0.1875]);
+
+function blankRestNote(duration) {
+  return {
+    symbol: '0', accidental: '', upper_dots: 0, lower_dots: 0,
+    duration, duration_dots: DOTTED_DURATIONS.has(duration) ? 1 : 0,
+    midi: null, is_rest: true, lyrics: {},
+  };
+}
+
+/** 延音横线续接对象——注意 is_rest 是 false：parse_jianpu_ly_text 读回 `-`
+ * token 时就是这样标的（它不是"休止"，是"沿用上一个音/休止的时值"）。 */
+function dashNote() {
+  return {
+    symbol: '-', accidental: '', upper_dots: 0, lower_dots: 0,
+    duration: 1.0, duration_dots: 0, midi: null, is_rest: false, lyrics: {},
+  };
+}
+
+/**
+ * 一整小节的空白内容（全休止符），按 *barQuarterLength* 贪心拆分成可表达的
+ * 时值链——与 core/notation/jianpu/primitives.py 的 split_duration_chunks /
+ * webui/editor.py 的 _blank_measure_text 是同一个算法，非常规拍号（5/4、7/8）
+ * 因此会拆成正确的多个休止符 token，而不是塞进一个表达不了的时值。
+ *
+ * 关键的一步在于**每个 chunk 不是直接变成一个音符对象**：`jianpu_note_token`
+ * 序列化时只有 2.0/3.0/4.0 这三个整拍时值会展开成"起始休止符 + N 个延音横
+ * 线"（文本形如 `0 - - -`），其余时值（含附点）都写成单个 token；而
+ * parse_jianpu_ly_text 读文本时正是按 token 数量建模型对象的——所以一个
+ * chunk=4.0 的休止符在**解析后的模型里**其实是 4 个对象（1 休止 + 3 延音横
+ * 线），不是 1 个 duration=4.0 的对象。这里必须照抄这条展开规则，插入的空
+ * 白小节才会跟"新建向导生成、经 create_blank→parse 过一轮"或"5.4 从零录
+ * 入"的小节长成同一个形状——否则光标能停靠的槽位数量（阶段5.4 依据的正是
+ * 模型音符对象，不是按时长连续切分）会因小节的来路不同而不一样。
+ */
+export function blankMeasureNotes(barQuarterLength) {
+  const TOL = 0.01;
+  // Number.isFinite 挡住 Infinity/NaN：一个非有限的拍长会让下面的循环永远
+  // 减不完（Infinity - 4 还是 Infinity），把整个页面卡死。拍号文本是用户可以
+  // 在文本页手打的，`4/0` 这种写法解析器并不拒绝，所以这不是假想输入。
+  let remaining = Number.isFinite(barQuarterLength) ? Math.max(barQuarterLength, 0) : 0;
+  // 再加一道硬上限：即使将来哪里又漏进一个畸形数值，最坏也只是产出一个长度
+  // 离谱的小节，而不是让浏览器失去响应——死循环没有任何错误信息，最难排查。
+  const MAX_NOTES = 512;
+  const notes = [];
+  while (remaining > TOL && notes.length < MAX_NOTES) {
+    const piece = ALLOWED_DURATIONS_DESC.find((d) => remaining + TOL >= d) || 0.125;
+    if (piece >= 2.0 - TOL) {
+      notes.push(blankRestNote(1.0));
+      for (let i = 1; i < Math.round(piece); i++) notes.push(dashNote());
+    } else {
+      notes.push(blankRestNote(piece));
+    }
+    remaining -= piece;
+  }
+  // 退化拍长（≈0）没有可分配的时值；一个四分休止符是最安全的兜底——与裸
+  // token '0' 在文本格式里的默认时值语义一致（parse_jianpu_ly_text 把它读成
+  // duration=1.0），不会凭空发明一个格式认不出的时值。
+  return notes.length ? notes : [blankRestNote(1.0)];
+}
+
+/**
+ * 从 '4/4'、'3/4,8'（带切分符的弱起写法）等拍号文本算出一小节的四分音符数。
+ *
+ * 拍号是用户能在文本页直接手打的，而解析器**不校验**分子分母（`4/0`、`0/4`
+ * 都会被原样收进 time_sig）。所以这里不能只判断"正则匹配上了没有"，还得确认
+ * 算出来的确实是个正的有限数，否则 `4/0` 会算出 Infinity 一路传下去。算不出
+ * 有意义的结果时退回 4/4——插入的小节拍数可能不合用户本意，但那是看得见、可
+ * 修改的，比卡死或者产出一个畸形小节强。
+ */
+export function barQuarterLength(timeSig) {
+  const m = /^(\d+)\/(\d+)/.exec(timeSig || '');
+  if (!m) return 4.0;
+  const ql = (4.0 * Number(m[1])) / Number(m[2]);
+  return Number.isFinite(ql) && ql > 0 ? ql : 4.0;
+}
+
 /** 施加命令，返回逆命令。地址无效时返回 null（调用方据此判断"什么也没发生"）。 */
 export function applyCommand(doc, cmd) {
   switch (cmd.type) {
@@ -215,6 +304,23 @@ export function applyCommand(doc, cmd) {
       if (!measure || cmd.ref.index > measure.length) return null;
       measure.splice(cmd.ref.index, 0, cloneNote(cmd.note));
       return { type: 'delete_note', ref: cmd.ref };
+    }
+    case 'insert_measure': {
+      const section = sectionOf(doc, cmd.at);
+      if (!section || cmd.at.measure > section.measures.length) return null;
+      section.measures.splice(cmd.at.measure, 0, (cmd.notes || []).map(cloneNote));
+      return { type: 'delete_measure', at: cmd.at };
+    }
+    case 'delete_measure': {
+      const section = sectionOf(doc, cmd.at);
+      if (!section || cmd.at.measure >= section.measures.length) return null;
+      // 绝不让一个分段的小节数掉到 0——那不是"空小节"（空小节是合法内容，
+      // 全是休止符），而是分段本身没有内容了，下游解析/渲染/播放都没为这种
+      // 形状设计过、也没人测过。宁可拒绝这次删除，让用户看见"删不掉"，也不要
+      // 造出一份没人验证过能不能正常工作的文档。
+      if (section.measures.length <= 1) return null;
+      const [removed] = section.measures.splice(cmd.at.measure, 1);
+      return { type: 'insert_measure', at: cmd.at, notes: removed.map(cloneNote) };
     }
     default:
       return null;

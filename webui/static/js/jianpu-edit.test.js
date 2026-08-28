@@ -5,8 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  EditHistory, applyCommand, getNote, insertConsumingCommands, nextRef, noteRef,
-  prevRef, refEquals, steppedDuration,
+  EditHistory, applyCommand, barQuarterLength, blankMeasureNotes, getNote,
+  insertConsumingCommands, nextRef, noteRef, prevRef, refEquals, steppedDuration,
 } from './jianpu-edit.js';
 
 function note(symbol, extra = {}) {
@@ -554,4 +554,180 @@ test('appending at the end of a measure has nothing to consume and just inserts'
   doc.sections[0].measures[0] = [note('1')];
   assert.ok(new EditHistory(doc).doGroup(insertConsumingCommands(doc, noteRef(0, 0, 1), note('2'))));
   assert.deepEqual(symbolsOf(doc), ['1', '2']);
+});
+
+// ── measure insert / delete (阶段5.5a) ───────────────────────────────────────
+
+function measureAt(doc, section, measure) {
+  return doc.sections[section].measures[measure];
+}
+
+test('barQuarterLength reads a plain time signature', () => {
+  assert.equal(barQuarterLength('4/4'), 4.0);
+  assert.equal(barQuarterLength('3/4'), 3.0);
+  assert.equal(barQuarterLength('6/8'), 3.0);
+  assert.equal(barQuarterLength('2/4'), 2.0);
+});
+
+test('barQuarterLength ignores an anacrusis suffix and falls back to 4/4 when unparseable', () => {
+  assert.equal(barQuarterLength('3/4,8'), 3.0);
+  assert.equal(barQuarterLength(''), 4.0);
+  assert.equal(barQuarterLength(undefined), 4.0);
+});
+
+// The expected shapes below are not guessed -- they were read straight off
+// the real Python parser (parse_jianpu_ly_text(_blank_measure_text(ql))),
+// which is what any blank measure in this app actually looks like once
+// loaded, whether created by the "new score" wizard or typed from scratch in
+// input mode (stage 5.4). A 2.0/3.0/4.0-beat rest is NOT one big-duration
+// note: jianpu_note_token writes it as `0 - - -`-style dash continuations,
+// and the parser turns each token into its own model object -- so the
+// "logical" 4-beat rest is actually 4 separate 1.0-duration objects. Every
+// other duration (including dotted ones) stays a single token/object.
+test('blankMeasureNotes expands a whole-bar rest into a rest plus dash continuations', () => {
+  const notes = blankMeasureNotes(4.0);
+  assert.deepEqual(notes.map((n) => [n.symbol, n.is_rest, n.duration]), [
+    ['0', true, 1.0], ['-', false, 1.0], ['-', false, 1.0], ['-', false, 1.0],
+  ]);
+});
+
+test('blankMeasureNotes matches the real parser for 3/4 and 2/4 bars', () => {
+  assert.deepEqual(blankMeasureNotes(3.0).map((n) => n.symbol), ['0', '-', '-']);
+  assert.deepEqual(blankMeasureNotes(2.0).map((n) => n.symbol), ['0', '-']);
+});
+
+test('blankMeasureNotes greedily chains rests for an irregular bar (5/4)', () => {
+  const notes = blankMeasureNotes(5.0);
+  // split_duration_chunks(5.0) = [4.0, 1.0]; the 4.0 chunk dash-expands, the
+  // trailing 1.0 chunk is its own fresh rest token, not a fourth dash.
+  assert.deepEqual(notes.map((n) => [n.symbol, n.duration]), [
+    ['0', 1.0], ['-', 1.0], ['-', 1.0], ['-', 1.0], ['0', 1.0],
+  ]);
+  assert.equal(notes.reduce((sum, n) => sum + n.duration, 0), 5.0);
+});
+
+test('blankMeasureNotes handles 7/8 the same way the greedy chunker in Python does', () => {
+  const notes = blankMeasureNotes(3.5);
+  // split_duration_chunks(3.5) = [3.0, 0.5]: dash-expand the 3.0, then a
+  // single eighth-rest token for the leftover 0.5 -- matches `0 - - q0`.
+  assert.deepEqual(notes.map((n) => [n.symbol, n.duration]), [
+    ['0', 1.0], ['-', 1.0], ['-', 1.0], ['0', 0.5],
+  ]);
+});
+
+test('blankMeasureNotes keeps a dotted duration as one token, not dash-expanded', () => {
+  const notes = blankMeasureNotes(1.5);
+  assert.deepEqual(notes.map((n) => [n.duration, n.duration_dots]), [[1.5, 1]]);
+});
+
+test('blankMeasureNotes falls back to a quarter rest for a degenerate bar length', () => {
+  assert.deepEqual(blankMeasureNotes(0), [{
+    symbol: '0', accidental: '', upper_dots: 0, lower_dots: 0,
+    duration: 1.0, duration_dots: 0, midi: null, is_rest: true, lyrics: {},
+  }]);
+});
+
+test('insert_measure inserts a blank measure and delete_measure is its exact inverse', () => {
+  const doc = makeDoc();
+  const before = clone(doc);
+  const notes = blankMeasureNotes(4.0);
+  const inverse = applyCommand(doc, { type: 'insert_measure', at: { section: 0, measure: 1 }, notes });
+  assert.deepEqual(inverse, { type: 'delete_measure', at: { section: 0, measure: 1 } });
+  assert.equal(doc.sections[0].measures.length, 3);
+  assert.deepEqual(measureAt(doc, 0, 1).map((n) => n.symbol), ['0', '-', '-', '-']);
+  // Untouched measures keep their identity — only a new one was spliced in.
+  assert.deepEqual(measureAt(doc, 0, 0).map((n) => n.symbol), ['1', '2']);
+  assert.deepEqual(measureAt(doc, 0, 2).map((n) => n.symbol), ['3', '0', '5']);
+
+  const reInverse = applyCommand(doc, inverse);
+  assert.deepEqual(doc, before, 'delete undoes the insert exactly');
+  assert.deepEqual(reInverse, { type: 'insert_measure', at: { section: 0, measure: 1 }, notes });
+});
+
+test('insert_measure appends when the index equals the measure count', () => {
+  const doc = makeDoc();
+  const notes = blankMeasureNotes(4.0);
+  applyCommand(doc, { type: 'insert_measure', at: { section: 0, measure: 2 }, notes });
+  assert.equal(doc.sections[0].measures.length, 3);
+  assert.deepEqual(measureAt(doc, 0, 2).map((n) => n.symbol), ['0', '-', '-', '-']);
+});
+
+test('insert_measure rejects an out-of-range section or index', () => {
+  const doc = makeDoc();
+  assert.equal(applyCommand(doc, { type: 'insert_measure', at: { section: 9, measure: 0 }, notes: [] }), null);
+  assert.equal(applyCommand(doc, { type: 'insert_measure', at: { section: 0, measure: 99 }, notes: [] }), null);
+});
+
+test('delete_measure removes exactly one measure and shifts the rest up', () => {
+  const doc = makeDoc();
+  doc.sections[0].measures.push([note('4')]);   // three measures, so one can safely go
+  const removed = doc.sections[0].measures[1].map((n) => n.symbol);
+  const inverse = applyCommand(doc, { type: 'delete_measure', at: { section: 0, measure: 1 } });
+  assert.equal(doc.sections[0].measures.length, 2);
+  assert.deepEqual(measureAt(doc, 0, 0).map((n) => n.symbol), ['1', '2']);
+  assert.deepEqual(measureAt(doc, 0, 1).map((n) => n.symbol), ['4']);
+  assert.equal(inverse.type, 'insert_measure');
+  assert.deepEqual(inverse.notes.map((n) => n.symbol), removed);
+});
+
+test('delete_measure refuses to empty out a section entirely', () => {
+  const doc = makeDoc();
+  // Section 1 has exactly one measure -- deleting it would leave zero.
+  assert.equal(applyCommand(doc, { type: 'delete_measure', at: { section: 1, measure: 0 } }), null);
+  assert.equal(doc.sections[1].measures.length, 1, 'refused, so nothing changed');
+});
+
+test('delete_measure rejects an out-of-range address', () => {
+  const doc = makeDoc();
+  assert.equal(applyCommand(doc, { type: 'delete_measure', at: { section: 0, measure: 99 } }), null);
+  assert.equal(applyCommand(doc, { type: 'delete_measure', at: { section: 9, measure: 0 } }), null);
+});
+
+test('a whole insert-then-delete-measure round trip is one undo step', () => {
+  const doc = makeDoc();
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  const notes = blankMeasureNotes(4.0);
+  assert.ok(history.do({ type: 'insert_measure', at: { section: 0, measure: 1 }, notes }));
+  assert.equal(doc.sections[0].measures.length, 3);
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before);
+  assert.ok(history.redo());
+  assert.equal(doc.sections[0].measures.length, 3);
+});
+
+// ── malformed time signatures must not hang the page (5.5a review) ──────────
+// The parser does not validate a time signature's numerator/denominator: a
+// hand-typed `4/0` in the text pane reaches the model verbatim. It used to
+// come out of barQuarterLength as Infinity and spin blankMeasureNotes forever
+// (verified: the loop never terminates, taking the whole tab down with it).
+
+test('barQuarterLength refuses a zero denominator instead of returning Infinity', () => {
+  assert.equal(barQuarterLength('4/0'), 4.0, 'falls back to a plain 4/4 bar');
+  assert.ok(Number.isFinite(barQuarterLength('4/0')));
+});
+
+test('barQuarterLength refuses a zero-length bar', () => {
+  assert.equal(barQuarterLength('0/4'), 4.0);
+});
+
+test('barQuarterLength still accepts every well-formed signature', () => {
+  assert.equal(barQuarterLength('4/4'), 4.0);
+  assert.equal(barQuarterLength('3/4'), 3.0);
+  assert.equal(barQuarterLength('6/8'), 3.0);
+  assert.equal(barQuarterLength('7/8'), 3.5);
+  assert.equal(barQuarterLength('5/4'), 5.0);
+});
+
+test('blankMeasureNotes terminates on a non-finite bar length', () => {
+  // Would previously never return. Assert on the result, not on a timeout:
+  // if this regresses, the test run hangs and that is loud enough.
+  assert.deepEqual(blankMeasureNotes(Infinity).map((n) => n.duration), [1.0]);
+  assert.deepEqual(blankMeasureNotes(NaN).map((n) => n.duration), [1.0]);
+  assert.deepEqual(blankMeasureNotes(-5).map((n) => n.duration), [1.0]);
+});
+
+test('blankMeasureNotes stays bounded for an absurd but finite bar length', () => {
+  const notes = blankMeasureNotes(100000);
+  assert.ok(notes.length <= 512, `bounded, got ${notes.length}`);
 });

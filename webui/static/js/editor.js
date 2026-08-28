@@ -9,7 +9,8 @@ import { PdfView } from './pdfview.js';
 import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
 import {
-  EditHistory, insertConsumingCommands, noteRef, steppedDuration,
+  EditHistory, barQuarterLength, blankMeasureNotes, insertConsumingCommands,
+  noteRef, steppedDuration,
 } from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
@@ -637,8 +638,13 @@ function edRenderModeChip() {
 function edNormalizeCursor() {
   if (!edCursor || !edDoc) return;
   const section = edDoc.sections[edCursor.section];
-  if (!section) { edCursor = null; return; }
+  if (!section || !section.measures.length) { edCursor = null; return; }
   let { measure, index } = edCursor;
+  // 先把小节号夹回有效范围。删掉末小节之后光标会正好指到"末小节+1"，而下面
+  // 那个 while 只搬运 index 的溢出、从不动越界的 measure——不夹的话光标会停
+  // 在一个不存在的小节上：谱面上照常画着，敲音符却什么都不发生（插入命令拿
+  // 不到那个小节，直接被拒绝），而且没有任何提示。
+  measure = Math.max(0, Math.min(measure, section.measures.length - 1));
   while (measure < section.measures.length - 1 && index >= section.measures[measure].length) {
     index -= section.measures[measure].length;
     measure += 1;
@@ -750,10 +756,69 @@ function edInputModeKey(e) {
   return false;
 }
 
+// ── 小节插入/删除（阶段5.5a）─────────────────────────────────────────────────
+// 计划文档明确写了键位：`Enter` 插入小节。删除没有明确写，照抄 MuseScore 的
+// "Ctrl+Delete 删除选中小节"——与已经建立的"照抄 MuseScore 肌肉记忆"基调一致，
+// 且不会跟已占用的 Delete（删音符）/Backspace（录入模式回退）冲突。
+// 两个操作在选择模式和录入模式下语义相同：都是对"光标/选中音符所在的那个小节"
+// 动手，所以先统一算出"当前在哪个小节"，两条路径共用。
+
+/** 当前操作对象所在的小节地址；选择模式看选中音符，录入模式看光标。 */
+function edCurrentMeasureRef() {
+  if (edInputMode) return edCursor ? { section: edCursor.section, measure: edCursor.measure } : null;
+  const ref = edFocusedRef();
+  return ref ? { section: ref.section, measure: ref.measure } : null;
+}
+
+/** 在当前小节之后插入一个空白小节（内容按当前拍号贪心拆成休止符）。 */
+async function edInsertMeasure() {
+  if (!edDoc || !edHistory) return;
+  const at = edCurrentMeasureRef();
+  if (!at) return;
+  const section = edDoc.sections[at.section];
+  if (!section) return;         // 地址失效（模型刚被换掉）时安静收手，不要抛
+  const insertAt = { section: at.section, measure: at.measure + 1 };
+  const notes = blankMeasureNotes(barQuarterLength(section.time_sig));
+  const keepRef = edInputMode ? null : edFocusedRef();   // 选择模式下原音符位置不变
+  if (!edHistory.do({ type: 'insert_measure', at: insertAt, notes })) return;
+  if (edInputMode) edCursor = { section: insertAt.section, measure: insertAt.measure, index: 0 };
+  await edPushModel(keepRef, edSelection ? edSelection.focus : 0);
+}
+
+/** 删除当前小节。拒绝删空整个分段的最后一个小节（命令层已经会拒绝，这里
+ * 只负责删除成功后把选择/光标落到一个仍然存在的位置上）。 */
+async function edDeleteMeasure() {
+  if (!edDoc || !edHistory) return;
+  const at = edCurrentMeasureRef();
+  if (!at) return;
+  if (!edHistory.do({ type: 'delete_measure', at })) return;
+  if (edInputMode) {
+    edCursor = { section: at.section, measure: at.measure, index: 0 };
+    edNormalizeCursor();
+    await edPushModel(null, 0);
+    return;
+  }
+  // 被选中的音符连同它所在的小节一起消失了，没有"原位置"可循——显式清空选择，
+  // 而不是让 edSelection 带着删除前的下标继续留在内存里（那会在下一次按键时
+  // 悄悄指向一个毫不相干的音符）。
+  edSelection = null;
+  await edPushModel(null, 0);
+}
+
 document.addEventListener('keydown', (e) => {
   if ($('ed-gr-stage').classList.contains('hidden')) return;
-  // 文本框有它自己的键盘语义（也有自己的撤销栈），不抢。
-  if (e.target === $('ed-text')) return;
+  // 文本框有它自己的键盘语义（也有自己的撤销栈），不抢。输入类控件同理，
+  // 一个键都不能截。
+  const target = e.target;
+  const inControl = target && typeof target.closest === 'function';
+  if (inControl && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+  // 按钮和链接则只让开 Enter / Space 这两个键——浏览器就是靠它们把键盘操作
+  // 转成 click 的，一旦这里 preventDefault 掉，按钮看上去就是"按不动"，而且
+  // 完全没有反馈（阶段5.5a 把 Enter 绑成"插入小节"时，播放按钮正是这样被按
+  // 死的：实测 Enter 的 defaultPrevented=true、click 数 0，而未被绑定的
+  // Space 是 defaultPrevented=false、click 数 1）。其余编辑键照常生效，所以
+  // 用鼠标点过播放按钮之后仍然可以直接用数字键继续改谱。
+  if ((e.key === 'Enter' || e.key === ' ') && inControl && target.closest('button, a[href]')) return;
 
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
@@ -765,11 +830,20 @@ document.addEventListener('keydown', (e) => {
     edUndoRedo(true);
     return;
   }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'Delete' || e.key === 'Backspace')) {
+    e.preventDefault();
+    edDeleteMeasure();
+    return;
+  }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
 
   // 模式切换先于一切内容按键：Shift+N 进出录入模式，Esc 只退出。
   if (e.key === 'N') { e.preventDefault(); edSetInputMode(!edInputMode); return; }
   if (e.key === 'Escape' && edInputMode) { e.preventDefault(); edSetInputMode(false); return; }
+
+  // Enter 插入小节：选择模式、录入模式通用，所以放在两者分岔之前。
+  if (e.key === 'Enter') { e.preventDefault(); edInsertMeasure(); return; }
+
   if (edInputMode) {
     if (edInputModeKey(e)) e.preventDefault();
     return;   // 录入模式下不再走下面那套"改选中音符"的键位
