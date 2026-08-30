@@ -8,6 +8,7 @@
 import json
 from typing import cast
 
+from core.notation.jianpu import build_jianpu_ly_text_from_doc
 from core.notation.jianpu.parser import parse_jianpu_ly_text
 from webui.editor import EditorService
 from webui.events import EventPusher
@@ -223,3 +224,111 @@ def test_fragment_text_reports_an_empty_or_malformed_fragment(tmp_path):
     service = _new_service()
     assert service.fragment_text({'sections': []})['ok'] is False
     assert service.fragment_text(None)['ok'] is False
+
+
+_service_and_body = _service
+
+
+# ── the write-back loss warning (5.3b follow-up) ────────────────────────────
+# 阶段5.3b made the model the source of truth, so the first graphical edit
+# rewrites the whole file and drops whatever the parser never captured. These
+# pin down exactly when the user gets warned about that -- and, just as
+# importantly, when they do not.
+
+HAND_EDITED = (
+    '% jianpu-ly.py\n'
+    'title=HandEdited\n'
+    '1=C\n'
+    '4/4\n'
+    '4=120\n'
+    '\n'
+    '% A section\n'
+    '1 2 3 4 |\n'
+    '5 6 7 1 |\n'
+)
+
+
+def _losses(body):
+    from webui.editor import _writeback_losses
+    return _writeback_losses(body, parse_jianpu_ly_text(body))
+
+
+def test_a_machine_written_file_triggers_no_warning(tmp_path):
+    _service, _path, body = _service_and_body(tmp_path)
+    assert _losses(body) == {}, 'nothing is lost, so nothing to warn about'
+
+
+def test_graphical_data_omits_the_lossy_field_when_nothing_is_lost(tmp_path):
+    service, _path, body = _service_and_body(tmp_path)
+    data = service.graphical_render_data(body)
+    assert data['ok']
+    assert 'lossy' not in data
+
+
+def test_hand_written_comments_and_layout_are_both_reported():
+    assert _losses(HAND_EDITED) == {'comments': 1, 'layout': True}
+
+
+def test_comments_alone_are_reported_without_a_layout_complaint():
+    body = (
+        'title=T\n1=C\n4/4\n\n'
+        '% just a note to self\n'
+        '1 2 3 4 | 5 6 7 1 |\n'   # already the serializer's own layout
+    )
+    assert _losses(body) == {'comments': 1}
+
+
+def test_layout_alone_is_reported_without_a_comment_complaint():
+    body = 'title=T\n1=C\n4/4\n\n1 2 3 4 |\n5 6 7 1 |\n'
+    assert _losses(body) == {'layout': True}
+
+
+def test_the_generator_banner_is_not_counted_as_a_user_comment():
+    body = '% jianpu-ly.py\ntitle=T\n1=C\n4/4\n\n1 2 3 4 | 5 6 7 1 |\n'
+    assert _losses(body) == {}, 'the banner is re-emitted, so it is not lost'
+
+
+def test_extra_lyric_padding_is_not_worth_warning_about():
+    # A lyric line comes back with more trailing `_` placeholders than it went
+    # in with. That changes nothing musically and settles after one round trip,
+    # so warning about it would be pure noise -- 3 of the 69 real files in
+    # editor-workspace/ do exactly this.
+    body = (
+        'title=T\n1=C\n4/4\n\n'
+        '1 2 3 4 | 5 6 7 1 |\n'
+        'L: do re\n'
+    )
+    losses = _losses(body)
+    regenerated = build_jianpu_ly_text_from_doc(parse_jianpu_ly_text(body))
+    assert regenerated != body.strip(), 'the round trip really does change the text'
+    assert losses == {}, f'...but not in a way worth interrupting for: {losses}'
+
+
+def test_the_write_back_warning_renders_in_both_languages():
+    # The browser harness serves no strings table, so t() echoes the key there.
+    # This is where the message is actually pinned: every placeholder the
+    # front-end substitutes must exist, and the result must read as a sentence.
+    from webui.i18n import merged_catalog
+
+    catalog = merged_catalog()
+
+    def render(key, lang, **params):
+        assert key in catalog, f'{key} missing from the catalog'
+        out = catalog[key][lang]
+        for name, value in params.items():
+            out = out.replace('{' + name + '}', str(value))
+        return out
+
+    for lang in ('zh', 'en'):
+        what = (render('w.ed.lossy_comments', lang, n=2)
+                + render('w.ed.lossy_join', lang)
+                + render('w.ed.lossy_layout', lang))
+        message = render('w.ed.lossy_confirm', lang, what=what)
+        assert '{' not in message, f'unsubstituted placeholder in {lang}: {message}'
+        assert '2' in message, f'the comment count is missing from {lang}: {message}'
+        assert len(message) > 20
+
+    assert '2 comment line(s)' in render('w.ed.lossy_confirm', 'en',
+                                         what=render('w.ed.lossy_comments', 'en', n=2))
+    assert '2 行注释' in render('w.ed.lossy_confirm', 'zh',
+                                what=render('w.ed.lossy_comments', 'zh', n=2))

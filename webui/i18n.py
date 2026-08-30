@@ -350,6 +350,13 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.copied_measures": {"zh": "已复制 {n} 个小节", "en": "Copied {n} measure(s)"},
     "w.ed.copied_notes": {"zh": "已复制 {n} 个音符", "en": "Copied {n} note(s)"},
     "w.ed.clipboard_empty": {"zh": "剪贴板是空的", "en": "The clipboard is empty"},
+    "w.ed.lossy_comments": {"zh": "{n} 行注释", "en": "{n} comment line(s)"},
+    "w.ed.lossy_layout": {"zh": "自定义的换行版面", "en": "your custom line layout"},
+    "w.ed.lossy_join": {"zh": "、", "en": " and "},
+    "w.ed.lossy_confirm": {
+        "zh": "图形编辑会按模型重新生成整份文本，本文件的{what}会因此丢失。\n\n仍要继续编辑吗？",
+        "en": "Editing on the staff rewrites the whole file from the model, "
+              "which will drop {what} in this file.\n\nEdit anyway?"},
     "w.ed.paste_no_target": {"zh": "请先选中一个音符或进入录入模式，再粘贴",
                              "en": "Select a note or enter input mode first, then paste"},
     "w.ed.empty": {"zh": "从「简谱预览」页对某个文件点「编辑」进入，\n或点上方「打开」选择 .jianpu.txt",

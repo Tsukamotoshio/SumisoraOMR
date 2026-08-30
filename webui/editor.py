@@ -83,6 +83,52 @@ def _unique_jianpu_txt_path(ws: Path, stem: str) -> Path:
     return dest
 
 
+# The banner every generated file opens with. It is re-emitted by the
+# serializer, so it is not one of the user's own comments.
+_GENERATOR_BANNER = '% jianpu-ly.py'
+
+
+def _writeback_losses(body: str, doc) -> dict:
+    """What a graphical edit would silently change about this file's text.
+
+    From 阶段5.3b on, the model is the source of truth: the first graphical
+    edit re-serializes the whole document, so anything the parser did not put
+    into the model simply is not written back. Two things are in that bucket —
+    whole-line ``%`` comments (``parser._tokenize`` skips them outright) and
+    the original line layout (the serializer always writes four measures to a
+    line). Neither is recoverable afterwards.
+
+    Rather than guess from the file's shape, this asks the real serializer what
+    it would produce and compares. That keeps the warning exactly as accurate
+    as the thing it is warning about, and it deliberately stays silent on the
+    one difference that is harmless: a lyric line coming back with extra
+    trailing ``_`` placeholders, which changes nothing and settles after one
+    round trip (measured over the 69 files in editor-workspace/ — 3 drift that
+    way, 0 lose a comment, 0 get relaid out).
+
+    Returns an empty dict when a write-back is faithful, so callers can just
+    test the result for truthiness.
+    """
+    def user_comments(text: str) -> list[str]:
+        return [ln.strip() for ln in text.split('\n')
+                if ln.strip().startswith('%') and ln.strip() != _GENERATOR_BANNER]
+
+    def layout(text: str) -> list[int]:
+        return [ln.count('|') for ln in text.split('\n') if '|' in ln]
+
+    try:
+        regenerated = build_jianpu_ly_text_from_doc(doc)
+    except Exception:  # noqa: BLE001 — a broken check must not block opening a file
+        return {}
+    lost = len(user_comments(body)) - len(user_comments(regenerated))
+    losses: dict = {}
+    if lost > 0:
+        losses['comments'] = lost
+    if layout(body) != layout(regenerated):
+        losses['layout'] = True
+    return losses
+
+
 def _blank_measure_text(bar_quarter_length: float) -> str:
     """A full-bar rest matching *bar_quarter_length*, using the same greedy
     duration decomposition already used to repair malformed OMR measures —
@@ -275,7 +321,11 @@ class EditorService:
             return {'ok': False, 'error': 'parse_error', 'message': str(exc), 'line': exc.line, 'col': exc.col}
         if not doc.sections:
             return {'ok': False, 'error': 'empty'}
-        return {'ok': True, 'renders': self._renders_of(doc), 'doc': jianpu_doc_to_dict(doc)}
+        out = {'ok': True, 'renders': self._renders_of(doc), 'doc': jianpu_doc_to_dict(doc)}
+        losses = _writeback_losses(body, doc)
+        if losses:
+            out['lossy'] = losses
+        return out
 
     def _renders_of(self, doc) -> list:
         return [

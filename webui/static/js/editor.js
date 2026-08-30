@@ -251,6 +251,13 @@ let edSectionIdIndex = [];      // 每个分段：data-id → 该分段音符下
 let edSelection = null;         // { section, anchor, focus }（下标闭区间，anchor 可大可小）
 let edDoc = null;               // 常驻模型（阶段5.3a 起由桥送来，事实源）
 let edHistory = null;           // 该模型上的撤销/重做栈（阶段5.1）
+// 阶段5.3b 的副作用：模型成为事实源之后，首次图形编辑会把整份文本按模型重新
+// 生成，于是解析器没收进模型的东西（整行 % 注释、原有的换行版面）就没了。
+// Python 侧拿真实序列化器实测这份文件会丢什么并回填 lossy；这里只负责在**第一次
+// 真正动手改之前**问一次。为什么不在打开时就提示：只是切到图形页看一眼并不会
+// 触发写回，那样问纯属打扰。
+let edLossy = null;             // { comments?: number, layout?: true } | null
+let edLossyAcked = false;       // 本文件已经问过并被确认，不再重复打断
 
 function edScheduleGraphicalRender() {
   if (!edLoaded) return;
@@ -294,6 +301,7 @@ async function edRenderGraphical({ quiet = false } = {}) {
     // 这样就不存在"两份表示互相同步"那种永远修不完的 bug（B4 第1条）。
     edDoc = r.doc || null;
     edHistory = edDoc ? new EditHistory(edDoc) : null;
+    edLossy = r.lossy || null;      // 本文件写回时会丢什么（Python 侧实测得出）
     // 文本重解析后音符下标可能已不指向原来那个音符，选中态作废。
     edSelection = null;
     edRenderSelection();
@@ -470,9 +478,25 @@ async function edPushModel(keepRef, fallbackIndex) {
   edRenderCursor();
 }
 
+/**
+ * 首次图形编辑前的一次性确认。返回 false 表示用户选择了取消，调用方必须在
+ * **改动模型之前**就此收手——所以每个会改模型的入口都在最前面 await 它，而不是
+ * 等到 edPushModel 再拦（那时命令已经施加，还得再撤回去）。
+ */
+async function edConfirmFirstEdit() {
+  if (!edLossy || edLossyAcked) return true;
+  const parts = [];
+  if (edLossy.comments) parts.push(t('w.ed.lossy_comments', { n: edLossy.comments }));
+  if (edLossy.layout) parts.push(t('w.ed.lossy_layout'));
+  if (!confirm(t('w.ed.lossy_confirm', { what: parts.join(t('w.ed.lossy_join')) }))) return false;
+  edLossyAcked = true;
+  return true;
+}
+
 /** 执行一条命令：命令被拒绝（地址无效、休止符不能加升降号等）就什么都不做。 */
 async function edRunCommand(cmd) {
   if (!edDoc || !edHistory || !cmd) return;
+  if (!await edConfirmFirstEdit()) return;
   const keepRef = cmd.ref;
   const fallbackIndex = edSelection ? edSelection.focus : 0;
   if (!edHistory.do(cmd)) return;
@@ -710,6 +734,7 @@ function edNoteToInsert(symbol) {
 /** 在光标处录入一个音符（决议"丙"：插入并从后面吃掉同样的时值），光标前进。 */
 async function edInsertAtCursor(symbol) {
   if (!edDoc || !edHistory || !edCursor) return;
+  if (!await edConfirmFirstEdit()) return;
   const at = noteRef(edCursor.section, edCursor.measure, edCursor.index);
   const cmds = insertConsumingCommands(edDoc, at, edNoteToInsert(symbol));
   if (!cmds || !edHistory.doGroup(cmds)) return;
@@ -774,6 +799,7 @@ function edCurrentMeasureRef() {
 /** 在当前小节之后插入一个空白小节（内容按当前拍号贪心拆成休止符）。 */
 async function edInsertMeasure() {
   if (!edDoc || !edHistory) return;
+  if (!await edConfirmFirstEdit()) return;
   const at = edCurrentMeasureRef();
   if (!at) return;
   const section = edDoc.sections[at.section];
@@ -790,6 +816,7 @@ async function edInsertMeasure() {
  * 只负责删除成功后把选择/光标落到一个仍然存在的位置上）。 */
 async function edDeleteMeasure() {
   if (!edDoc || !edHistory) return;
+  if (!await edConfirmFirstEdit()) return;
   const at = edCurrentMeasureRef();
   if (!at) return;
   if (!edHistory.do({ type: 'delete_measure', at })) return;
@@ -869,6 +896,7 @@ function edCopySelection() {
 async function edPasteClipboard() {
   if (!edDoc || !edHistory) return;
   if (!edClipboard) { toast(t('w.ed.clipboard_empty')); return; }
+  if (!await edConfirmFirstEdit()) return;
   const at = edCurrentMeasureRef();
   if (!at) { toast(t('w.ed.paste_no_target')); return; }
   const section = edDoc.sections[at.section];
@@ -1057,6 +1085,8 @@ export function edApplyLoad(r) {
   edSelection = null;
   edInputMode = false;          // 换文件不该带着上一份谱子的录入状态
   edCursor = null;
+  edLossy = null;               // 新文件重新判定，确认也要重新问一次
+  edLossyAcked = false;
   edDoc = null;                 // 换文件：旧模型与它的撤销历史一并作废
   edHistory = null;
   $('ed-gr-container').replaceChildren();
