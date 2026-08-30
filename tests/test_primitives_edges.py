@@ -54,3 +54,45 @@ class TestNormalizeJianpuDuration:
     def test_allowed_values_unchanged(self):
         for d in (4.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25, 0.125):
             assert normalize_jianpu_duration(d) == d, d
+
+
+# ── lyric alignment: the writer half (5.2.5 follow-up) ──────────────────────
+
+
+def _note(symbol, duration=1.0, lyric=None):
+    from core.config import JianpuNote
+    n = JianpuNote(symbol, '', 0, 0, duration, 0, None, symbol == '0')
+    if lyric:
+        n.lyrics = {1: (lyric, False)}
+    return n
+
+
+def test_lyric_target_notes_skips_rests_and_dashes():
+    from core.notation.jianpu.primitives import lyric_target_notes
+    measures = [[_note('1'), _note('-'), _note('0'), _note('2')]]
+    assert [n.symbol for n in lyric_target_notes(measures)] == ['1', '2']
+
+
+def test_build_lyric_lines_emits_one_token_per_target():
+    from core.notation.jianpu.primitives import build_lyric_lines
+    # `1 - 2` is two syllable slots, not three: jianpu-ly ties the dash to the
+    # note before it and \lyricsto gives a tied group a single syllable.
+    measures = [[_note('1', lyric='aa'), _note('-'), _note('2', lyric='bb')]]
+    assert build_lyric_lines(measures) == ['L: aa bb']
+
+
+def test_build_lyric_lines_pads_gaps_but_not_dashes():
+    from core.notation.jianpu.primitives import build_lyric_lines
+    measures = [[_note('1', lyric='aa'), _note('-'), _note('2'), _note('3', lyric='cc')]]
+    # One '_' for the note that genuinely has no syllable; none for the dash.
+    assert build_lyric_lines(measures) == ['L: aa _ cc']
+
+
+def test_lyrics_survive_a_parse_serialize_round_trip_across_a_dash():
+    from core.notation.jianpu import build_jianpu_ly_text_from_doc
+    from core.notation.jianpu.parser import parse_jianpu_ly_text
+    body = 'title=T\n1=C\n4/4\n\n1 - 2 3 |\nL: aa bb cc\n'
+    once = build_jianpu_ly_text_from_doc(parse_jianpu_ly_text(body))
+    twice = build_jianpu_ly_text_from_doc(parse_jianpu_ly_text(once))
+    assert 'L: aa bb cc' in once
+    assert once == twice, 'reader and writer must agree, or a file drifts on every save'

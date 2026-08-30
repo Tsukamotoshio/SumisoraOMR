@@ -185,7 +185,10 @@ def test_fragment_text_serializes_several_measures_on_one_line(tmp_path):
     measures = _bridge_trip(service.graphical_render_data(body)['doc'])['sections'][0]['measures']
     out = service.fragment_text(_fragment(measures))
     assert out['ok'], out
-    assert out['text'] == '1 2 3 4 | 5 0 6 - |' + chr(10) + 'L: do re mi fa so _ la'
+    # Six notes take a syllable, not seven: the rest and the continuation dash
+    # take none (see primitives.lyric_target_notes). The fixture's trailing
+    # 'la' therefore has no note to sit on and is dropped.
+    assert out['text'] == '1 2 3 4 | 5 0 6 - |' + chr(10) + 'L: do re mi fa so _'
 
 
 def test_fragment_text_uses_the_real_note_tokeniser_for_dash_expansion(tmp_path):

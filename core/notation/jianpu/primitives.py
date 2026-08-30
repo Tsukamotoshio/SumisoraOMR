@@ -228,6 +228,41 @@ def get_duration_render(duration: float, dots: int) -> tuple[int, int, int]:
 _CJK_RANGE = range(0x3400, 0xa700)
 
 
+def lyric_target_notes(measures: 'list[list[JianpuNote]]') -> 'list[JianpuNote]':
+    """The notes that consume one token of a lyric stream, in order.
+
+    Both halves of the lyric round trip go through here — the writer
+    (``build_lyric_lines``) and the editor's reader
+    (``parser._apply_lyric_line``) — because the two must agree exactly or a
+    file stops surviving an open-and-save.
+
+    Two kinds of note are skipped, and both are LilyPond's rules, not ours:
+
+    * **Rests.** jianpu-ly puts short rests in a temporary voice precisely so
+      lyrics miss them (its ``use_rest_hack``); ``\\lyricsto`` gives a rest no
+      syllable either way.
+    * **Continuation dashes** (``symbol='-'``). jianpu-ly renders a dash as a
+      transparent tie — its own comment at ``jianpu-ly.py`` reads "For
+      attaching lyrics to long notes" — and under ``\\lyricsto`` a tied group
+      takes exactly one syllable, on its first note. Counting the dash as well
+      hands the stream one token too many, pushing every later syllable onto
+      the wrong note.
+
+    That second rule was verified by rendering, not by reading the source: a
+    score of ``1 - 2 3 | 4 5 6 7`` with eight syllables engraves seven of them,
+    one per notehead, with the eighth unused — so the tied pair really does
+    consume a single token. Dashes reach the model both from the OMR path
+    (cross-barline ties, see ``extract.py``) and from the editor's parser
+    (every ``-`` token in a file is its own note object).
+    """
+    return [
+        note
+        for measure in measures
+        for note in measure
+        if not note.is_rest and note.symbol != '-'
+    ]
+
+
 def build_lyric_lines(measures: 'list[list[JianpuNote]]') -> list[str]:
     """Flatten a section's per-note lyrics into jianpu-ly ``L:``/``H:`` lines.
 
@@ -255,7 +290,7 @@ def build_lyric_lines(measures: 'list[list[JianpuNote]]') -> list[str]:
     if not ENABLE_LYRICS_OUTPUT:
         return []
 
-    non_rest = [note for measure in measures for note in measure if not note.is_rest]
+    non_rest = lyric_target_notes(measures)
     verses: set[int] = set()
     for note in non_rest:
         verses.update(note.lyrics.keys())

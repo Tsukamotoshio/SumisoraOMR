@@ -339,14 +339,28 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
         if section_idx > 0:
             header.append('NextPart')
             header.append(_time_sig)  # jianpu-ly resets barLength per part; repeat time sig
-        for i in range(0, len(measures), measures_per_line):
-            line_measures = measures[i:i + measures_per_line]
+        # Pad once, up front, and write both the note lines and the lyrics from
+        # the result. They used to be derived from different things — notes from
+        # the padded measure, lyrics from the raw one — which is fine while
+        # padding only appends rests (lyrics skip those anyway), but
+        # pad_measure_to_bar also *truncates*: an overflowing measure loses real
+        # notes. Those dropped notes went on consuming a lyric token, so every
+        # syllable after an overflowing bar landed one note late.
+        try:
+            padded = [
+                pad_measure_to_bar(
+                    m, (pickup_units if idx == 0 and pickup_units is not None else bar_units))
+                for idx, m in enumerate(measures)
+            ]
+        except Exception as exc:
+            log_message(f'[jianpu] 声部 {section_idx} 小节补齐失败: {exc}', _logging.WARNING)
+            raise
+        for i in range(0, len(padded), measures_per_line):
+            line_measures = padded[i:i + measures_per_line]
             try:
                 measure_texts = [
-                    ' '.join(jianpu_note_token(note) for note in pad_measure_to_bar(
-                        m, (pickup_units if (i + mi) == 0 and pickup_units is not None else bar_units)
-                    ))
-                    for mi, m in enumerate(line_measures)
+                    ' '.join(jianpu_note_token(note) for note in m)
+                    for m in line_measures
                 ]
                 header.append(' | '.join(measure_texts) + ' |')
             except Exception as exc:
@@ -355,7 +369,7 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                     _logging.WARNING,
                 )
                 raise
-        header.extend(build_lyric_lines(measures))
+        header.extend(build_lyric_lines(padded))
 
     text = '\n'.join(header)
     if _return_groups:

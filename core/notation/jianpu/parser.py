@@ -38,7 +38,7 @@ from __future__ import annotations
 import re
 
 from ...config import JianpuDoc, JianpuNote, JianpuSection
-from .primitives import jianpu_note_to_midi, key_header_tonic_semitone
+from .primitives import jianpu_note_to_midi, key_header_tonic_semitone, lyric_target_notes
 
 _NOTE_RE = re.compile(r"^([qsd]?)([#b]?)([0-7])('+|,+)?(\.?)$")
 _DASH_RE = re.compile(r"^([qsd]?)(-)(\.?)$")
@@ -156,7 +156,9 @@ def _apply_lyric_line(section: JianpuSection, line: str) -> None:
     if stanza:
         verse = int(stanza.group(1))
         rest = stanza.group(2)
-    targets = [note for measure in section.measures for note in measure if not note.is_rest]
+    # Same rule as the writer, from one place: a dash is a tie continuation and
+    # takes no syllable of its own (see primitives.lyric_target_notes).
+    targets = lyric_target_notes(section.measures)
     # strict=False is the point: a lyric line that does not line up with the
     # note count attaches what it can (see the tolerance note above).
     for note, token in zip(targets, rest.split(), strict=False):

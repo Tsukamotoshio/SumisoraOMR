@@ -447,6 +447,36 @@ def _fix_deprecated_override_syntax(text: str) -> str:
     )
 
 
+def _extract_lyric_contexts(text: str, after: int) -> str:
+    """The ``\\new Lyrics { \\lyricsto ... }`` contexts jianpu-ly emits *after*
+    the last JIANPU STAFF marker, ready to be re-inserted into a rebuilt score.
+
+    The rebuild below keeps only what lies between the first BEGIN and the last
+    END marker, but jianpu-ly writes its lyric contexts after that region and
+    before the ``>>`` closing the score's simultaneous block. They were
+    therefore dropped from every rendered PDF — the ``L:``/``H:`` lines reached
+    the .jianpu.txt and the .ly, and vanished at this step. Measured on the
+    three lyric-carrying files in editor-workspace/: 1, 2 and 1 lyric contexts
+    respectively, every one of them outside the captured span.
+
+    A context can span several lines (a hyphenated syllable emits ``--`` on its
+    own line), so this takes the whole segment from the first ``\\new Lyrics``
+    to the closing ``>>`` rather than matching line by line. If that closing
+    delimiter is not where it is expected, nothing is returned: carrying the
+    trailing ``\\header``/MIDI-score text into the rebuilt block would produce a
+    broken file, and losing the lyrics is the lesser failure.
+    """
+    tail = text[after:]
+    close = tail.find('\n>>')
+    if close < 0:
+        return ''
+    segment = tail[:close]
+    start = segment.find('\\new Lyrics')
+    if start < 0:
+        return ''
+    return '\n' + segment[start:].strip()
+
+
 def sanitize_generated_lilypond_file(
     ly_path: Path,
     preferred_title: str,
@@ -490,6 +520,7 @@ def sanitize_generated_lilypond_file(
                 preamble
                 + '\n\\score {\n<<\n'
                 + jianpu_section
+                + _extract_lyric_contexts(text, match.end())
                 + '\n>>\n\\header{\n  title=""\n  composer=""\n  instrument=""\n  tagline=##f\n}\n\\layout{}\n}\n'
             )
             extra_markup = title_markup + lyrics_markup

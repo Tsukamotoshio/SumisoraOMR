@@ -166,6 +166,31 @@ def test_lyric_rests_consume_no_syllable():
     assert notes[2].lyrics == {1: ('bb', False)}
 
 
+def test_lyric_continuation_dashes_consume_no_syllable():
+    # A dash is a tie continuation, and jianpu-ly renders it as a real tie
+    # (`c4 ~ c4`). Under \lyricsto a tied group takes ONE syllable, on its first
+    # note -- verified by rendering `1 - 2 3 | 4 5 6 7` with eight syllables and
+    # seeing seven engraved, one per notehead. Letting the dash eat a token
+    # pushes every later syllable onto the wrong note.
+    doc = parse_jianpu_ly_text('4/4\n\n1 - 2 3 |\nL: aa bb cc\n')
+    notes = doc.sections[0].measures[0]
+    assert notes[0].lyrics == {1: ('aa', False)}
+    assert notes[1].symbol == '-'
+    assert notes[1].lyrics == {}, 'the dash is part of the note before it'
+    assert notes[2].lyrics == {1: ('bb', False)}, 'the next syllable does not slide onto the dash'
+    assert notes[3].lyrics == {1: ('cc', False)}
+
+
+def test_lyric_dashes_and_rests_are_skipped_together():
+    doc = parse_jianpu_ly_text('4/4\n\n1 - 0 2 |\nL: aa bb\n')
+    notes = doc.sections[0].measures[0]
+    assert [n.symbol for n in notes] == ['1', '-', '0', '2']
+    assert notes[0].lyrics == {1: ('aa', False)}
+    assert notes[1].lyrics == {}
+    assert notes[2].lyrics == {}
+    assert notes[3].lyrics == {1: ('bb', False)}
+
+
 def test_lyric_verse_numbers_and_cjk_prefix():
     doc = parse_jianpu_ly_text('4/4\n\n1 2 |\nL: one two\nL: 2. uno dos\nH: 3. 一 二\n')
     notes = doc.sections[0].measures[0]
