@@ -445,3 +445,106 @@ export function insertConsumingCommands(doc, ref, note) {
   cmds.push({ type: 'insert_note', ref: at, note });
   return cmds;
 }
+
+
+// ── 复制 / 粘贴（阶段5.5b）────────────────────────────────────────────────────
+// 决议：**整小节对齐的片段整小节粘贴，零碎片段按音符流插入**。
+//
+// 为什么要分两条路：验收要求"片段跨文件粘贴保真"。若一律按音符流，复制两个小
+// 节再粘贴就会被倒进一个小节里变成 8 拍（黄警告）——而"复制一个乐句"本来就是
+// 多小节，这种最常见的用法反而最不保真。反过来若一律新起小节，只想补两个漏掉
+// 的音也会凭空多出一个欠拍小节，而校对 OMR 恰恰是本项目的主场景。按片段是否
+// 对齐小节边界来分流，两种常见用法各自都符合直觉。
+
+/**
+ * 把选区两端的音符地址扩成一个**模型区间**，并判断它是否整小节对齐。
+ *
+ * *fromRef* / *toRef* 是选中的第一个和最后一个**画出来的**音符的地址。区间尾
+ * 部要顺着延音横线往后吃：一个时值 ≥2 拍的音符在模型里是"音符 + N 个横线"多
+ * 个对象，而画面上只是一个音符，只截到那个音符就会把它的时值削掉一大截。
+ *
+ * @returns {{startMeasure:number,startIndex:number,endMeasure:number,endIndex:number,aligned:boolean}|null}
+ */
+export function selectionSpan(doc, sectionIndex, fromRef, toRef) {
+  const section = (doc && doc.sections) ? doc.sections[sectionIndex] : null;
+  if (!section || !fromRef || !toRef) return null;
+  const measures = section.measures || [];
+  const startMeasure = fromRef.measure;
+  const startIndex = fromRef.index;
+  const endMeasure = toRef.measure;
+  if (!measures[startMeasure] || !measures[endMeasure]) return null;
+  let endIndex = toRef.index;
+  const tail = measures[endMeasure];
+  while (endIndex + 1 < tail.length && tail[endIndex + 1].symbol === '-') endIndex += 1;
+  const aligned = startIndex === 0 && endIndex === tail.length - 1;
+  return { startMeasure, startIndex, endMeasure, endIndex, aligned };
+}
+
+/**
+ * 按 *span* 从文档里取出片段内容。
+ *
+ * 对齐的片段取成**若干个完整小节**（保住小节线），不对齐的取成一串音符。两种
+ * 形状分别对应上面那两条粘贴路径，所以剪贴板里存的就是最终要用的形状，粘贴时
+ * 不必再判断一次。
+ *
+ * @returns {{aligned:true, measures:Array<Array<object>>}|{aligned:false, notes:Array<object>}|null}
+ */
+export function extractFragment(doc, sectionIndex, span) {
+  const section = (doc && doc.sections) ? doc.sections[sectionIndex] : null;
+  if (!section || !span) return null;
+  const measures = section.measures || [];
+  if (span.aligned) {
+    const picked = measures
+      .slice(span.startMeasure, span.endMeasure + 1)
+      .map((m) => m.map(cloneNote));
+    return picked.length ? { aligned: true, measures: picked } : null;
+  }
+  const notes = [];
+  for (let m = span.startMeasure; m <= span.endMeasure; m++) {
+    const measure = measures[m];
+    if (!measure) return null;
+    const from = m === span.startMeasure ? span.startIndex : 0;
+    const to = m === span.endMeasure ? span.endIndex : measure.length - 1;
+    for (let i = from; i <= to; i++) if (measure[i]) notes.push(cloneNote(measure[i]));
+  }
+  return notes.length ? { aligned: false, notes } : null;
+}
+
+/**
+ * 把一串音符依次录到 *ref* 处（每个都走 5.4 的"插入并吃掉后面的时值"），返回
+ * 一整组命令交给 EditHistory.doGroup —— 一次粘贴是一次撤销。
+ *
+ * 必须在**副本**上推演：insertConsumingCommands 是照着当前文档算命令、并不施
+ * 加，所以第二个音符要看到第一个已经插进去之后的样子才算得对。副本与真文档起
+ * 点相同，同一串命令施加到真文档上结果一致。
+ */
+export function pasteNotesCommands(doc, ref, notes) {
+  if (!notes || !notes.length) return null;
+  const draft = JSON.parse(JSON.stringify(doc));
+  const cmds = [];
+  let index = ref.index;
+  for (const note of notes) {
+    const at = noteRef(ref.section, ref.measure, index);
+    const part = insertConsumingCommands(draft, at, note);
+    if (!part) return null;
+    for (const cmd of part) {
+      if (!applyCommand(draft, cmd)) return null;
+      cmds.push(cmd);
+    }
+    index += 1;   // 每录一个音符就占住一格，下一个接着往后放
+  }
+  return cmds;
+}
+
+/**
+ * 把若干个完整小节插到 *measureIndex* **之前**（粘贴点所在的那个小节前面），
+ * 原有小节整体后移。返回一组命令，同样是一次撤销。
+ */
+export function pasteMeasuresCommands(sectionIndex, measureIndex, measures) {
+  if (!measures || !measures.length) return null;
+  return measures.map((notes, i) => ({
+    type: 'insert_measure',
+    at: { section: sectionIndex, measure: measureIndex + i },
+    notes,
+  }));
+}

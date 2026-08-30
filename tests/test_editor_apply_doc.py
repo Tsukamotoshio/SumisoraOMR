@@ -151,3 +151,75 @@ def test_apply_doc_reports_failure_instead_of_raising(tmp_path):
     service, _path, _body = _service(tmp_path)
     result = service.apply_doc('not a document')
     assert result['ok'] is False and 'error' in result
+
+
+# ── fragment_text: the clipboard mirror (阶段5.5b) ───────────────────────────
+
+
+def _fragment(measures, time_sig='4/4'):
+    """A JianpuDoc-shaped dict holding just the copied measures."""
+    return {
+        'title': '', 'composer': '', 'key_header': '1=C', 'tempo': 0,
+        'sections': [{'time_sig': time_sig, 'measures': measures}],
+    }
+
+
+def test_fragment_text_has_no_header_block(tmp_path):
+    service, _path, body = _service(tmp_path)
+    measures = _bridge_trip(service.graphical_render_data(body)['doc'])['sections'][0]['measures']
+    out = service.fragment_text(_fragment(measures[:1]))
+    assert out['ok'], out
+    # A fragment is not a document: no title/key/time signature may ride along,
+    # or pasting it somewhere else would carry a bogus header with it.
+    assert 'title=' not in out['text']
+    assert '1=C' not in out['text']
+    assert '4/4' not in out['text']
+    # The syllables ride along with the notes they are attached to — copying a
+    # phrase and losing its words would not be much of a copy.
+    assert out['text'] == '1 2 3 4 |' + chr(10) + 'L: do re mi fa'
+
+
+def test_fragment_text_serializes_several_measures_on_one_line(tmp_path):
+    service, _path, body = _service(tmp_path)
+    measures = _bridge_trip(service.graphical_render_data(body)['doc'])['sections'][0]['measures']
+    out = service.fragment_text(_fragment(measures))
+    assert out['ok'], out
+    assert out['text'] == '1 2 3 4 | 5 0 6 - |' + chr(10) + 'L: do re mi fa so _ la'
+
+
+def test_fragment_text_uses_the_real_note_tokeniser_for_dash_expansion(tmp_path):
+    service, _path, _body = _service(tmp_path)
+    # A four-beat rest is written `0 - - -`, not as one big-duration token —
+    # the whole reason this runs in Python instead of being rebuilt in JS.
+    whole_rest = [
+        {'symbol': '0', 'accidental': '', 'upper_dots': 0, 'lower_dots': 0,
+         'duration': 4.0, 'duration_dots': 0, 'midi': None, 'is_rest': True, 'lyrics': {}},
+    ]
+    out = service.fragment_text(_fragment([whole_rest]))
+    assert out['ok'], out
+    assert out['text'] == '0 - - - |'
+
+
+def test_fragment_text_carries_lyrics_attached_to_the_copied_notes(tmp_path):
+    service, _path, body = _service(tmp_path)
+    measures = _bridge_trip(service.graphical_render_data(body)['doc'])['sections'][0]['measures']
+    out = service.fragment_text(_fragment(measures[:1]))
+    assert out['ok'], out
+    assert 'L: do re mi fa' in out['text']
+
+
+def test_fragment_text_needs_no_loaded_file(tmp_path):
+    # Unlike apply_doc, serializing a fragment touches no document state, so a
+    # copy must work even on a service that has not loaded anything.
+    service = _new_service()
+    note = {'symbol': '1', 'accidental': '', 'upper_dots': 0, 'lower_dots': 0,
+            'duration': 1.0, 'duration_dots': 0, 'midi': 60, 'is_rest': False, 'lyrics': {}}
+    out = service.fragment_text(_fragment([[note]]))
+    assert out['ok'], out
+    assert out['text'] == '1 |'
+
+
+def test_fragment_text_reports_an_empty_or_malformed_fragment(tmp_path):
+    service = _new_service()
+    assert service.fragment_text({'sections': []})['ok'] is False
+    assert service.fragment_text(None)['ok'] is False

@@ -24,6 +24,7 @@ from typing import Any, Optional
 from core.app.backend import build_dir, editor_workspace_dir, output_dir
 from core.notation.jianpu import (
     JianpuParseError,
+    build_jianpu_fragment_text,
     build_jianpu_ly_text_from_doc,
     jianpu_doc_from_dict,
     jianpu_doc_to_dict,
@@ -309,6 +310,31 @@ class EditorService:
             log_message(f'[webui] 简谱模型序列化失败：{exc}', logging.WARNING)
             return {'ok': False, 'error': str(exc)}
         return {'ok': True, 'text': text, 'renders': self._renders_of(doc)}
+
+    def fragment_text(self, fragment_raw: Any) -> dict:
+        """Serialize a copied fragment to bare jianpu-ly note text (阶段5.5b).
+
+        *fragment_raw* is a JianpuDoc-shaped dict whose single section holds
+        the copied measures — the front-end reuses the document shape rather
+        than inventing a second wire format, so ``jianpu_doc_from_dict``'s
+        coercion (string verse keys, string tempo, …) applies here too.
+
+        Purely a convenience: the clipboard the front-end actually pastes from
+        is its own in-memory model, and this text is only mirrored onto the
+        system clipboard. So a failure here must stay non-fatal — losing the
+        system-clipboard copy is a much smaller harm than refusing the copy.
+
+        Unlike ``apply_doc`` this deliberately does not require a loaded file:
+        serializing a fragment touches no document state at all.
+        """
+        try:
+            doc = jianpu_doc_from_dict(fragment_raw)
+            if not doc.sections:
+                return {'ok': False, 'error': 'empty'}
+            return {'ok': True, 'text': build_jianpu_fragment_text(doc)}
+        except Exception as exc:  # noqa: BLE001 — mirroring is best-effort
+            log_message(f'[webui] 简谱片段序列化失败：{exc}', logging.WARNING)
+            return {'ok': False, 'error': str(exc)}
 
     # ── 预览渲染（txt → LilyPond → PDF；完成推 editor_preview_ready）─────────
 

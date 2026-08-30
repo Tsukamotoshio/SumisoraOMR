@@ -344,6 +344,9 @@ class Bridge:
     def editor_apply_doc(self, doc: dict) -> dict:
         return self._editor.apply_doc(doc) if self._editor else {'ok': False}
 
+    def editor_fragment_text(self, fragment: dict) -> dict:
+        return self._editor.fragment_text(fragment) if self._editor else {'ok': False}
+
     def editor_export_to_output(self) -> dict:
         return self._editor.export_to_output() if self._editor else {'ok': False}
 

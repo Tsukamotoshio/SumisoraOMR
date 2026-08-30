@@ -5,8 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  EditHistory, applyCommand, barQuarterLength, blankMeasureNotes, getNote,
-  insertConsumingCommands, nextRef, noteRef, prevRef, refEquals, steppedDuration,
+  EditHistory, applyCommand, barQuarterLength, blankMeasureNotes,
+  extractFragment, getNote, insertConsumingCommands, nextRef, noteRef,
+  pasteMeasuresCommands, pasteNotesCommands, prevRef, refEquals,
+  selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 function note(symbol, extra = {}) {
@@ -730,4 +732,196 @@ test('blankMeasureNotes terminates on a non-finite bar length', () => {
 test('blankMeasureNotes stays bounded for an absurd but finite bar length', () => {
   const notes = blankMeasureNotes(100000);
   assert.ok(notes.length <= 512, `bounded, got ${notes.length}`);
+});
+
+// ── copy / paste (阶段5.5b) ─────────────────────────────────────────────────
+
+/** A 4/4 score whose measures are distinguishable by content. */
+function clipDoc() {
+  const m = (...symbols) => symbols.map((s) => note(s));
+  return {
+    title: 'T', composer: '', key_header: '1=C', tempo: 120,
+    sections: [{
+      time_sig: '4/4',
+      measures: [m('1', '2', '3', '4'), m('5', '6', '7', '1'), blankMeasureNotes(4.0)],
+    }],
+  };
+}
+
+const symbolsIn = (doc, m) => doc.sections[0].measures[m].map((n) => n.symbol);
+const measureCount = (doc) => doc.sections[0].measures.length;
+const beats = (doc, m) => doc.sections[0].measures[m].reduce((s, n) => s + n.duration, 0);
+
+// -- selectionSpan --------------------------------------------------------
+
+test('selectionSpan marks a whole measure as aligned', () => {
+  const doc = clipDoc();
+  const span = selectionSpan(doc, 0, noteRef(0, 1, 0), noteRef(0, 1, 3));
+  assert.deepEqual(span, {
+    startMeasure: 1, startIndex: 0, endMeasure: 1, endIndex: 3, aligned: true,
+  });
+});
+
+test('selectionSpan marks a partial measure as not aligned', () => {
+  const doc = clipDoc();
+  const span = selectionSpan(doc, 0, noteRef(0, 0, 1), noteRef(0, 0, 2));
+  assert.equal(span.aligned, false);
+  assert.deepEqual([span.startIndex, span.endIndex], [1, 2]);
+});
+
+test('selectionSpan spanning two full measures is aligned', () => {
+  const doc = clipDoc();
+  const span = selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 1, 3));
+  assert.equal(span.aligned, true);
+  assert.deepEqual([span.startMeasure, span.endMeasure], [0, 1]);
+});
+
+test('selectionSpan swallows the dashes trailing the last selected note', () => {
+  // A 4-beat note is one drawn note but four model objects (`1 - - -`).
+  // Stopping at the drawn note alone would cut three beats off the copy.
+  const doc = clipDoc();
+  doc.sections[0].measures[0] = [note('1'), note('-'), note('-'), note('-')];
+  const span = selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 0, 0));
+  assert.equal(span.endIndex, 3, 'ran to the end of the sustain');
+  assert.equal(span.aligned, true, 'and that makes it a whole measure');
+});
+
+test('selectionSpan reports an unresolvable address instead of guessing', () => {
+  const doc = clipDoc();
+  assert.equal(selectionSpan(doc, 9, noteRef(0, 0, 0), noteRef(0, 0, 0)), null);
+  assert.equal(selectionSpan(doc, 0, noteRef(0, 9, 0), noteRef(0, 0, 0)), null);
+  assert.equal(selectionSpan(doc, 0, null, noteRef(0, 0, 0)), null);
+});
+
+// -- extractFragment ------------------------------------------------------
+
+test('extractFragment keeps whole measures for an aligned span', () => {
+  const doc = clipDoc();
+  const span = selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 1, 3));
+  const frag = extractFragment(doc, 0, span);
+  assert.equal(frag.aligned, true);
+  assert.deepEqual(frag.measures.map((m) => m.map((n) => n.symbol)),
+    [['1', '2', '3', '4'], ['5', '6', '7', '1']]);
+});
+
+test('extractFragment flattens a non-aligned span, barline and all', () => {
+  const doc = clipDoc();
+  const span = selectionSpan(doc, 0, noteRef(0, 0, 2), noteRef(0, 1, 1));
+  const frag = extractFragment(doc, 0, span);
+  assert.equal(frag.aligned, false);
+  assert.deepEqual(frag.notes.map((n) => n.symbol), ['3', '4', '5', '6']);
+});
+
+test('extractFragment deep-copies, so later edits cannot reach the clipboard', () => {
+  const doc = clipDoc();
+  const span = selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 0, 3));
+  const frag = extractFragment(doc, 0, span);
+  applyCommand(doc, { type: 'set_pitch', ref: noteRef(0, 0, 0), symbol: '7' });
+  assert.equal(frag.measures[0][0].symbol, '1', 'clipboard is untouched');
+});
+
+// -- pasteMeasuresCommands ------------------------------------------------
+
+test('pasting aligned measures inserts them before the target measure', () => {
+  const doc = clipDoc();
+  const frag = extractFragment(doc, 0, selectionSpan(doc, 0, noteRef(0, 1, 0), noteRef(0, 1, 3)));
+  const history = new EditHistory(doc);
+  assert.ok(history.doGroup(pasteMeasuresCommands(0, 2, frag.measures)));
+  assert.equal(measureCount(doc), 4);
+  assert.deepEqual(symbolsIn(doc, 2), ['5', '6', '7', '1'], 'the pasted measure');
+  assert.deepEqual(symbolsIn(doc, 3), ['0', '-', '-', '-'], 'the old measure moved down');
+});
+
+test('pasting several measures keeps their order', () => {
+  const doc = clipDoc();
+  const frag = extractFragment(doc, 0, selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 1, 3)));
+  const history = new EditHistory(doc);
+  assert.ok(history.doGroup(pasteMeasuresCommands(0, 2, frag.measures)));
+  assert.equal(measureCount(doc), 5);
+  assert.deepEqual(symbolsIn(doc, 2), ['1', '2', '3', '4']);
+  assert.deepEqual(symbolsIn(doc, 3), ['5', '6', '7', '1']);
+  assert.deepEqual(symbolsIn(doc, 4), ['0', '-', '-', '-']);
+});
+
+test('a measure paste is a single undo step however many measures it added', () => {
+  const doc = clipDoc();
+  const before = clone(doc);
+  const frag = extractFragment(doc, 0, selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 1, 3)));
+  const history = new EditHistory(doc);
+  history.doGroup(pasteMeasuresCommands(0, 2, frag.measures));
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before);
+  assert.ok(history.redo());
+  assert.equal(measureCount(doc), 5);
+});
+
+test('pasteMeasuresCommands refuses an empty fragment', () => {
+  assert.equal(pasteMeasuresCommands(0, 0, []), null);
+  assert.equal(pasteMeasuresCommands(0, 0, null), null);
+});
+
+// -- pasteNotesCommands ---------------------------------------------------
+
+test('pasting a loose fragment consumes the rests it lands on', () => {
+  const doc = clipDoc();
+  const frag = extractFragment(doc, 0, selectionSpan(doc, 0, noteRef(0, 0, 2), noteRef(0, 0, 3)));
+  assert.deepEqual(frag.notes.map((n) => n.symbol), ['3', '4']);
+  const history = new EditHistory(doc);
+  assert.ok(history.doGroup(pasteNotesCommands(doc, noteRef(0, 2, 0), frag.notes)));
+  assert.deepEqual(symbolsIn(doc, 2), ['3', '4', '-', '-']);
+  assert.equal(beats(doc, 2), 4, 'the measure is still four beats');
+  assert.equal(measureCount(doc), 3, 'and no measure was created');
+});
+
+test('a loose paste that outruns the measure overfills it rather than spilling over', () => {
+  // Decision 甲: loose fragments are a note stream poured into the target
+  // measure. Running past the bar line is a lint warning (B5②), not a new bar.
+  const doc = clipDoc();
+  const frag = extractFragment(doc, 0, selectionSpan(doc, 0, noteRef(0, 0, 1), noteRef(0, 1, 3)));
+  assert.equal(frag.notes.length, 7);
+  const history = new EditHistory(doc);
+  assert.ok(history.doGroup(pasteNotesCommands(doc, noteRef(0, 2, 0), frag.notes)));
+  assert.equal(measureCount(doc), 3, 'still three measures');
+  assert.equal(beats(doc, 2), 7, 'seven beats in a 4/4 bar -- the linter says so');
+});
+
+test('a note paste is a single undo step', () => {
+  const doc = clipDoc();
+  const before = clone(doc);
+  const frag = extractFragment(doc, 0, selectionSpan(doc, 0, noteRef(0, 0, 2), noteRef(0, 0, 3)));
+  const history = new EditHistory(doc);
+  history.doGroup(pasteNotesCommands(doc, noteRef(0, 2, 0), frag.notes));
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before, 'every consumed rest came back too');
+  assert.ok(history.redo());
+  assert.deepEqual(symbolsIn(doc, 2), ['3', '4', '-', '-']);
+});
+
+test('pasteNotesCommands leaves the document untouched while building commands', () => {
+  const doc = clipDoc();
+  const before = clone(doc);
+  const cmds = pasteNotesCommands(doc, noteRef(0, 2, 0), [note('3'), note('4')]);
+  assert.ok(cmds && cmds.length);
+  assert.deepEqual(doc, before, 'planning happens on a copy, not in place');
+});
+
+test('pasteNotesCommands refuses an empty fragment or a bad address', () => {
+  const doc = clipDoc();
+  assert.equal(pasteNotesCommands(doc, noteRef(0, 0, 0), []), null);
+  assert.equal(pasteNotesCommands(doc, noteRef(0, 9, 0), [note('1')]), null);
+});
+
+test('a copied fragment pastes identically into a different document', () => {
+  // "Fragment paste across files is faithful" -- the clipboard holds plain
+  // model objects with no tie to the document it came from.
+  const source = clipDoc();
+  const frag = extractFragment(source, 0, selectionSpan(source, 0, noteRef(0, 1, 0), noteRef(0, 1, 3)));
+  const target = {
+    title: 'Other', composer: '', key_header: '6=A', tempo: 90,
+    sections: [{ time_sig: '3/4', measures: [blankMeasureNotes(3.0)] }],
+  };
+  const history = new EditHistory(target);
+  assert.ok(history.doGroup(pasteMeasuresCommands(0, 0, frag.measures)));
+  assert.deepEqual(target.sections[0].measures[0].map((n) => n.symbol), ['5', '6', '7', '1']);
+  assert.deepEqual(target.sections[0].measures[1].map((n) => n.symbol), ['0', '-', '-']);
 });

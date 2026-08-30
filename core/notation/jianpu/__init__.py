@@ -146,20 +146,42 @@ def build_jianpu_ly_text_from_doc(doc: 'JianpuDoc') -> str:
     if doc.tempo > 0:
         header.append(f'4={doc.tempo}')
     header.append('')
+    header.extend(_doc_body_lines(doc))
+    return '\n'.join(header)
 
+
+def _doc_body_lines(doc: 'JianpuDoc') -> list[str]:
+    """The note (and lyric) lines of *doc*, with no header block in front."""
+    lines: list[str] = []
     for section_idx, section in enumerate(doc.sections):
         if section_idx > 0:
-            header.append('NextPart')
-            header.append(section.time_sig)
+            lines.append('NextPart')
+            lines.append(section.time_sig)
         for i in range(0, len(section.measures), 4):
             line_measures = section.measures[i:i + 4]
             measure_texts = [' '.join(jianpu_note_token(note) for note in m) for m in line_measures]
-            header.append(' | '.join(measure_texts) + ' |')
+            lines.append(' | '.join(measure_texts) + ' |')
         # 歌词行跟在本分段所有小节之后（与 build_jianpu_ly_text 的位置一致）。
         # 歌词锚在音符上（JianpuNote.lyrics），所以图形编辑增删音符时不会错位——
         # 这正是 B10.4 当初把它设计成按音符存、而不是存成一条独立文本流的理由。
-        header.extend(build_lyric_lines(section.measures))
-    return '\n'.join(header)
+        lines.extend(build_lyric_lines(section.measures))
+    return lines
+
+
+def build_jianpu_fragment_text(doc: 'JianpuDoc') -> str:
+    """Serialize a *copied fragment* to bare jianpu-ly note text (阶段5.5b).
+
+    The same writer as ``build_jianpu_ly_text_from_doc``, minus the header
+    block: a clipboard fragment is not a document, and a title/key/time
+    signature riding along with it would be nonsense once pasted elsewhere.
+
+    The front-end keeps the authoritative clipboard as model objects and never
+    parses this text back; it exists so a copied fragment can be mirrored onto
+    the system clipboard and pasted into the text pane or another program.
+    Producing it here rather than in JS keeps the note-token rules — dash
+    expansion in ``jianpu_note_token`` above all — in exactly one copy.
+    """
+    return '\n'.join(_doc_body_lines(doc))
 
 
 @overload

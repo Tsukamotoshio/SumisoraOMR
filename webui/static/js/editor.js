@@ -9,8 +9,9 @@ import { PdfView } from './pdfview.js';
 import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
 import {
-  EditHistory, barQuarterLength, blankMeasureNotes, insertConsumingCommands,
-  noteRef, steppedDuration,
+  EditHistory, barQuarterLength, blankMeasureNotes, extractFragment,
+  insertConsumingCommands, noteRef, pasteMeasuresCommands, pasteNotesCommands,
+  selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
@@ -805,6 +806,98 @@ async function edDeleteMeasure() {
   await edPushModel(null, 0);
 }
 
+
+// ── 复制 / 粘贴（阶段5.5b）────────────────────────────────────────────────────
+// 剪贴板刻意**声明在换文件的重置之外**：验收要的就是"片段跨文件粘贴保真"，
+// 复制完换个文件再粘贴是主用法，一重置就没了。它存的是纯模型对象，与来源文档
+// 没有任何引用关系（extractFragment 做的是深拷贝），所以拿到别的文档里粘也不会
+// 牵连原文件。
+let edClipboard = null;   // { aligned:true, measures:[[note]] } | { aligned:false, notes:[note] }
+
+/** 复制的落点：选区第一个和最后一个**画出来的**音符各自的模型地址。 */
+function edSelectionRefs() {
+  const range = edSelectionRange();
+  if (!range) return null;
+  const notes = edSectionNotes[range.section] || [];
+  const first = notes[range.from];
+  const last = notes[range.to];
+  if (!first || !first.ref || !last || !last.ref) return null;
+  return {
+    section: range.section,
+    from: noteRef(range.section, first.ref.measure, first.ref.index),
+    to: noteRef(range.section, last.ref.measure, last.ref.index),
+  };
+}
+
+/**
+ * 把片段镜像到系统剪贴板。纯附赠功能：粘贴永远只读内部剪贴板，所以这里失败
+ * 了也只是少一个便利，绝不能反过来让复制本身失败——因此全程吞掉异常。
+ */
+async function edMirrorToSystemClipboard(fragment, section) {
+  try {
+    const measures = fragment.aligned ? fragment.measures : [fragment.notes];
+    const r = await api().editor_fragment_text({
+      title: '', composer: '', key_header: edDoc.key_header, tempo: 0,
+      sections: [{ time_sig: section.time_sig, measures }],
+    });
+    if (r && r.ok && r.text && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(r.text);
+    }
+  } catch (_e) {
+    // 系统剪贴板不可用（权限、非安全上下文……）——内部剪贴板已经存好了，静默即可
+  }
+}
+
+/** Ctrl+C：把选中的音符区间收进剪贴板。 */
+function edCopySelection() {
+  if (!edDoc) return;
+  const refs = edSelectionRefs();
+  if (!refs) return;
+  const span = selectionSpan(edDoc, refs.section, refs.from, refs.to);
+  const fragment = span ? extractFragment(edDoc, refs.section, span) : null;
+  if (!fragment) return;
+  edClipboard = fragment;
+  const count = fragment.aligned
+    ? fragment.measures.reduce((sum, m) => sum + m.length, 0)
+    : fragment.notes.length;
+  toast(t(fragment.aligned ? 'w.ed.copied_measures' : 'w.ed.copied_notes',
+    { n: fragment.aligned ? fragment.measures.length : count }));
+  edMirrorToSystemClipboard(fragment, edDoc.sections[refs.section]);
+}
+
+/** Ctrl+V：整小节片段整小节插入；零碎片段按音符流录到光标处（决议甲）。 */
+async function edPasteClipboard() {
+  if (!edDoc || !edHistory) return;
+  if (!edClipboard) { toast(t('w.ed.clipboard_empty')); return; }
+  const at = edCurrentMeasureRef();
+  if (!at) { toast(t('w.ed.paste_no_target')); return; }
+  const section = edDoc.sections[at.section];
+  if (!section) return;
+
+  if (edClipboard.aligned) {
+    const cmds = pasteMeasuresCommands(at.section, at.measure, edClipboard.measures);
+    if (!cmds || !edHistory.doGroup(cmds)) return;
+    // 粘进来的小节占住了原来的位置，原内容整体后移；光标跟着落到第一个新小节。
+    if (edInputMode) { edCursor = { section: at.section, measure: at.measure, index: 0 }; edNormalizeCursor(); }
+    edSelection = null;
+    await edPushModel(null, 0);
+    return;
+  }
+
+  // 零碎片段：落点是光标（录入模式）或选中音符（选择模式）所在的那一格。
+  const target = edInputMode
+    ? (edCursor && noteRef(edCursor.section, edCursor.measure, edCursor.index))
+    : edFocusedRef();
+  if (!target) { toast(t('w.ed.paste_no_target')); return; }
+  const cmds = pasteNotesCommands(edDoc, target, edClipboard.notes);
+  if (!cmds || !edHistory.doGroup(cmds)) return;
+  if (edInputMode) {
+    edCursor = { section: target.section, measure: target.measure, index: target.index + edClipboard.notes.length };
+    edNormalizeCursor();
+  }
+  await edPushModel(edInputMode ? null : target, edSelection ? edSelection.focus : 0);
+}
+
 document.addEventListener('keydown', (e) => {
   if ($('ed-gr-stage').classList.contains('hidden')) return;
   // 文本框有它自己的键盘语义（也有自己的撤销栈），不抢。输入类控件同理，
@@ -833,6 +926,16 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'Delete' || e.key === 'Backspace')) {
     e.preventDefault();
     edDeleteMeasure();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+    e.preventDefault();
+    edCopySelection();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+    e.preventDefault();
+    edPasteClipboard();
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
