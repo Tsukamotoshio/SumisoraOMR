@@ -537,6 +537,27 @@ export function pasteNotesCommands(doc, ref, notes) {
 }
 
 /**
+ * 把一批"对每个选中音符做同一件事"的命令排成可以安全依次施加的顺序（阶段5.6a）。
+ *
+ * 改值类命令（音高、八度、时值、附点、升降号）彼此独立，原样返回即可。
+ * **删除不行**：`delete_note` 是 `measure.splice(index, 1)`，删掉下标 2 之后，
+ * 原来的下标 5 就变成了 4——按选区的自然顺序从前往后删，第二条命令起就全部
+ * 指错位置。倒序删除（先删地址大的）让每一次删除都不影响尚未执行的地址。
+ *
+ * 撤销方向自动就是对的：EditHistory 撤销时把组内命令**倒序**施加回去，于是
+ * 插回的顺序与删除顺序相反，正好还原成原样。
+ */
+export function orderBatch(cmds) {
+  const list = (cmds || []).filter(Boolean);
+  if (!list.some((c) => c.type === 'delete_note')) return list;
+  return list.slice().sort((a, b) => (
+    (b.ref.section - a.ref.section)
+    || (b.ref.measure - a.ref.measure)
+    || (b.ref.index - a.ref.index)
+  ));
+}
+
+/**
  * 把若干个完整小节插到 *measureIndex* **之前**（粘贴点所在的那个小节前面），
  * 原有小节整体后移。返回一组命令，同样是一次撤销。
  */

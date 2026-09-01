@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {
   EditHistory, applyCommand, barQuarterLength, blankMeasureNotes,
   extractFragment, getNote, insertConsumingCommands, nextRef, noteRef,
-  pasteMeasuresCommands, pasteNotesCommands, prevRef, refEquals,
+  orderBatch, pasteMeasuresCommands, pasteNotesCommands, prevRef, refEquals,
   selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
@@ -924,4 +924,113 @@ test('a copied fragment pastes identically into a different document', () => {
   assert.ok(history.doGroup(pasteMeasuresCommands(0, 0, frag.measures)));
   assert.deepEqual(target.sections[0].measures[0].map((n) => n.symbol), ['5', '6', '7', '1']);
   assert.deepEqual(target.sections[0].measures[1].map((n) => n.symbol), ['0', '-', '-']);
+});
+
+// ── batch transforms over a selection (阶段5.6a) ─────────────────────────────
+
+function batchDoc() {
+  return {
+    title: 'T', composer: '', key_header: '1=C', tempo: 120,
+    sections: [{
+      time_sig: '4/4',
+      measures: [[note('1'), note('2'), note('3'), note('4')],
+                 [note('5'), note('6'), note('7'), note('1')]],
+    }],
+  };
+}
+
+const syms = (doc, m) => doc.sections[0].measures[m].map((n) => n.symbol);
+
+test('orderBatch leaves value-changing commands in the order given', () => {
+  const cmds = [
+    { type: 'set_octave', ref: noteRef(0, 0, 0), delta: 1 },
+    { type: 'set_octave', ref: noteRef(0, 0, 1), delta: 1 },
+    { type: 'set_octave', ref: noteRef(0, 0, 2), delta: 1 },
+  ];
+  assert.deepEqual(orderBatch(cmds), cmds);
+});
+
+test('orderBatch deletes from the back so addresses stay valid', () => {
+  const cmds = [0, 1, 2].map((i) => ({ type: 'delete_note', ref: noteRef(0, 0, i) }));
+  assert.deepEqual(orderBatch(cmds).map((c) => c.ref.index), [2, 1, 0]);
+});
+
+test('orderBatch sorts across measures and sections too', () => {
+  const cmds = [
+    { type: 'delete_note', ref: noteRef(0, 0, 1) },
+    { type: 'delete_note', ref: noteRef(0, 1, 0) },
+    { type: 'delete_note', ref: noteRef(1, 0, 0) },
+  ];
+  assert.deepEqual(
+    orderBatch(cmds).map((c) => [c.ref.section, c.ref.measure, c.ref.index]),
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1]]);
+});
+
+test('orderBatch tolerates an empty or holey list', () => {
+  assert.deepEqual(orderBatch([]), []);
+  assert.deepEqual(orderBatch(null), []);
+  assert.deepEqual(orderBatch([null, undefined]), []);
+});
+
+test('deleting a whole selection back-to-front removes exactly those notes', () => {
+  const doc = batchDoc();
+  const history = new EditHistory(doc);
+  // Select notes 1..2 of measure 0 and delete both.
+  const cmds = orderBatch([1, 2].map((i) => ({ type: 'delete_note', ref: noteRef(0, 0, i) })));
+  assert.ok(history.doGroup(cmds));
+  assert.deepEqual(syms(doc, 0), ['1', '4'], 'the notes between them are gone, nothing else');
+});
+
+test('a front-to-back delete would corrupt the measure -- proving the ordering matters', () => {
+  const doc = batchDoc();
+  // Deliberately NOT ordered: index 1 then index 2, applied in that order.
+  const history = new EditHistory(doc);
+  history.doGroup([
+    { type: 'delete_note', ref: noteRef(0, 0, 1) },
+    { type: 'delete_note', ref: noteRef(0, 0, 2) },
+  ]);
+  assert.deepEqual(syms(doc, 0), ['1', '3'],
+    'the second delete hit the note that slid into index 2, not the one selected');
+});
+
+test('a batch delete is one undo step and restores every note', () => {
+  const doc = batchDoc();
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  history.doGroup(orderBatch([0, 1, 2, 3].map((i) => ({ type: 'delete_note', ref: noteRef(0, 0, i) }))));
+  assert.deepEqual(syms(doc, 0), []);
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before, 'all four came back, in order');
+});
+
+test('a batch octave shift is one undo step', () => {
+  const doc = batchDoc();
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  const cmds = orderBatch([0, 1, 2].map((i) => ({ type: 'set_octave', ref: noteRef(0, 0, i), delta: 1 })));
+  assert.ok(history.doGroup(cmds));
+  assert.deepEqual(doc.sections[0].measures[0].map((n) => n.upper_dots), [1, 1, 1, 0]);
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before);
+});
+
+test('a batch spanning two measures reaches both', () => {
+  const doc = batchDoc();
+  const history = new EditHistory(doc);
+  const refs = [noteRef(0, 0, 3), noteRef(0, 1, 0), noteRef(0, 1, 1)];
+  assert.ok(history.doGroup(orderBatch(
+    refs.map((ref) => ({ type: 'set_octave', ref, delta: -1 })))));
+  assert.deepEqual(doc.sections[0].measures[0].map((n) => n.lower_dots), [0, 0, 0, 1]);
+  assert.deepEqual(doc.sections[0].measures[1].map((n) => n.lower_dots), [1, 1, 0, 0]);
+});
+
+test('a batch that a command refuses rolls the whole thing back', () => {
+  const doc = batchDoc();
+  doc.sections[0].measures[0][1] = note('0');   // a rest: takes no accidental
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  const cmds = [0, 1, 2].map((i) => (
+    { type: 'set_accidental', ref: noteRef(0, 0, i), accidental: '#' }));
+  assert.ok(!history.doGroup(cmds), 'the rest refuses, so the group fails');
+  assert.deepEqual(doc, before, 'and the notes before it are put back');
 });

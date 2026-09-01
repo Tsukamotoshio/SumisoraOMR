@@ -10,8 +10,8 @@ import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
 import {
   EditHistory, barQuarterLength, blankMeasureNotes, extractFragment,
-  insertConsumingCommands, noteRef, pasteMeasuresCommands, pasteNotesCommands,
-  selectionSpan, steppedDuration,
+  insertConsumingCommands, noteRef, orderBatch, pasteMeasuresCommands,
+  pasteNotesCommands, selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
@@ -446,19 +446,27 @@ function edFocusedRef() {
 }
 
 /** 编辑后把选区落回同一个音符；音符已被删掉时退而选原位置上的那个。 */
-function edReselect(ref, fallbackIndex) {
+function edReselect(ref, fallbackIndex, lastRef) {
   if (!ref) return;
   const notes = edSectionNotes[ref.section] || [];
-  let index = notes.findIndex(
-    (n) => n.ref && n.ref.measure === ref.measure && n.ref.index === ref.index);
+  const locate = (r) => notes.findIndex(
+    (n) => n.ref && n.ref.measure === r.measure && n.ref.index === r.index);
+  let index = locate(ref);
   if (index < 0) index = Math.min(fallbackIndex, notes.length - 1);
   if (index < 0) { edSelection = null; edRenderSelection(); return; }
-  edSelection = { section: ref.section, anchor: index, focus: index };
+  // 批量变换之后整段应当仍然选中——否则用户想连着按两次（比如升八度再升一次）
+  // 第二次就只作用在一个音符上了。lastRef 缺省时退化成原来的单音符行为。
+  let focus = index;
+  if (lastRef) {
+    const last = locate(lastRef);
+    if (last >= 0) focus = last;
+  }
+  edSelection = { section: ref.section, anchor: index, focus };
   edRenderSelection();
 }
 
 /** 把当前模型送去序列化，并用返回结果刷新两个视图。 */
-async function edPushModel(keepRef, fallbackIndex) {
+async function edPushModel(keepRef, fallbackIndex, lastRef) {
   const r = await api().editor_apply_doc(edDoc);
   if (!r.ok) {
     toast(t('w.ed.edit_failed', { e: r.error || '' }), { severity: 'error' });
@@ -474,7 +482,7 @@ async function edPushModel(keepRef, fallbackIndex) {
   edRunLint();
   clearTimeout(edGraphicalTimer);   // 作废可能还在等的那次文本触发重绘
   await edDrawRenders(r.renders);
-  edReselect(keepRef, fallbackIndex);
+  edReselect(keepRef, fallbackIndex, lastRef);
   edRenderCursor();
 }
 
@@ -493,14 +501,45 @@ async function edConfirmFirstEdit() {
   return true;
 }
 
-/** 执行一条命令：命令被拒绝（地址无效、休止符不能加升降号等）就什么都不做。 */
-async function edRunCommand(cmd) {
-  if (!edDoc || !edHistory || !cmd) return;
+/** 选区里每个音符的模型地址，按谱面顺序（阶段5.6a 批量变换的作用域）。 */
+function edSelectedRefs() {
+  const range = edSelectionRange();
+  if (!range) return [];
+  const notes = edSectionNotes[range.section] || [];
+  const refs = [];
+  for (let i = range.from; i <= range.to; i++) {
+    const note = notes[i];
+    if (note && note.ref) refs.push(noteRef(range.section, note.ref.measure, note.ref.index));
+  }
+  return refs;
+}
+
+/**
+ * 对整个选区施加一批命令，作为**一次**撤销（阶段5.6a）。
+ *
+ * 选中什么就作用在什么上——选区在谱面上是看得见的蓝底，所以这不会造成"我以为
+ * 只改一个音符"的意外，而且与 MuseScore 的行为一致。
+ *
+ * *cmds* 与 *refs* 一一对应；某个音符上这个键没有意义时（比如时值已到阶梯尽头）
+ * 对应项是 null，orderBatch 会把它滤掉——其余音符照常生效，不因一个到顶的音符
+ * 让整次操作作废。
+ */
+async function edRunSelectionCommands(cmds, refs) {
+  if (!edDoc || !edHistory) return;
   if (!await edConfirmFirstEdit()) return;
-  const keepRef = cmd.ref;
-  const fallbackIndex = edSelection ? edSelection.focus : 0;
-  if (!edHistory.do(cmd)) return;
-  await edPushModel(keepRef, fallbackIndex);
+  const ordered = orderBatch(cmds);
+  if (!ordered.length) return;
+  const structural = ordered.some((c) => c.type === 'delete_note');
+  const fallbackIndex = edSelection ? Math.min(edSelection.anchor, edSelection.focus) : 0;
+  if (!edHistory.doGroup(ordered)) return;
+  if (structural) {
+    // 选中的音符已经不存在了，没有"原位置"可留——显式清空，别让 edSelection
+    // 带着旧下标继续指向别的音符（5.5a 删小节时踩过同一个坑）。
+    edSelection = null;
+    await edPushModel(null, 0);
+    return;
+  }
+  await edPushModel(refs[0], fallbackIndex, refs[refs.length - 1]);
 }
 
 async function edUndoRedo(redo) {
@@ -513,7 +552,6 @@ async function edUndoRedo(redo) {
 
 /** 按键 → 命令。返回 null 表示这个键与编辑无关，交回给浏览器。 */
 function edCommandForKey(e, ref) {
-  const note = edSectionNotes[edSelection.section][edSelection.focus];
   if (e.key >= '1' && e.key <= '7') return { type: 'set_pitch', ref, symbol: e.key };
   if (e.key === '0') return { type: 'set_rest', ref };
   if (e.key === 'ArrowUp') return { type: 'set_octave', ref, delta: 1 };
@@ -525,9 +563,12 @@ function edCommandForKey(e, ref) {
   if (e.key === 'Delete' || e.key === 'Backspace') return { type: 'delete_note', ref };
   if (e.key === '+' || e.key === '=' || e.key === '-') {
     // 时值靠模型里的当前值算下一档，而不是靠渲染投影里的 length——投影已经把
-    // 延音横线折进前一个音符，读它会算错。
-    const model = edDoc.sections[ref.section].measures[ref.measure][ref.index];
-    const next = steppedDuration(model || note, e.key === '-' ? -1 : 1);
+    // 延音横线折进前一个音符，读它会算错。批量时每个音符各算各的，所以这里必须
+    // 按 ref 取，不能沿用焦点音符。
+    const measure = (edDoc.sections[ref.section] || {}).measures;
+    const model = measure && measure[ref.measure] && measure[ref.measure][ref.index];
+    if (!model) return null;
+    const next = steppedDuration(model, e.key === '-' ? -1 : 1);
     return next ? { type: 'set_duration', ref, ...next } : null;
   }
   return null;
@@ -991,12 +1032,13 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  const ref = edFocusedRef();
-  if (!ref) return;
-  const cmd = edCommandForKey(e, ref);
-  if (!cmd) return;
+  // 编辑键作用于**整个选区**，不只是焦点音符（阶段5.6a）。
+  const refs = edSelectedRefs();
+  if (!refs.length) return;
+  const cmds = refs.map((ref) => edCommandForKey(e, ref));
+  if (!cmds.some(Boolean)) return;   // 这个键与编辑无关，交回给浏览器
   e.preventDefault();
-  edRunCommand(cmd);
+  edRunSelectionCommands(cmds, refs);
 });
 
 function edClearHighlight() {
