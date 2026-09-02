@@ -67,7 +67,31 @@ def test_key_signature_uses_relative_major_semitone_for_minor_header():
     # convention key_header_tonic_semitone()/note_to_jianpu() already use.
     doc = parse_jianpu_ly_text('title=T\n6=A\n4/4\n\n6 7 1 2 |\n')
     render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
-    assert render['keySignatures'] == [{'start': 0, 'key': 0}]
+    assert render['keySignatures'] == [{'start': 0, 'key': 0, 'label': '6=A'}]
+
+
+def test_key_signature_label_keeps_what_the_pitch_class_cannot_say():
+    # The number is lossy in two independent ways, and the caption is drawn
+    # from it, so both used to reach the screen as the wrong key:
+    #   * mode      — A minor and C major are both pitch class 0
+    #   * spelling  — pitch class 10 reads back as A#, never Bb
+    # 23 of the 74 scores in editor-workspace/ were captioned wrongly by that
+    # reconstruction. The label is the header verbatim, so it cannot drift.
+    for header, semitone in [('6=A', 0), ('1=C', 0), ('6=E', 7), ('1=G', 7),
+                             ('1=Bb', 10), ('6=G', 10), ('6=C', 3)]:
+        doc = parse_jianpu_ly_text(f'title=T\n{header}\n4/4\n\n1 2 3 4 |\n')
+        render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+        assert render['keySignatures'] == [
+            {'start': 0, 'key': semitone, 'label': header}
+        ], header
+
+
+def test_key_label_does_not_disturb_the_digits():
+    # Only the caption changes: the digit mapping runs off `key`, which is
+    # untouched, so a minor-key score must render exactly the notes it did.
+    doc = parse_jianpu_ly_text('title=T\n6=A\n4/4\n\n6 7 1 2 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert [n['pitch'] for n in render['notes']] == [69, 71, 60, 62]
 
 
 def test_tempo_is_carried_through_for_playback():

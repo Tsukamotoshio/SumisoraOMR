@@ -115,7 +115,19 @@ def jianpu_section_to_render_json(
         # Our fork of JianpuRender reads this to fill the tail (see its
         # jianpu_info.ts `totalLength`).
         'totalLength': start,
-        'keySignatures': [{'start': 0, 'key': key_header_tonic_semitone(key_header)}],
+        # `key` is the relative-major pitch class, which is what the renderer
+        # needs to map MIDI back to a digit — but it is strictly less than the
+        # header says. A minor key reduces to its relative major (`6=A` and
+        # `1=C` both become 0), and a pitch class has no spelling (`1=Bb`
+        # becomes 10, which reads back as A#). Rebuilding the caption from the
+        # number therefore captions 23 of this project's 74 local scores wrongly.
+        # `label` carries the header verbatim so the drawn caption is simply
+        # what the file says; the fork falls back to rebuilding when it is absent.
+        'keySignatures': [{
+            'start': 0,
+            'key': key_header_tonic_semitone(key_header),
+            'label': key_header,
+        }],
         'timeSignatures': [{'start': 0, 'numerator': numerator, 'denominator': denominator}],
         'tempos': [{'start': 0, 'qpm': tempo if tempo > 0 else DEFAULT_PLAYBACK_TEMPO}],
     }
