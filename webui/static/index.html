@@ -424,6 +424,20 @@
           </div>
           <div class="stage hidden" id="ed-gr-stage">
             <div class="placeholder"><span id="ed-gr-ph" data-i18n="w.ed.graphical_placeholder">加载中…</span></div>
+            <div class="grheader hidden" id="ed-gr-header">
+              <div class="field">
+                <span class="lbl" data-i18n="w.ed.hdr_title">标题</span>
+                <input type="text" id="ed-hdr-title" class="textinput" maxlength="80">
+              </div>
+              <div class="field">
+                <span class="lbl" data-i18n="w.ed.hdr_composer">作曲</span>
+                <input type="text" id="ed-hdr-composer" class="textinput" maxlength="80">
+              </div>
+              <div class="field narrow">
+                <span class="lbl" data-i18n="w.ed.hdr_tempo">速度</span>
+                <input type="number" id="ed-hdr-tempo" class="textinput" min="1" max="999" step="1">
+              </div>
+            </div>
             <div class="graphical-container" id="ed-gr-container"></div>
             <div class="grtransport hidden" id="ed-gr-transport">
               <button class="pvbtn" id="ed-gr-play" title="播放" data-i18n-title="w.ed.play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>

@@ -1034,3 +1034,78 @@ test('a batch that a command refuses rolls the whole thing back', () => {
   assert.ok(!history.doGroup(cmds), 'the rest refuses, so the group fails');
   assert.deepEqual(doc, before, 'and the notes before it are put back');
 });
+
+// ── header metadata fields (阶段5.6b-1) ─────────────────────────────────────
+
+test('set_doc_field changes a field and its inverse puts the old value back', () => {
+  const doc = makeDoc();
+  const inverse = applyCommand(doc, { type: 'set_doc_field', field: 'title', value: 'New' });
+  assert.equal(doc.title, 'New');
+  assert.deepEqual(inverse, { type: 'set_doc_field', field: 'title', value: 'T' });
+  applyCommand(doc, inverse);
+  assert.equal(doc.title, 'T');
+});
+
+test('set_doc_field round-trips every editable field', () => {
+  for (const [field, value] of [['title', 'X'], ['composer', 'Someone'], ['tempo', 88]]) {
+    const doc = makeDoc();
+    const before = clone(doc);
+    const inverse = applyCommand(doc, { type: 'set_doc_field', field, value });
+    assert.ok(inverse, field);
+    assert.equal(doc[field], value);
+    applyCommand(doc, inverse);
+    assert.deepEqual(doc, before, field);
+  }
+});
+
+test('set_doc_field refuses a field that is not on the whitelist', () => {
+  const doc = makeDoc();
+  const before = clone(doc);
+  // key_header belongs to 5.6b-2 (it re-derives every note's midi), and a
+  // typo'd name would otherwise grow a key the Python side never heard of.
+  for (const field of ['key_header', 'sections', 'nonsense', '__proto__']) {
+    assert.equal(applyCommand(doc, { type: 'set_doc_field', field, value: 'x' }), null, field);
+  }
+  assert.deepEqual(doc, before);
+});
+
+test('set_doc_field treats an unchanged value as nothing happening', () => {
+  // The form fires `change` on blur whether or not anything was typed, so
+  // without this every click in and out of a field would add an undo step.
+  const doc = makeDoc();
+  assert.equal(applyCommand(doc, { type: 'set_doc_field', field: 'title', value: 'T' }), null);
+  assert.equal(applyCommand(doc, { type: 'set_doc_field', field: 'tempo', value: 120 }), null);
+});
+
+test('a header edit is one undo step and leaves the notes alone', () => {
+  const doc = makeDoc();
+  const notesBefore = clone(doc.sections);
+  const history = new EditHistory(doc);
+  assert.ok(history.do({ type: 'set_doc_field', field: 'composer', value: 'Bach' }));
+  assert.equal(doc.composer, 'Bach');
+  assert.deepEqual(doc.sections, notesBefore, 'metadata must not touch a single note');
+  assert.ok(history.undo());
+  assert.equal(doc.composer, '');
+  assert.ok(history.redo());
+  assert.equal(doc.composer, 'Bach');
+});
+
+test('header edits interleave with note edits on one undo stack', () => {
+  const doc = makeDoc();
+  const history = new EditHistory(doc);
+  history.do({ type: 'set_doc_field', field: 'title', value: 'A' });
+  history.do({ type: 'set_pitch', ref: noteRef(0, 0, 0), symbol: '5' });
+  history.do({ type: 'set_doc_field', field: 'tempo', value: 60 });
+  assert.ok(history.undo());
+  assert.equal(doc.tempo, 120);
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).symbol, '5', 'the note edit is still applied');
+  assert.ok(history.undo());
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).symbol, '1');
+  assert.equal(doc.title, 'A', 'and the title edit below it is still applied');
+  assert.ok(history.undo());
+  assert.equal(doc.title, 'T');
+});
+
+test('set_doc_field on a missing document reports failure instead of throwing', () => {
+  assert.equal(applyCommand(null, { type: 'set_doc_field', field: 'title', value: 'X' }), null);
+});

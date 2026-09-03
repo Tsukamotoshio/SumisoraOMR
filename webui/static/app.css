@@ -158,6 +158,17 @@ button { font-family: inherit; cursor: default; }
 .grtransport .inputmode { color: var(--accent); font-size: 12px; font-weight: 600;
   border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; }
 .grtransport { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+/* 图形页自己按列排。父级 `.preview .stage` 是 `display:grid; place-items:center`，
+   内容总高一旦超过它的 min-height，行会被压缩，子元素就**互相重叠**——加上表头
+   表单后实测表头占 134–197、谱面占 169–350，相交 28px（播放条与谱面同样相交）。
+   `.hidden` 带 !important，所以这条 id 规则不会妨碍隐藏。 */
+#ed-gr-stage { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+
+/* 表头字段（阶段5.6b-1）。调号与拍号不在这里——它们画在 SVG 上，点谱面直接改
+   （5.6b-2/b-3）；只有标题/作曲/速度在谱面上没有对应图元，才需要表单。 */
+.grheader { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.grheader .field { flex: 1 1 160px; min-width: 0; }
+.grheader .field.narrow { flex: 0 0 88px; }
 .grtransport .num { color: var(--muted); font-size: 12px; }
 .preview .placeholder { color: var(--faint); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .preview .placeholder svg { width: 40px; height: 40px; opacity: .7; }

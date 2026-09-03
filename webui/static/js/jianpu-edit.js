@@ -146,6 +146,18 @@ function sectionOf(doc, at) {
   return (doc && doc.sections ? doc.sections[at.section] : null) || null;
 }
 
+/**
+ * 允许经 `set_doc_field` 改动的文档级字段（阶段5.6b-1）。
+ *
+ * 白名单而不是"随便什么字段都能设"：命令是纯数据、会经过桥来回，一条拼错字段名
+ * 的命令若能通过，就会在模型上凭空长出一个 Python 侧 `jianpu_doc_from_dict`
+ * 根本不认识的键，而那种错默默发生、不报任何错。
+ *
+ * `key_header` 暂不在内——改调号会连带重算每个音符的 midi，属于 5.6b-2 的范围，
+ * 到那时再显式加进来。
+ */
+const EDITABLE_DOC_FIELDS = new Set(['title', 'composer', 'tempo']);
+
 // ── 小节级操作（阶段5.5：小节插入/删除）────────────────────────────────────────
 
 // 与 core/config.py 的 ALLOWED_JIANPU_DURATIONS 逐项一致（降序，供贪心填充用）。
@@ -304,6 +316,17 @@ export function applyCommand(doc, cmd) {
       if (!measure || cmd.ref.index > measure.length) return null;
       measure.splice(cmd.ref.index, 0, cloneNote(cmd.note));
       return { type: 'delete_note', ref: cmd.ref };
+    }
+    case 'set_doc_field': {
+      // 文档级表头字段（阶段5.6b-1）。逆命令就是同一条命令带上旧值——自反，
+      // 不需要另立一个 restore_ 类型。
+      if (!doc || !EDITABLE_DOC_FIELDS.has(cmd.field)) return null;
+      const before = doc[cmd.field];
+      // 值没变就当作"什么也没发生"：表单的 change 事件在失焦时照样会触发，
+      // 若不挡住，光是点进点出输入框就会往撤销栈里塞一堆空操作。
+      if (before === cmd.value) return null;
+      doc[cmd.field] = cmd.value;
+      return { type: 'set_doc_field', field: cmd.field, value: before };
     }
     case 'insert_measure': {
       const section = sectionOf(doc, cmd.at);

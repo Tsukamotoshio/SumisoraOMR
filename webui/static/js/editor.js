@@ -301,6 +301,7 @@ async function edRenderGraphical({ quiet = false } = {}) {
     // 这样就不存在"两份表示互相同步"那种永远修不完的 bug（B4 第1条）。
     edDoc = r.doc || null;
     edHistory = edDoc ? new EditHistory(edDoc) : null;
+    edSyncHeaderForm();
     edLossy = r.lossy || null;      // 本文件写回时会丢什么（Python 侧实测得出）
     // 文本重解析后音符下标可能已不指向原来那个音符，选中态作废。
     edSelection = null;
@@ -484,6 +485,7 @@ async function edPushModel(keepRef, fallbackIndex, lastRef) {
   await edDrawRenders(r.renders);
   edReselect(keepRef, fallbackIndex, lastRef);
   edRenderCursor();
+  edSyncHeaderForm();
 }
 
 /**
@@ -875,6 +877,62 @@ async function edDeleteMeasure() {
 }
 
 
+// ── 表头字段编辑（阶段5.6b-1）────────────────────────────────────────────────
+// 只管标题/作曲/速度这三样：它们在 SVG 上**没有对应图元**，没得可点，只能给表单。
+// 调号与拍号走另一条路——它们是画出来的，用户已定"点谱面就地编辑"（5.6b-2/b-3）。
+
+/** 表单字段 → 模型字段。速度是数字，另外两个是字符串。 */
+const ED_HEADER_FIELDS = [
+  { input: 'ed-hdr-title', field: 'title', numeric: false },
+  { input: 'ed-hdr-composer', field: 'composer', numeric: false },
+  { input: 'ed-hdr-tempo', field: 'tempo', numeric: true },
+];
+
+/** 用模型的值刷新表单。**跳过正在编辑的那个框**，否则会把用户打了一半的字冲掉。 */
+function edSyncHeaderForm() {
+  $('ed-gr-header').classList.toggle('hidden', !edDoc);
+  if (!edDoc) return;
+  for (const { input, field } of ED_HEADER_FIELDS) {
+    const el = $(input);
+    if (el === document.activeElement) continue;
+    const value = edDoc[field];
+    el.value = value === null || value === undefined ? '' : String(value);
+  }
+}
+
+/**
+ * 提交一个表头字段。
+ *
+ * 绑的是 `change` 而不是 `input`：`input` 每敲一个字符都触发，撤销栈会被打字过程
+ * 塞满——而 B5③ 要求撤销粒度是**一次语义操作**。`change` 在失焦或回车时才发出，
+ * 正好一次编辑一条记录。值没变时 `set_doc_field` 会拒绝，所以点进点出不留痕迹。
+ */
+async function edCommitHeaderField(spec) {
+  if (!edDoc || !edHistory) return;
+  const el = $(spec.input);
+  let value;
+  if (spec.numeric) {
+    const n = parseInt(el.value, 10);
+    // 速度非法（空、0、负数、文字）就退回模型现值，不写进去——与其存一个
+    // 序列化不出来的 tempo，不如让输入框弹回去，用户一眼看得见没生效。
+    if (!Number.isFinite(n) || n <= 0) { edSyncHeaderForm(); return; }
+    value = n;
+  } else {
+    value = el.value.trim();
+  }
+  if (!await edConfirmFirstEdit()) { edSyncHeaderForm(); return; }
+  if (!edHistory.do({ type: 'set_doc_field', field: spec.field, value })) {
+    edSyncHeaderForm();   // 被拒（多半是值没变）——让表单与模型保持一致
+    return;
+  }
+  // 表头改动不牵涉任何音符地址，选区/光标原样留着即可。
+  await edPushModel(edFocusedRef(), edSelection ? edSelection.focus : 0);
+}
+
+for (const spec of ED_HEADER_FIELDS) {
+  $(spec.input).addEventListener('change', () => edCommitHeaderField(spec));
+}
+
 // ── 复制 / 粘贴（阶段5.5b）────────────────────────────────────────────────────
 // 剪贴板刻意**声明在换文件的重置之外**：验收要的就是"片段跨文件粘贴保真"，
 // 复制完换个文件再粘贴是主用法，一重置就没了。它存的是纯模型对象，与来源文档
@@ -1131,6 +1189,7 @@ export function edApplyLoad(r) {
   edLossyAcked = false;
   edDoc = null;                 // 换文件：旧模型与它的撤销历史一并作废
   edHistory = null;
+  edSyncHeaderForm();
   $('ed-gr-container').replaceChildren();
   $('ed-gr-ph').parentElement.classList.remove('hidden');
   $('ed-gr-ph').textContent = t('w.ed.graphical_placeholder');
