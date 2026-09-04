@@ -439,6 +439,13 @@
               </div>
             </div>
             <div class="graphical-container" id="ed-gr-container"></div>
+            <div class="keypop hidden" id="ed-keypop">
+              <div class="selectwrap"><select id="ed-keypop-mode">
+                <option value="major" data-i18n="w.ns.key_major">大调（1=X）</option>
+                <option value="minor" data-i18n="w.ns.key_minor">小调（6=X）</option>
+              </select></div>
+              <div class="selectwrap"><select id="ed-keypop-tonic"></select></div>
+            </div>
             <div class="grtransport hidden" id="ed-gr-transport">
               <button class="pvbtn" id="ed-gr-play" title="播放" data-i18n-title="w.ed.play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
               <button class="pvbtn" id="ed-gr-stop" title="停止" data-i18n-title="w.ed.stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>

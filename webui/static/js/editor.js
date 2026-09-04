@@ -9,9 +9,9 @@ import { PdfView } from './pdfview.js';
 import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
 import {
-  EditHistory, barQuarterLength, blankMeasureNotes, extractFragment,
-  insertConsumingCommands, noteRef, orderBatch, pasteMeasuresCommands,
-  pasteNotesCommands, selectionSpan, steppedDuration,
+  EditHistory, KEY_TONICS, barQuarterLength, blankMeasureNotes, extractFragment,
+  formatKeyHeader, insertConsumingCommands, noteRef, orderBatch, parseKeyHeader,
+  pasteMeasuresCommands, pasteNotesCommands, selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
@@ -933,6 +933,91 @@ for (const spec of ED_HEADER_FIELDS) {
   $(spec.input).addEventListener('change', () => edCommitHeaderField(spec));
 }
 
+// ── 调号就地编辑（阶段5.6b-2）────────────────────────────────────────────────
+// 用户已定：点谱面上画出来的调号直接改，用下拉栏而不是自由文本，且**不提供
+// "升/降半音"按钮**——升降半音必须替用户决定同音异名怎么拼，而首调记谱下用户
+// 本来就按"这首是什么调"在想。
+//
+// 首调记谱下改调号**就是整曲移调**：音符数字一个都不动，变的是每个数字对应的
+// 绝对音高。midi 是派生字段，Python 侧过桥时按新调号统一重算，所以这里只改
+// 一个字符串就够了，不需要遍历音符。
+
+let edKeyPopOpen = false;
+
+function edPopulateTonics() {
+  const sel = $('ed-keypop-tonic');
+  if (sel.options.length) return;
+  for (const k of KEY_TONICS) {
+    const opt = document.createElement('option');
+    opt.value = k;
+    // 与新建向导一致，界面上用真正的乐理符号，值仍是 ASCII 的 '#'/'b'。
+    opt.textContent = k.replace('#', '♯').replace('b', '♭');
+    sel.appendChild(opt);
+  }
+}
+
+function edCloseKeyPop() {
+  edKeyPopOpen = false;
+  $('ed-keypop').classList.add('hidden');
+}
+
+/** 把浮层摆到被点中的调号字样下方，位置相对 #ed-gr-stage。 */
+function edOpenKeyPop(target) {
+  if (!edDoc) return;
+  edPopulateTonics();
+  const { degree, tonic } = parseKeyHeader(edDoc.key_header);
+  $('ed-keypop-mode').value = degree === '6' ? 'minor' : 'major';
+  // 表头里的主音若不在下拉表内（手写文件可能有），先补一项，免得 select 悄悄
+  // 落到第一项上、让用户以为调号本来就是那个。
+  const sel = $('ed-keypop-tonic');
+  if (!KEY_TONICS.includes(tonic)) {
+    const opt = document.createElement('option');
+    opt.value = tonic;
+    opt.textContent = tonic;
+    sel.appendChild(opt);
+  }
+  sel.value = tonic;
+
+  const pop = $('ed-keypop');
+  pop.classList.remove('hidden');
+  const stage = $('ed-gr-stage').getBoundingClientRect();
+  const box = target.getBoundingClientRect();
+  pop.style.left = `${Math.max(4, box.left - stage.left)}px`;
+  pop.style.top = `${box.bottom - stage.top + 6}px`;
+  edKeyPopOpen = true;
+}
+
+async function edCommitKey() {
+  if (!edDoc || !edHistory) return;
+  const degree = $('ed-keypop-mode').value === 'minor' ? '6' : '1';
+  const header = formatKeyHeader(degree, $('ed-keypop-tonic').value);
+  edCloseKeyPop();
+  if (!await edConfirmFirstEdit()) return;
+  if (!edHistory.do({ type: 'set_doc_field', field: 'key_header', value: header })) return;
+  toast(t('w.ed.key_changed', { k: header }));
+  // 调号不牵涉音符地址，选区原样保留。
+  await edPushModel(edFocusedRef(), edSelection ? edSelection.focus : 0);
+}
+
+$('ed-keypop-mode').addEventListener('change', edCommitKey);
+$('ed-keypop-tonic').addEventListener('change', edCommitKey);
+
+// fork 给调号字样打了 data-signature="key"（5.6b-2 加的，此前是匿名 <text>，
+// 没有任何可命中的属性）。调号会同时画在固定 overlay 与可滚动层里，两处都带
+// 这个标记，点哪个都算。
+$('ed-gr-container').addEventListener('click', (e) => {
+  const hit = e.target.closest ? e.target.closest('[data-signature="key"]') : null;
+  if (!hit) return;
+  e.stopPropagation();   // 别让它冒泡成"点空白处取消选择"
+  if (edKeyPopOpen) edCloseKeyPop(); else edOpenKeyPop(hit);
+});
+
+document.addEventListener('click', (e) => {
+  if (!edKeyPopOpen) return;
+  if (e.target.closest && e.target.closest('#ed-keypop')) return;
+  edCloseKeyPop();
+});
+
 // ── 复制 / 粘贴（阶段5.5b）────────────────────────────────────────────────────
 // 剪贴板刻意**声明在换文件的重置之外**：验收要的就是"片段跨文件粘贴保真"，
 // 复制完换个文件再粘贴是主用法，一重置就没了。它存的是纯模型对象，与来源文档
@@ -1069,6 +1154,7 @@ document.addEventListener('keydown', (e) => {
 
   // 模式切换先于一切内容按键：Shift+N 进出录入模式，Esc 只退出。
   if (e.key === 'N') { e.preventDefault(); edSetInputMode(!edInputMode); return; }
+  if (e.key === 'Escape' && edKeyPopOpen) { e.preventDefault(); edCloseKeyPop(); return; }
   if (e.key === 'Escape' && edInputMode) { e.preventDefault(); edSetInputMode(false); return; }
 
   // Enter 插入小节：选择模式、录入模式通用，所以放在两者分岔之前。
@@ -1187,6 +1273,7 @@ export function edApplyLoad(r) {
   edCursor = null;
   edLossy = null;               // 新文件重新判定，确认也要重新问一次
   edLossyAcked = false;
+  edCloseKeyPop();
   edDoc = null;                 // 换文件：旧模型与它的撤销历史一并作废
   edHistory = null;
   edSyncHeaderForm();

@@ -162,7 +162,12 @@ button { font-family: inherit; cursor: default; }
    内容总高一旦超过它的 min-height，行会被压缩，子元素就**互相重叠**——加上表头
    表单后实测表头占 134–197、谱面占 169–350，相交 28px（播放条与谱面同样相交）。
    `.hidden` 带 !important，所以这条 id 规则不会妨碍隐藏。 */
-#ed-gr-stage { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+#ed-gr-stage { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; }
+/* 调号就地编辑的浮层（阶段5.6b-2）。定位到被点中的那个调号字样旁边，
+   所以父级 #ed-gr-stage 需要 position: relative 作定位参照。 */
+.keypop { position: absolute; z-index: 5; display: flex; gap: 6px; padding: 8px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); }
 
 /* 表头字段（阶段5.6b-1）。调号与拍号不在这里——它们画在 SVG 上，点谱面直接改
    （5.6b-2/b-3）；只有标题/作曲/速度在谱面上没有对应图元，才需要表单。 */

@@ -5,10 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  EditHistory, applyCommand, barQuarterLength, blankMeasureNotes,
-  extractFragment, getNote, insertConsumingCommands, nextRef, noteRef,
-  orderBatch, pasteMeasuresCommands, pasteNotesCommands, prevRef, refEquals,
-  selectionSpan, steppedDuration,
+  EditHistory, KEY_TONICS, applyCommand, barQuarterLength, blankMeasureNotes,
+  extractFragment, formatKeyHeader, getNote, insertConsumingCommands, nextRef,
+  noteRef, orderBatch, parseKeyHeader, pasteMeasuresCommands, pasteNotesCommands,
+  prevRef, refEquals, selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 function note(symbol, extra = {}) {
@@ -1061,9 +1061,11 @@ test('set_doc_field round-trips every editable field', () => {
 test('set_doc_field refuses a field that is not on the whitelist', () => {
   const doc = makeDoc();
   const before = clone(doc);
-  // key_header belongs to 5.6b-2 (it re-derives every note's midi), and a
-  // typo'd name would otherwise grow a key the Python side never heard of.
-  for (const field of ['key_header', 'sections', 'nonsense', '__proto__']) {
+  // A misspelled name would otherwise grow a key on the model that the Python
+  // side has never heard of, silently. `sections` is excluded on purpose too:
+  // structural change belongs to the note-level commands, which know how to
+  // invert themselves.
+  for (const field of ['sections', 'nonsense', '__proto__', 'midi']) {
     assert.equal(applyCommand(doc, { type: 'set_doc_field', field, value: 'x' }), null, field);
   }
   assert.deepEqual(doc, before);
@@ -1108,4 +1110,63 @@ test('header edits interleave with note edits on one undo stack', () => {
 
 test('set_doc_field on a missing document reports failure instead of throwing', () => {
   assert.equal(applyCommand(null, { type: 'set_doc_field', field: 'title', value: 'X' }), null);
+});
+
+// ── key header (阶段5.6b-2) ─────────────────────────────────────────────────
+
+test('parseKeyHeader splits both major and minor headers', () => {
+  assert.deepEqual(parseKeyHeader('1=C'), { degree: '1', tonic: 'C' });
+  assert.deepEqual(parseKeyHeader('6=A'), { degree: '6', tonic: 'A' });
+  assert.deepEqual(parseKeyHeader('1=Bb'), { degree: '1', tonic: 'Bb' });
+  assert.deepEqual(parseKeyHeader('  6=F#  '), { degree: '6', tonic: 'F#' });
+});
+
+test('parseKeyHeader falls back to C major rather than returning nothing', () => {
+  // Callers use the result to fill a dropdown; handing them null would just
+  // move the same decision one level up.
+  for (const bad of ['', 'nonsense', '2=C', null, undefined]) {
+    assert.deepEqual(parseKeyHeader(bad), { degree: '1', tonic: 'C' }, JSON.stringify(bad));
+  }
+});
+
+test('formatKeyHeader is the inverse for every tonic the dropdown offers', () => {
+  for (const tonic of KEY_TONICS) {
+    for (const degree of ['1', '6']) {
+      const header = formatKeyHeader(degree, tonic);
+      assert.equal(header, `${degree}=${tonic}`);
+      assert.deepEqual(parseKeyHeader(header), { degree, tonic });
+    }
+  }
+});
+
+test('formatKeyHeader refuses a tonic that is not on the list', () => {
+  assert.equal(formatKeyHeader('1', 'H'), '1=C');
+  assert.equal(formatKeyHeader('6', ''), '6=C');
+});
+
+test('formatKeyHeader treats any degree other than 6 as major', () => {
+  assert.equal(formatKeyHeader('1', 'G'), '1=G');
+  assert.equal(formatKeyHeader('9', 'G'), '1=G');
+});
+
+test('changing the key is one undo step and moves no note at all', () => {
+  const doc = makeDoc();
+  const notesBefore = clone(doc.sections);
+  const history = new EditHistory(doc);
+  assert.ok(history.do({ type: 'set_doc_field', field: 'key_header', value: '1=D' }));
+  assert.equal(doc.key_header, '1=D');
+  // Movable-do: transposing changes what the digits sound like, never the
+  // digits themselves. midi is re-derived on the Python side of the bridge.
+  assert.deepEqual(doc.sections, notesBefore, 'not one note may move');
+  assert.ok(history.undo());
+  assert.equal(doc.key_header, '1=C');
+});
+
+test('the key can be switched between major and minor', () => {
+  const doc = makeDoc();
+  const history = new EditHistory(doc);
+  assert.ok(history.do({ type: 'set_doc_field', field: 'key_header', value: '6=A' }));
+  assert.equal(doc.key_header, '6=A');
+  assert.ok(history.undo());
+  assert.equal(doc.key_header, '1=C');
 });

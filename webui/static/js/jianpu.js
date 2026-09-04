@@ -6,6 +6,7 @@ import { $, api, t, toast, pageEnterHooks } from './core.js';
 import { PdfView } from './pdfview.js';
 import { midiPlayer } from './midi.js';
 import { edOpenForPdf, edApplyLoad } from './editor.js';
+import { KEY_TONICS } from './jianpu-edit.js';
 
 const jpView = new PdfView($('jp-canvas'), $('jp-stage'), $('jp-pageinfo'));
 let jpEntries = [];
@@ -120,14 +121,12 @@ $('jp-zoomout').addEventListener('click', () => jpView.zoom(1 / 1.2));
 $('jp-zoomfit').addEventListener('click', () => jpView.zoomFit());
 
 // ── 新建空白简谱（B8.4 轻量版） ──────────────────────────────────────────────
-// 主音下拉与 webui/transpose.py:KEYS 同一份 15 个大调名（简谱调号用同一套主音
-// 拼写，无论大调/小调），静态常量不值得为它单开一趟桥调用。
-const NS_TONICS = ['Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#'];
+// 主音下拉的那份表现在住在 jianpu-edit.js（KEY_TONICS），与调号编辑共用一份。
 let nsTonicsPopulated = false;
 function nsPopulateTonics() {
   if (nsTonicsPopulated) return;
   const sel = $('ns-tonic');
-  for (const k of NS_TONICS) {
+  for (const k of KEY_TONICS) {
     const opt = document.createElement('option');
     opt.value = k;
     opt.textContent = k.replace('#', '♯').replace('b', '♭');

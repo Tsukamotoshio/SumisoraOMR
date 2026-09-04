@@ -153,10 +153,38 @@ function sectionOf(doc, at) {
  * 的命令若能通过，就会在模型上凭空长出一个 Python 侧 `jianpu_doc_from_dict`
  * 根本不认识的键，而那种错默默发生、不报任何错。
  *
- * `key_header` 暂不在内——改调号会连带重算每个音符的 midi，属于 5.6b-2 的范围，
- * 到那时再显式加进来。
+ * `key_header` 在 5.6b-2 加入。改调号在首调记谱下就是整曲移调：**音符数字一个
+ * 都不动**，变的是每个数字对应的绝对音高——而 midi 是派生字段，Python 侧
+ * `jianpu_doc_from_dict` 过桥时会按新调号统一重算，所以这里不需要连带改音符。
  */
-const EDITABLE_DOC_FIELDS = new Set(['title', 'composer', 'tempo']);
+const EDITABLE_DOC_FIELDS = new Set(['title', 'composer', 'tempo', 'key_header']);
+
+// ── 调号（阶段5.6b-2）─────────────────────────────────────────────────────────
+
+/**
+ * 调号表头里允许的主音拼写，与 webui/transpose.py 的 KEYS 同一份。
+ *
+ * 简谱是首调记谱，**大调小调用同一套主音拼写**（`1=X` / `6=X` 只差前缀），所以
+ * 一张表够用。同音异名收哪一个不是这里临时决定的——沿用项目既有的这 15 个，
+ * 新建向导（jianpu.js）用的也是它，两处从此共享一份而不是各存一份。
+ */
+export const KEY_TONICS = [
+  'Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#',
+];
+
+/** 拆开 `1=C` / `6=A`；认不出时按 C 大调兜底，绝不返回 null 让调用方再判一次。 */
+export function parseKeyHeader(header) {
+  const m = /^([16])=(\S+)$/.exec((header || '').trim());
+  if (!m) return { degree: '1', tonic: 'C' };
+  return { degree: m[1], tonic: m[2] };
+}
+
+/** 反过来拼回表头文本。degree 只可能是 '1'（大调）或 '6'（小调）。 */
+export function formatKeyHeader(degree, tonic) {
+  const d = degree === '6' ? '6' : '1';
+  const t = KEY_TONICS.includes(tonic) ? tonic : 'C';
+  return `${d}=${t}`;
+}
 
 // ── 小节级操作（阶段5.5：小节插入/删除）────────────────────────────────────────
 

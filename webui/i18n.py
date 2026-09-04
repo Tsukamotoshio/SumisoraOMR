@@ -353,6 +353,8 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.hdr_title": {"zh": "标题", "en": "Title"},
     "w.ed.hdr_composer": {"zh": "作曲", "en": "Composer"},
     "w.ed.hdr_tempo": {"zh": "速度", "en": "Tempo"},
+    "w.ed.key_changed": {"zh": "调号已改为 {k}（音符数字不变，音高整体移调）",
+                         "en": "Key is now {k} — the digits are unchanged, the pitches transpose"},
     "w.ed.lossy_comments": {"zh": "{n} 行注释", "en": "{n} comment line(s)"},
     "w.ed.lossy_layout": {"zh": "自定义的换行版面", "en": "your custom line layout"},
     "w.ed.lossy_join": {"zh": "、", "en": " and "},
