@@ -10,8 +10,9 @@ import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
 import {
   EditHistory, KEY_TONICS, barQuarterLength, blankMeasureNotes, extractFragment,
-  formatKeyHeader, insertConsumingCommands, noteRef, orderBatch, parseKeyHeader,
-  pasteMeasuresCommands, pasteNotesCommands, selectionSpan, steppedDuration,
+  TIME_SIG_DENOMINATORS, formatKeyHeader, formatTimeSig, insertConsumingCommands,
+  noteRef, orderBatch, parseKeyHeader, parseTimeSig, pasteMeasuresCommands,
+  pasteNotesCommands, selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
@@ -978,13 +979,17 @@ function edOpenKeyPop(target) {
   }
   sel.value = tonic;
 
-  const pop = $('ed-keypop');
+  edPositionPopover($('ed-keypop'), target);
+  edKeyPopOpen = true;
+}
+
+/** 把浮层摆到被点中的那个字样下方（位置相对 #ed-gr-stage，它是定位参照）。 */
+function edPositionPopover(pop, target) {
   pop.classList.remove('hidden');
   const stage = $('ed-gr-stage').getBoundingClientRect();
   const box = target.getBoundingClientRect();
   pop.style.left = `${Math.max(4, box.left - stage.left)}px`;
   pop.style.top = `${box.bottom - stage.top + 6}px`;
-  edKeyPopOpen = true;
 }
 
 async function edCommitKey() {
@@ -1002,20 +1007,80 @@ async function edCommitKey() {
 $('ed-keypop-mode').addEventListener('change', edCommitKey);
 $('ed-keypop-tonic').addEventListener('change', edCommitKey);
 
-// fork 给调号字样打了 data-signature="key"（5.6b-2 加的，此前是匿名 <text>，
-// 没有任何可命中的属性）。调号会同时画在固定 overlay 与可滚动层里，两处都带
-// 这个标记，点哪个都算。
+// ── 拍号就地编辑（阶段5.6b-3）──────────────────────────────
+// 改拍号**不重新分小节**（B5② 仅警告不自动调整）：小节内容一字不动，
+// 只换标记，超/欠拍交给校验层标黄。分母用下拉而不是自由输入，把 `4/0`
+// 这类值挡在源头——它曾让 blankMeasureNotes 死循环把页面卡死（5.5a 实测）。
+
+let edTimePopOpen = false;
+
+function edPopulateDenominators() {
+  const sel = $('ed-timepop-den');
+  if (sel.options.length) return;
+  for (const d of TIME_SIG_DENOMINATORS) {
+    const opt = document.createElement('option');
+    opt.value = String(d);
+    opt.textContent = String(d);
+    sel.appendChild(opt);
+  }
+}
+
+function edCloseTimePop() {
+  edTimePopOpen = false;
+  $('ed-timepop').classList.add('hidden');
+}
+
+function edClosePopovers() {
+  edCloseKeyPop();
+  edCloseTimePop();
+}
+
+function edOpenTimePop(target) {
+  if (!edDoc || !edDoc.sections || !edDoc.sections.length) return;
+  edPopulateDenominators();
+  const { num, den } = parseTimeSig(edDoc.sections[0].time_sig);
+  $('ed-timepop-num').value = String(num);
+  $('ed-timepop-den').value = String(TIME_SIG_DENOMINATORS.includes(den) ? den : 4);
+  edPositionPopover($('ed-timepop'), target);
+  edTimePopOpen = true;
+}
+
+async function edCommitTimeSig() {
+  if (!edDoc || !edHistory || !edDoc.sections.length) return;
+  // 弱起后缀（`3/4,8` 里的 `8`）记的是"第一小节是个几分音符的弱起"，与
+  // 拍号无关，改拍号时必须原样带着走——本地语料里有 5 个文件带它。
+  const { pickup } = parseTimeSig(edDoc.sections[0].time_sig);
+  const value = formatTimeSig(
+    parseInt($('ed-timepop-num').value, 10), $('ed-timepop-den').value, pickup);
+  edCloseTimePop();
+  if (!await edConfirmFirstEdit()) return;
+  if (!edHistory.do({ type: 'set_time_sig', value })) return;
+  toast(t('w.ed.time_changed', { t: value }));
+  await edPushModel(edFocusedRef(), edSelection ? edSelection.focus : 0);
+}
+
+$('ed-timepop-num').addEventListener('change', edCommitTimeSig);
+$('ed-timepop-den').addEventListener('change', edCommitTimeSig);
+
+// fork 给调号与拍号字样都打了 data-signature（5.6b-2 加的，此前是匿名
+// <text>，没有任何可命中的属性）。两者会同时画在固定 overlay 与可滚动层
+// 里，两处都带这个标记，点哪个都算。
 $('ed-gr-container').addEventListener('click', (e) => {
-  const hit = e.target.closest ? e.target.closest('[data-signature="key"]') : null;
+  const hit = e.target.closest ? e.target.closest('[data-signature]') : null;
   if (!hit) return;
   e.stopPropagation();   // 别让它冒泡成"点空白处取消选择"
-  if (edKeyPopOpen) edCloseKeyPop(); else edOpenKeyPop(hit);
+  const kind = hit.getAttribute('data-signature');
+  const wasOpen = kind === 'key' ? edKeyPopOpen : edTimePopOpen;
+  edClosePopovers();
+  if (wasOpen) return;                      // 再点一下就关掉
+  if (kind === 'key') edOpenKeyPop(hit);
+  else if (kind === 'time') edOpenTimePop(hit);
 });
 
 document.addEventListener('click', (e) => {
-  if (!edKeyPopOpen) return;
-  if (e.target.closest && e.target.closest('#ed-keypop')) return;
-  edCloseKeyPop();
+  if (!edKeyPopOpen && !edTimePopOpen) return;
+  if (e.target.closest && e.target.closest('#ed-keypop, #ed-timepop')) return;
+  edClosePopovers();
 });
 
 // ── 复制 / 粘贴（阶段5.5b）────────────────────────────────────────────────────
@@ -1154,7 +1219,9 @@ document.addEventListener('keydown', (e) => {
 
   // 模式切换先于一切内容按键：Shift+N 进出录入模式，Esc 只退出。
   if (e.key === 'N') { e.preventDefault(); edSetInputMode(!edInputMode); return; }
-  if (e.key === 'Escape' && edKeyPopOpen) { e.preventDefault(); edCloseKeyPop(); return; }
+  if (e.key === 'Escape' && (edKeyPopOpen || edTimePopOpen)) {
+    e.preventDefault(); edClosePopovers(); return;
+  }
   if (e.key === 'Escape' && edInputMode) { e.preventDefault(); edSetInputMode(false); return; }
 
   // Enter 插入小节：选择模式、录入模式通用，所以放在两者分岔之前。
@@ -1273,7 +1340,7 @@ export function edApplyLoad(r) {
   edCursor = null;
   edLossy = null;               // 新文件重新判定，确认也要重新问一次
   edLossyAcked = false;
-  edCloseKeyPop();
+  edClosePopovers();
   edDoc = null;                 // 换文件：旧模型与它的撤销历史一并作废
   edHistory = null;
   edSyncHeaderForm();

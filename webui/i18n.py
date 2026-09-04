@@ -353,6 +353,8 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.hdr_title": {"zh": "标题", "en": "Title"},
     "w.ed.hdr_composer": {"zh": "作曲", "en": "Composer"},
     "w.ed.hdr_tempo": {"zh": "速度", "en": "Tempo"},
+    "w.ed.time_changed": {"zh": "拍号已改为 {t}（小节内容不变，超/欠拍由校验层标黄）",
+                          "en": "Time signature is now {t} — measures are untouched; the linter flags any that no longer fit"},
     "w.ed.key_changed": {"zh": "调号已改为 {k}（音符数字不变，音高整体移调）",
                          "en": "Key is now {k} — the digits are unchanged, the pitches transpose"},
     "w.ed.lossy_comments": {"zh": "{n} 行注释", "en": "{n} comment line(s)"},

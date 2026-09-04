@@ -7,8 +7,9 @@ import assert from 'node:assert/strict';
 import {
   EditHistory, KEY_TONICS, applyCommand, barQuarterLength, blankMeasureNotes,
   extractFragment, formatKeyHeader, getNote, insertConsumingCommands, nextRef,
-  noteRef, orderBatch, parseKeyHeader, pasteMeasuresCommands, pasteNotesCommands,
-  prevRef, refEquals, selectionSpan, steppedDuration,
+  TIME_SIG_DENOMINATORS, formatTimeSig, noteRef, orderBatch, parseKeyHeader,
+  parseTimeSig, pasteMeasuresCommands, pasteNotesCommands, prevRef, refEquals,
+  selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 function note(symbol, extra = {}) {
@@ -1169,4 +1170,84 @@ test('the key can be switched between major and minor', () => {
   assert.equal(doc.key_header, '6=A');
   assert.ok(history.undo());
   assert.equal(doc.key_header, '1=C');
+});
+
+// ── time signature (阶段5.6b-3) ─────────────────────────────────────────────
+
+test('parseTimeSig splits a plain signature', () => {
+  assert.deepEqual(parseTimeSig('4/4'), { num: 4, den: 4, pickup: '' });
+  assert.deepEqual(parseTimeSig('7/8'), { num: 7, den: 8, pickup: '' });
+});
+
+test('parseTimeSig keeps the anacrusis suffix', () => {
+  // `3/4,8` says the first bar is an eighth-note pickup. That is nothing to do
+  // with the meter, so changing the meter must not drop it -- 5 files in the
+  // local corpus carry one.
+  assert.deepEqual(parseTimeSig('3/4,8'), { num: 3, den: 4, pickup: '8' });
+  assert.deepEqual(parseTimeSig('4/4,4'), { num: 4, den: 4, pickup: '4' });
+});
+
+test('parseTimeSig falls back to 4/4 on anything unparseable', () => {
+  for (const bad of ['', 'x', '4', null, undefined]) {
+    assert.deepEqual(parseTimeSig(bad), { num: 4, den: 4, pickup: '' }, JSON.stringify(bad));
+  }
+});
+
+test('formatTimeSig round-trips, suffix included', () => {
+  for (const src of ['4/4', '3/4', '6/8', '7/8', '5/4', '3/4,8', '4/4,4', '2/2']) {
+    const { num, den, pickup } = parseTimeSig(src);
+    assert.equal(formatTimeSig(num, den, pickup), src, src);
+  }
+});
+
+test('formatTimeSig refuses a denominator that is not a power of two', () => {
+  // A zero denominator once sent blankMeasureNotes into an endless loop and
+  // took the page down with it; keeping the value out is cheaper than
+  // defending against it downstream.
+  assert.equal(formatTimeSig(4, 0, ''), '4/4');
+  assert.equal(formatTimeSig(4, 5, ''), '4/4');
+  assert.equal(formatTimeSig(0, 4, ''), '4/4');
+});
+
+test('set_time_sig writes every section and restores each on undo', () => {
+  const doc = makeDoc();
+  doc.sections[1].time_sig = '3/4';        // a document whose sections disagree
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  assert.ok(history.do({ type: 'set_time_sig', value: '6/8' }));
+  assert.deepEqual(doc.sections.map((s) => s.time_sig), ['6/8', '6/8']);
+  assert.ok(history.undo());
+  assert.deepEqual(doc, before, 'each section gets its own original value back');
+  assert.ok(history.redo());
+  assert.deepEqual(doc.sections.map((s) => s.time_sig), ['6/8', '6/8']);
+});
+
+test('changing the time signature moves no note', () => {
+  // B5-2: warn, never re-bar. The measures keep exactly what they had; the
+  // linter is what tells the user they no longer add up.
+  const doc = makeDoc();
+  const notesBefore = clone(doc.sections.map((s) => s.measures));
+  new EditHistory(doc).do({ type: 'set_time_sig', value: '3/4' });
+  assert.deepEqual(doc.sections.map((s) => s.measures), notesBefore);
+});
+
+test('set_time_sig treats an unchanged value as nothing happening', () => {
+  const doc = makeDoc();
+  assert.equal(applyCommand(doc, { type: 'set_time_sig', value: '4/4' }), null);
+});
+
+test('restore_time_sigs refuses a mismatched section count', () => {
+  const doc = makeDoc();
+  assert.equal(applyCommand(doc, { type: 'restore_time_sigs', values: ['4/4'] }), null);
+  assert.equal(applyCommand(doc, { type: 'restore_time_sigs', values: 'nope' }), null);
+});
+
+test('the offered denominators are all powers of two', () => {
+  assert.deepEqual(TIME_SIG_DENOMINATORS, [1, 2, 4, 8, 16, 32]);
+  for (const d of TIME_SIG_DENOMINATORS) {
+    assert.equal(Number.isInteger(Math.log2(d)), true, `${d} is not a power of two`);
+    // Each one must survive a round trip, or the dropdown could offer a value
+    // formatTimeSig then silently replaces with 4.
+    assert.equal(formatTimeSig(3, d, ''), `3/${d}`);
+  }
 });

@@ -256,6 +256,32 @@ export function blankMeasureNotes(barQuarterLength) {
 }
 
 /**
+ * 拆开拍号文本。第三项是**弱起后缀**（`3/4,8` 里的 `8`），它与拍号无关
+ * ——记的是"第一小节是个几分音符的弱起"——所以改拍号时必须原样带着走，
+ * 不能顺手丢掉。本地语料里有 5 个文件带这个后缀，丢了就是静默的数据损失。
+ */
+export function parseTimeSig(timeSig) {
+  const m = /^(\d+)\/(\d+)(?:,(\S+))?$/.exec((timeSig || '').trim());
+  if (!m) return { num: 4, den: 4, pickup: '' };
+  return { num: Number(m[1]), den: Number(m[2]), pickup: m[3] || '' };
+}
+
+/**
+ * 允许的分母。限成 2 的幂不只是乐理惯例——`barQuarterLength` 拿它做除数，
+ * 分母为 0 会算出 Infinity，而 `blankMeasureNotes` 曾因此死循环把页面卡死
+ * （5.5a 复查时实测到并修掉）。用下拉表把非法值挡在源头，比在下游各处补
+ * 防御要可靠。
+ */
+export const TIME_SIG_DENOMINATORS = [1, 2, 4, 8, 16, 32];
+
+/** 拼回拍号文本，保留弱起后缀。 */
+export function formatTimeSig(num, den, pickup) {
+  const n = Number.isFinite(Number(num)) && Number(num) > 0 ? Math.floor(Number(num)) : 4;
+  const d = TIME_SIG_DENOMINATORS.includes(Number(den)) ? Number(den) : 4;
+  return `${n}/${d}${pickup ? `,${pickup}` : ''}`;
+}
+
+/**
  * 从 '4/4'、'3/4,8'（带切分符的弱起写法）等拍号文本算出一小节的四分音符数。
  *
  * 拍号是用户能在文本页直接手打的，而解析器**不校验**分子分母（`4/0`、`0/4`
@@ -355,6 +381,28 @@ export function applyCommand(doc, cmd) {
       if (before === cmd.value) return null;
       doc[cmd.field] = cmd.value;
       return { type: 'set_doc_field', field: cmd.field, value: before };
+    }
+    case 'set_time_sig': {
+      // 拍号在模型里是**每个分段一份**，但实测本地 5 个多分段文件没有一个各段
+      // 拍号不同，所以界面只给一个控件、一次写所有分段。逆命令逐段记下原值，
+      // 万一真有各段不同的文档，撤销也还原得回去。
+      //
+      // **不重新分小节**（B5② 仅警告不自动调整）：只改标记，小节内容原样不动，
+      // 超/欠拍交给校验层报黄警告。
+      const sections = (doc && doc.sections) || null;
+      if (!sections || !sections.length) return null;
+      const before = sections.map((sec) => sec.time_sig);
+      if (before.every((v) => v === cmd.value)) return null;   // 没变就不入栈
+      sections.forEach((sec) => { sec.time_sig = cmd.value; });
+      return { type: 'restore_time_sigs', values: before };
+    }
+    case 'restore_time_sigs': {
+      // 自反：逐段放回，同时把当前值收起来当作新的逆。
+      const sections = (doc && doc.sections) || null;
+      if (!sections || !Array.isArray(cmd.values) || sections.length !== cmd.values.length) return null;
+      const before = sections.map((sec) => sec.time_sig);
+      sections.forEach((sec, i) => { sec.time_sig = cmd.values[i]; });
+      return { type: 'restore_time_sigs', values: before };
     }
     case 'insert_measure': {
       const section = sectionOf(doc, cmd.at);
