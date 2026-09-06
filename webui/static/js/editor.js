@@ -194,13 +194,28 @@ function edLoadJianpuRenderLib() {
   return _jianpuRenderLibPromise;
 }
 
+// ── 谱面缩放（阶段5.6c-1）────────────────────────────────
+// fork 里每一个尺寸——字号、基线、八度点偏移、减时线间距、连线缩放，
+// 连 COMPACT 模式下的横向间距（estimatedNoteWidth = 字号 × 0.6）——都从
+// noteHeight 推出来，而且 SVG 没有 viewBox（用户单位就是 CSS px）。所以"缩放"
+// 就是换一个 noteHeight 重画：字依旧清晰（不是位图放大），选中框与光标因为本来就
+// 画在 SVG 内部、用的是同一套用户坐标，自然跟着缩，不需要另外换算。
+//
+// 为什么不用 CSS transform: scale()：那样横向滚动容器的**布局**宽度不变、只有
+// 绘制被放大，放大后谱面会溢出容器而滚动范围却没变，右半截掉根本看不到。
+const ED_NOTE_HEIGHT = 24;                              // 100% 时的基准字号
+const ED_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];  // 离散档位，点一下跳一档
+let edZoom = 1;
+let edRenders = null;   // 最近一次画上去的投影（缩放拿它重画，不再过一趟桥）
+
 /**
  * 把一组 renders 画到容器里。两条路都走它：文本改动后的重新解析（阶段3.6），
  * 以及图形编辑后由模型直接算出的新投影（阶段5.3b）。两者共用同一段绘制代码，
  * 才不会出现"从文本来的画法"和"从模型来的画法"两套逐渐走样的实现。
  */
-async function edDrawRenders(renders) {
+async function edDrawRenders(renders, { reload = true } = {}) {
   const jr = await edLoadJianpuRenderLib();
+  edRenders = renders;
   const container = $('ed-gr-container');
   // 重绘会重建全部 DOM，横向滚动位置会归零；先记下来再还原，否则用户每敲一个
   // 字都会被弹回谱面开头。JianpuRender 自己在容器里套了一层可滚动 div。
@@ -214,7 +229,8 @@ async function edDrawRenders(renders) {
     staff.className = 'graphical-staff';
     container.appendChild(staff);
     // 留住实例：阶段4.2 的播放高亮要对每个分段调它自己的 redraw(note, true)。
-    return new jr.JianpuSVGRender(render, { noteHeight: 24 }, staff);
+    return new jr.JianpuSVGRender(
+      render, { noteHeight: Math.round(ED_NOTE_HEIGHT * edZoom) }, staff);
   });
   edHighlighted = [];   // 实例全换了，上一轮记的"已高亮音符"作废
   // 阶段5.2：建 data-id → 该分段音符下标 的索引，供点击命中测试反查。
@@ -232,9 +248,60 @@ async function edDrawRenders(renders) {
   scrollables.forEach((d, i) => { if (scrollLefts[i] !== undefined) d.scrollLeft = scrollLefts[i]; });
   // 阶段4.1：播放引擎吃的是同一份 renders 数据（声音与画面同源）。
   // load() 会停掉正在进行的播放——内容已经变了，继续按旧时间轴放会驴唇不对马嘴。
-  jianpuPlayer.load(renders);
+  // 缩放是唯一的例外（reload=false）：音乐一个音符都没变，只是画大了点，
+  // 没有任何理由把正在响的声音掉一半。
+  if (reload) jianpuPlayer.load(renders);
   edSyncTransport();
 }
+
+/** 把当前档位反映到按钮上（百分比读数 + 到顶/到底时置灰）。 */
+function edSyncZoomUI() {
+  $('ed-gr-zoomlabel').textContent = `${Math.round(edZoom * 100)}%`;
+  $('ed-gr-zoomout').disabled = edZoom <= ED_ZOOM_STEPS[0];
+  $('ed-gr-zoomin').disabled = edZoom >= ED_ZOOM_STEPS[ED_ZOOM_STEPS.length - 1];
+}
+
+/**
+ * 换一档缩放并就地重画。三件事必须一起做对：
+ *
+ * 1. **不惊动播放器**（reload=false）——缩放没有改动任何音乐内容。
+ * 2. 滚动位置按**比例**还原，不是按像素：放大之后同一段音乐的 x 整体变大，
+ *    照搬旧的 scrollLeft 会把视野甩到别处去。
+ * 3. 选中框与光标是重画时连同 DOM 一起被清掉的，要重新铺一遍。
+ *
+ * 它不进模型、不入撤销栈（B5）：缩放改的是"怎么看"，不是"是什么"。
+ */
+async function edApplyZoom(zoom) {
+  const next = ED_ZOOM_STEPS.includes(zoom) ? zoom : 1;
+  if (next === edZoom || !edRenders) { edZoom = next; edSyncZoomUI(); return; }
+  const container = $('ed-gr-container');
+  const panes = () => [...container.querySelectorAll('.graphical-staff > div')];
+  const ratios = panes().map((d) => {
+    const range = d.scrollWidth - d.clientWidth;
+    return range > 0 ? d.scrollLeft / range : 0;
+  });
+  edZoom = next;
+  await edDrawRenders(edRenders, { reload: false });
+  panes().forEach((d, i) => {
+    const range = d.scrollWidth - d.clientWidth;
+    if (range > 0 && ratios[i] !== undefined) d.scrollLeft = ratios[i] * range;
+  });
+  edRenderSelection();
+  edRenderCursor();
+  edSyncZoomUI();
+}
+
+/** 按档位表进一步/退一步。 */
+function edZoomStep(dir) {
+  const at = ED_ZOOM_STEPS.indexOf(edZoom);
+  const from = at >= 0 ? at : ED_ZOOM_STEPS.indexOf(1);
+  const to = Math.min(ED_ZOOM_STEPS.length - 1, Math.max(0, from + dir));
+  return edApplyZoom(ED_ZOOM_STEPS[to]);
+}
+
+$('ed-gr-zoomin').addEventListener('click', () => edZoomStep(1));
+$('ed-gr-zoomout').addEventListener('click', () => edZoomStep(-1));
+$('ed-gr-zoomreset').addEventListener('click', () => edApplyZoom(1));
 
 // 阶段3.6 实时更新：输入 → 防抖 → 重新解析并重绘。
 // 防抖而不是逐键立即重绘，是因为解析在 Python 侧（阶段2 的解析器是唯一事实源，
@@ -663,6 +730,12 @@ function edCaretGeometry(staff, atStart) {
   const ratio = span > 1e-9 ? Math.min(1, Math.max(0, (atStart - block.start) / span)) : 0;
   const pad = 4;
   return {
+    // 光标必须插回**算出这个 x 的那个 SVG**。fork 在每个谱表里放了两个 SVG：
+    // 一个固定 200px 宽、绝对定位在左上角的 overlay（画调号/拍号用），一个在
+    // 横向滚动容器里、与乐谱等宽的主 SVG。块坐标来自主 SVG，而 SVG 根元素
+    // 默认 overflow:hidden——插错地方的话，x 一超过 200 光标就被裁掉，页面上
+    // 彻底看不见（5.6c-1 截图比对实测：x=135 画得出来、x=555 一个像素都没有）。
+    svg: block.el.ownerSVGElement,
     x: block.box.x + ratio * block.box.width,
     y: minY - pad,
     height: (maxY - minY) + pad * 2,
@@ -678,9 +751,8 @@ function edRenderCursor() {
   const at = edCursorStart();
   if (at === null) return;
   const geom = edCaretGeometry(staff, at);
-  if (!geom) return;
-  const svg = staff.querySelector('svg');
-  if (!svg) return;
+  if (!geom || !geom.svg) return;
+  const svg = geom.svg;
   const rect = document.createElementNS(SVGNS, 'rect');
   rect.setAttribute('class', 'jp-caret');
   rect.setAttribute('x', `${geom.x - 1}`);
@@ -893,6 +965,7 @@ const ED_HEADER_FIELDS = [
 function edSyncHeaderForm() {
   $('ed-gr-header').classList.toggle('hidden', !edDoc);
   if (!edDoc) return;
+  edSyncZoomUI();
   for (const { input, field } of ED_HEADER_FIELDS) {
     const el = $(input);
     if (el === document.activeElement) continue;
@@ -1214,6 +1287,13 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     edPasteClipboard();
     return;
+  }
+  if (e.ctrlKey || e.metaKey) {
+    // 必须 preventDefault：WebView2 里 Ctrl+= / Ctrl+- 默认缩放的是**整个页面**
+    // （连侧边栏、按钮一起变大），而用户想缩的只是谱面。
+    if (e.key === '=' || e.key === '+') { e.preventDefault(); edZoomStep(1); return; }
+    if (e.key === '-' || e.key === '_') { e.preventDefault(); edZoomStep(-1); return; }
+    if (e.key === '0') { e.preventDefault(); edApplyZoom(1); return; }
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
 

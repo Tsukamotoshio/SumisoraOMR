@@ -437,6 +437,11 @@
                 <span class="lbl" data-i18n="w.ed.hdr_tempo">速度</span>
                 <input type="number" id="ed-hdr-tempo" class="textinput" min="1" max="999" step="1">
               </div>
+              <div class="grzoom btngroup">
+                <button class="pvbtn" id="ed-gr-zoomout" title="缩小谱面" data-i18n-title="w.ed.gr_zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
+                <button class="pvbtn wide" id="ed-gr-zoomreset" title="恢复原始大小" data-i18n-title="w.ed.gr_zoomreset"><span id="ed-gr-zoomlabel">100%</span></button>
+                <button class="pvbtn" id="ed-gr-zoomin" title="放大谱面" data-i18n-title="w.ed.gr_zoomin"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M12 6v12M6 12h12" stroke-linecap="round"/></svg></button>
+              </div>
             </div>
             <div class="graphical-container" id="ed-gr-container"></div>
             <div class="keypop hidden" id="ed-keypop">
