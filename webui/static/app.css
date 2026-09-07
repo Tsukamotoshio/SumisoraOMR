@@ -155,6 +155,11 @@ button { font-family: inherit; cursor: default; }
 .jp-caret { fill: var(--accent); pointer-events: none; animation: jp-caret-blink 1s step-end infinite; }
 @keyframes jp-caret-blink { 50% { opacity: .15; } }
 @media (prefers-reduced-motion: reduce) { .jp-caret { animation: none; } }
+/* 跳转后的一闪：目标小节本来就在画面里时，不给反馈就分不清到底跳没跳 */
+.jp-jump-flash { fill: var(--accent); pointer-events: none;
+  animation: jp-jump-fade 1.1s ease-out forwards; }
+@keyframes jp-jump-fade { from { opacity: .30; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .jp-jump-flash { animation: none; opacity: .18; } }
 .grtransport .inputmode { color: var(--accent); font-size: 12px; font-weight: 600;
   border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; }
 .grtransport { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
@@ -176,7 +181,9 @@ button { font-family: inherit; cursor: default; }
 .grheader { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .grheader .field { flex: 1 1 160px; min-width: 0; }
 .grheader .field.narrow { flex: 0 0 88px; }
-.grheader .grzoom { margin-left: auto; flex: none; }
+.grheader .grjump { margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px; }
+.grheader .grjump .lbl { margin-bottom: 0; }
+.grheader .grzoom { flex: none; }
 .pvbtn.wide { width: 52px; font-size: 11px; font-variant-numeric: tabular-nums; }
 .grtransport .num { color: var(--muted); font-size: 12px; }
 .preview .placeholder { color: var(--faint); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }

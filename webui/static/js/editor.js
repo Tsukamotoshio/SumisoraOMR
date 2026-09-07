@@ -303,6 +303,110 @@ $('ed-gr-zoomin').addEventListener('click', () => edZoomStep(1));
 $('ed-gr-zoomout').addEventListener('click', () => edZoomStep(-1));
 $('ed-gr-zoomreset').addEventListener('click', () => edApplyZoom(1));
 
+// ── 滚动定位与跳转小节（阶段5.6c-2）────────────────────────────────────────
+// 同样是纯视图能力：不进模型、不入撤销栈。长谱一行能拉好几屏，没有定位手段的
+// 话，方向键走出可视区就相当于盲操作。
+
+const ED_SCROLL_MARGIN = 24;
+
+/** 取某个谱表的横向滚动容器（fork 自己在谱表里套的那一层）。 */
+function edStaffPane(staff) {
+  return staff ? staff.querySelector(':scope > div') : null;
+}
+
+/**
+ * 把谱面上的一段 x 区间滚进可视区——**已经看得见就不动**。
+ *
+ * "不动"这一条是关键：这个函数会在每次重画、每次选区变化时被叫到，若无条件居中，
+ * 用户手动拖到的位置会被不断扯回去。
+ */
+function edScrollRangeIntoView(pane, x0, x1) {
+  if (!pane) return;
+  const view = pane.clientWidth;
+  const left = pane.scrollLeft;
+  if (x0 >= left + ED_SCROLL_MARGIN && x1 <= left + view - ED_SCROLL_MARGIN) return;
+  // 目标比视野还宽时只能对齐左边；否则留出一段前置余量，让用户看得到目标前面
+  // 那点上下文，而不是紧贴左边缘。
+  const lead = x1 - x0 >= view
+    ? ED_SCROLL_MARGIN
+    : Math.max(ED_SCROLL_MARGIN, (view - (x1 - x0)) / 3);
+  const max = Math.max(0, pane.scrollWidth - view);
+  pane.scrollLeft = Math.max(0, Math.min(x0 - lead, max));
+}
+
+/**
+ * 算出某分段第 measure 小节（0 基）的时间区间 [start, end)。
+ *
+ * 走槽位而不是音符投影：空白小节里一个音符都没有（全是休止与延音线），用音符找
+ * 小节会在最需要跳过去的那种谱上恰好失效。
+ */
+function edMeasureSpan(section, measure) {
+  const slots = edSlotsOf(section);
+  if (!slots.length) return null;
+  const here = slots.filter((sl) => sl.ref.measure === measure);
+  if (!here.length) return null;
+  const after = slots.find((sl) => sl.ref.measure > measure);
+  const total = (edRenders && edRenders[section] && edRenders[section].totalLength);
+  const last = here[here.length - 1];
+  let end;
+  if (after) end = after.start;
+  else if (typeof total === 'number') end = total;
+  else end = last.start + (last.duration || 0);
+  return { start: here[0].start, end };
+}
+
+/** 定时器句柄：下一次跳转要把上一次的闪光提前收掉。 */
+let edJumpFlashTimer = 0;
+
+/**
+ * 跳到第 n 小节（1 基，就是用户在界面上看到的编号）。
+ *
+ * 所有分段一起滚：它们共用同一条时间轴，只滚一个会把上下两行谱错开，比不滚还难看。
+ * 没有这一小节的分段（各声部长短不一）直接跳过。返回真正落到的小节号，越界被夹住。
+ */
+function edGotoMeasure(n) {
+  if (!edDoc || !edDoc.sections || !edDoc.sections.length) return null;
+  const count = Math.max(...edDoc.sections.map((sec) => sec.measures.length));
+  if (!count) return null;
+  const measure = Math.min(count, Math.max(1, Math.floor(n || 1))) - 1;
+  const container = $('ed-gr-container');
+  clearTimeout(edJumpFlashTimer);
+  container.querySelectorAll('.jp-jump-flash').forEach((el) => el.remove());
+  let hit = false;
+  [...container.children].forEach((staff, section) => {
+    const span = edMeasureSpan(section, measure);
+    if (!span) return;
+    const a = edCaretGeometry(staff, span.start);
+    const b = edCaretGeometry(staff, span.end);
+    if (!a || !b || !a.layer) return;
+    hit = true;
+    edScrollRangeIntoView(edStaffPane(staff), a.x, Math.max(b.x, a.x + 1));
+    // 目标小节本来就在画面里时，不给点反馈就分不清到底跳没跳。
+    const rect = document.createElementNS(SVGNS, 'rect');
+    rect.setAttribute('class', 'jp-jump-flash');
+    rect.setAttribute('x', `${a.x - 2}`);
+    rect.setAttribute('y', `${a.y}`);
+    rect.setAttribute('width', `${Math.max(4, b.x - a.x + 4)}`);
+    rect.setAttribute('height', `${a.height}`);
+    rect.setAttribute('rx', '3');
+    // 垫到最底下，别盖住音符数字（与选中框同一套手法）。
+    a.layer.insertBefore(rect, a.layer.firstChild);
+  });
+  if (!hit) return null;
+  edJumpFlashTimer = setTimeout(() => {
+    container.querySelectorAll('.jp-jump-flash').forEach((el) => el.remove());
+  }, 1200);
+  return measure + 1;
+}
+
+$('ed-gr-goto').addEventListener('change', () => {
+  const input = $('ed-gr-goto');
+  const landed = edGotoMeasure(parseInt(input.value, 10));
+  if (landed === null) return;
+  input.value = String(landed);   // 越界输入被夹住，把夹后的值写回去
+  toast(t('w.ed.goto_done', { n: landed }));
+});
+
 // 阶段3.6 实时更新：输入 → 防抖 → 重新解析并重绘。
 // 防抖而不是逐键立即重绘，是因为解析在 Python 侧（阶段2 的解析器是唯一事实源，
 // 不在前端重写一份），每次都要走一趟 pywebview 桥 IPC；逐键触发只会堆积一串
@@ -444,6 +548,7 @@ function edRenderSelection() {
   const staff = container.children[range.section];
   if (!staff) return;
   const notes = edSectionNotes[range.section] || [];
+  let focusBox = null;
   for (let i = range.from; i <= range.to; i++) {
     const note = notes[i];
     if (!note) continue;
@@ -456,6 +561,7 @@ function edRenderSelection() {
       continue;   // 未布局的元素取 bbox 会抛，跳过即可
     }
     if (!box || box.width <= 0) continue;
+    if (i === edSelection.focus) focusBox = box;
     const pad = 2;
     const rect = document.createElementNS(SVGNS, 'rect');
     rect.setAttribute('class', 'jp-sel-rect');
@@ -466,6 +572,11 @@ function edRenderSelection() {
     rect.setAttribute('rx', '3');
     // 垫到最底下，否则会盖住音符数字。
     g.insertBefore(rect, g.firstChild);
+  }
+  // 阶段5.6c-2：方向键移选择、或编辑后重新落回某个音符时，把**焦点**那一个滚进来。
+  // 只看焦点不看整个选区：整段比视野长时，用户关心的是自己刚走到的那一头。
+  if (focusBox) {
+    edScrollRangeIntoView(edStaffPane(staff), focusBox.x, focusBox.x + focusBox.width);
   }
 }
 
@@ -730,12 +841,17 @@ function edCaretGeometry(staff, atStart) {
   const ratio = span > 1e-9 ? Math.min(1, Math.max(0, (atStart - block.start) / span)) : 0;
   const pad = 4;
   return {
-    // 光标必须插回**算出这个 x 的那个 SVG**。fork 在每个谱表里放了两个 SVG：
-    // 一个固定 200px 宽、绝对定位在左上角的 overlay（画调号/拍号用），一个在
-    // 横向滚动容器里、与乐谱等宽的主 SVG。块坐标来自主 SVG，而 SVG 根元素
-    // 默认 overflow:hidden——插错地方的话，x 一超过 200 光标就被裁掉，页面上
-    // 彻底看不见（5.6c-1 截图比对实测：x=135 画得出来、x=555 一个像素都没有）。
-    svg: block.el.ownerSVGElement,
+    // 覆盖层图元（光标、跳转闪光）必须插进**块自己所在的那个分组**，而不是 SVG
+    // 根节点——`getBBox()` 给的是元素**局部坐标系**里的框，不含祖先 transform。
+    // fork 把所有块放在 `g[data-id=music]` 里，而它外面套着
+    // `g[data-id=main-content]`，后者带着 `translate(0, yBaseline + verticalPadding)`
+    // （= noteHeight × (1.5 + 1.65)，见 fork 的 jianpu_svg_render.ts）。
+    // 插到根上就少了这一层平移：实测光标画在屏幕 y=189，而音符在 y=269，整整
+    // 高了 80px（5.6c-2 量得）。这一条同时也解决了横向裁切——fork 每个谱表里
+    // 有两个 SVG（固定 200px 宽的 overlay 与和乐谱等宽的主 SVG），插到 overlay
+    // 根上的话 x 一超过 200 就被 overflow:hidden 裁掉（5.6c-1 实测：x=135 画得
+    // 出来、x=555 一个像素都没有）。块的父分组两件事都天然对。
+    layer: block.el.parentElement,
     x: block.box.x + ratio * block.box.width,
     y: minY - pad,
     height: (maxY - minY) + pad * 2,
@@ -751,15 +867,18 @@ function edRenderCursor() {
   const at = edCursorStart();
   if (at === null) return;
   const geom = edCaretGeometry(staff, at);
-  if (!geom || !geom.svg) return;
-  const svg = geom.svg;
+  if (!geom || !geom.layer) return;
   const rect = document.createElementNS(SVGNS, 'rect');
   rect.setAttribute('class', 'jp-caret');
   rect.setAttribute('x', `${geom.x - 1}`);
   rect.setAttribute('y', `${geom.y}`);
   rect.setAttribute('width', '2');
   rect.setAttribute('height', `${geom.height}`);
-  svg.appendChild(rect);
+  geom.layer.appendChild(rect);
+  // 阶段5.6c-2：光标走到哪谱面跟到哪。不跟的话，往右敲几下就在看不见的地方录入
+  // 了——阶段5.6c-1 刚把光标从会被裁掉的 overlay 里救出来，它才刚刚变得"画得
+  // 出来"；要真能用，还得能"跟得上"。
+  edScrollRangeIntoView(edStaffPane(staff), geom.x - 1, geom.x + 1);
 }
 
 /** 工具条上的模式标签：模式 + 当前时值/八度/临时记号，一眼看全录入状态。 */
@@ -966,6 +1085,8 @@ function edSyncHeaderForm() {
   $('ed-gr-header').classList.toggle('hidden', !edDoc);
   if (!edDoc) return;
   edSyncZoomUI();
+  const measures = Math.max(...edDoc.sections.map((sec) => sec.measures.length), 0);
+  $('ed-gr-goto').max = String(Math.max(1, measures));
   for (const { input, field } of ED_HEADER_FIELDS) {
     const el = $(input);
     if (el === document.activeElement) continue;

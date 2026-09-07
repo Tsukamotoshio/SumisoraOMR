@@ -353,6 +353,8 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.hdr_title": {"zh": "标题", "en": "Title"},
     "w.ed.hdr_composer": {"zh": "作曲", "en": "Composer"},
     "w.ed.hdr_tempo": {"zh": "速度", "en": "Tempo"},
+    "w.ed.goto_measure": {"zh": "跳到小节", "en": "Go to measure"},
+    "w.ed.goto_done": {"zh": "已跳到第 {n} 小节", "en": "Jumped to measure {n}"},
     "w.ed.gr_zoomin": {"zh": "放大谱面", "en": "Zoom in"},
     "w.ed.gr_zoomout": {"zh": "缩小谱面", "en": "Zoom out"},
     "w.ed.gr_zoomreset": {"zh": "恢复原始大小", "en": "Reset zoom"},
