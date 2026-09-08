@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import {
   EditHistory, KEY_TONICS, applyCommand, barQuarterLength, blankMeasureNotes,
   extractFragment, formatKeyHeader, getNote, insertConsumingCommands, nextRef,
-  TIME_SIG_DENOMINATORS, formatTimeSig, noteRef, orderBatch, parseKeyHeader,
+  TIME_SIG_DENOMINATORS, blankSection, formatTimeSig, insertSectionCommands,
+  noteRef, orderBatch, parseKeyHeader,
   parseTimeSig, pasteMeasuresCommands, pasteNotesCommands, prevRef, refEquals,
   selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
@@ -1250,4 +1251,131 @@ test('the offered denominators are all powers of two', () => {
     // formatTimeSig then silently replaces with 4.
     assert.equal(formatTimeSig(3, d, ''), `3/${d}`);
   }
+});
+
+// ── sections / voices (stage 5.6d) ───────────────────────────────────────────
+// Command layer only: nothing in the UI reaches these yet, by decision. The
+// undo stack is the whole point of covering them now -- a section is the
+// largest thing a single command moves, so it is where a shallow copy would
+// do the most damage and where it is easiest to get wrong unnoticed.
+
+test('insert_section puts a section at the index asked for and delete_section is its exact inverse', () => {
+  const doc = makeDoc();
+  const section = blankSection('4/4', 2);
+  const inverse = applyCommand(doc, { type: 'insert_section', at: 1, section });
+  assert.equal(doc.sections.length, 3);
+  assert.equal(doc.sections[1].measures.length, 2, 'landed at index 1');
+  assert.equal(doc.sections[2].measures[0][0].symbol, '6', 'the old section 1 shifted down');
+  assert.deepEqual(inverse, { type: 'delete_section', at: 1 });
+
+  const reInverse = applyCommand(doc, inverse);
+  assert.equal(doc.sections.length, 2);
+  assert.deepEqual(reInverse, { type: 'insert_section', at: 1, section });
+});
+
+test('insert_section appends when the index equals the section count', () => {
+  const doc = makeDoc();
+  applyCommand(doc, { type: 'insert_section', at: 2, section: blankSection('4/4') });
+  assert.equal(doc.sections.length, 3);
+  assert.equal(doc.sections[0].measures[0][0].symbol, '1', 'the existing sections did not move');
+});
+
+test('insert_section rejects an out-of-range index', () => {
+  const doc = makeDoc();
+  const section = blankSection('4/4');
+  assert.equal(applyCommand(doc, { type: 'insert_section', at: 3, section }), null);
+  assert.equal(applyCommand(doc, { type: 'insert_section', at: -1, section }), null);
+  assert.equal(applyCommand(doc, { type: 'insert_section', at: 1.5, section }), null);
+  assert.equal(doc.sections.length, 2, 'nothing was inserted');
+});
+
+test('delete_section rejects an out-of-range index and refuses the last section', () => {
+  const doc = makeDoc();
+  assert.equal(applyCommand(doc, { type: 'delete_section', at: 2 }), null);
+  assert.equal(applyCommand(doc, { type: 'delete_section', at: -1 }), null);
+  applyCommand(doc, { type: 'delete_section', at: 1 });
+  assert.equal(doc.sections.length, 1);
+  // A document with zero sections has no note lines at all -- nothing
+  // downstream is built for that shape, so the command declines instead.
+  assert.equal(applyCommand(doc, { type: 'delete_section', at: 0 }), null);
+  assert.equal(doc.sections.length, 1);
+});
+
+test('a section round-trips through do/undo/redo byte for byte', () => {
+  const doc = makeDoc();
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+
+  history.do({ type: 'delete_section', at: 0 });
+  assert.equal(doc.sections.length, 1);
+  assert.equal(doc.sections[0].measures[0][0].symbol, '6');
+
+  history.undo();
+  assert.deepEqual(doc, before, 'undo restores the section, its measures and its notes');
+
+  history.redo();
+  assert.equal(doc.sections.length, 1);
+  history.undo();
+  assert.deepEqual(doc, before);
+});
+
+test('the command carries a deep copy, so later edits cannot reach into the undo stack', () => {
+  const doc = makeDoc();
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  history.do({ type: 'delete_section', at: 1 });
+  // Edit what is left, hard: if the inverse command shared note objects with
+  // the document, this is what would corrupt it.
+  history.do({ type: 'set_pitch', ref: noteRef(0, 0, 0), symbol: '7' });
+  history.do({ type: 'delete_note', ref: noteRef(0, 0, 1) });
+  history.undo();
+  history.undo();
+  history.undo();
+  assert.deepEqual(doc, before);
+});
+
+test('an inserted section is copied in, not aliased', () => {
+  const doc = makeDoc();
+  const section = blankSection('4/4');
+  applyCommand(doc, { type: 'insert_section', at: 2, section });
+  section.measures[0][0].symbol = '5';
+  section.time_sig = '7/8';
+  assert.equal(doc.sections[2].measures[0][0].symbol, '0', 'the doc kept its own copy');
+  assert.equal(doc.sections[2].time_sig, '4/4');
+});
+
+test('blankSection builds the same blank measures as inserting one', () => {
+  const section = blankSection('3/4', 3);
+  assert.equal(section.time_sig, '3/4');
+  assert.equal(section.measures.length, 3);
+  for (const m of section.measures) assert.deepEqual(m, blankMeasureNotes(barQuarterLength('3/4')));
+  assert.equal(blankSection('4/4', 0).measures.length, 1, 'a section always has a measure');
+  assert.equal(blankSection('4/4', -2).measures.length, 1);
+});
+
+test('insertSectionCommands takes the time signature from the document', () => {
+  const doc = makeDoc();
+  doc.sections[0].time_sig = '6/8';
+  doc.sections[1].time_sig = '6/8';
+  const [cmd] = insertSectionCommands(doc, 2, 2);
+  assert.equal(cmd.type, 'insert_section');
+  assert.equal(cmd.at, 2);
+  assert.equal(cmd.section.time_sig, '6/8');
+  assert.equal(cmd.section.measures.length, 2);
+});
+
+test('insertSectionCommands drops the anacrusis suffix', () => {
+  // `3/4,8` says "the FIRST bar of the document is an eighth-note pickup".
+  // Copying that onto a new section would declare a second pickup mid-piece.
+  const doc = makeDoc();
+  doc.sections[0].time_sig = '3/4,8';
+  const [cmd] = insertSectionCommands(doc, 1);
+  assert.equal(cmd.section.time_sig, '3/4');
+});
+
+test('insertSectionCommands returns nothing for an impossible index', () => {
+  const doc = makeDoc();
+  assert.deepEqual(insertSectionCommands(doc, 3), []);
+  assert.deepEqual(insertSectionCommands(doc, -1), []);
+  assert.deepEqual(insertSectionCommands({ sections: null }, 0), []);
 });

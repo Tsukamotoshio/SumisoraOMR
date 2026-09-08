@@ -136,6 +136,18 @@ function cloneNote(note) {
   return copy;
 }
 
+/**
+ * 深拷贝一个分段。`insert_section` / `delete_section` 两头都要它：命令是纯数据，
+ * 一条命令会在撤销栈里躺很久（可能跨若干次重绘），若和文档共享同一批音符对象，
+ * 之后对文档的编辑会顺着引用改到栈里存的那份，撤销就还原不回去了。
+ */
+function cloneSection(section) {
+  return {
+    time_sig: section && section.time_sig ? section.time_sig : '4/4',
+    measures: ((section && section.measures) || []).map((m) => m.map(cloneNote)),
+  };
+}
+
 function measureOf(doc, ref) {
   const section = (doc.sections || [])[ref.section];
   if (!section) return null;
@@ -421,6 +433,30 @@ export function applyCommand(doc, cmd) {
       const [removed] = section.measures.splice(cmd.at.measure, 1);
       return { type: 'insert_measure', at: cmd.at, notes: removed.map(cloneNote) };
     }
+    // ── 分段（= 声部）增删（阶段5.6d）─────────────────────────────────────
+    // **命令层预留，暂不接任何界面入口**（用户已定）。放在这里是因为撤销栈的
+    // 正确性只有在命令层才能被完整地测出来：一条命令必须返回精确的逆，而
+    // "整个分段"是目前粒度最大的一条，最容易在深拷贝上出错。
+    case 'insert_section': {
+      const sections = (doc && doc.sections) || null;
+      if (!sections) return null;
+      const at = cmd.at;
+      if (!Number.isInteger(at) || at < 0 || at > sections.length) return null;
+      sections.splice(at, 0, cloneSection(cmd.section));
+      return { type: 'delete_section', at };
+    }
+    case 'delete_section': {
+      const sections = (doc && doc.sections) || null;
+      if (!sections) return null;
+      const at = cmd.at;
+      if (!Number.isInteger(at) || at < 0 || at >= sections.length) return null;
+      // 与 delete_measure 同一条底线：绝不让文档掉到 0 个分段。那不是"空谱"
+      // （空谱是一个装满休止符的分段，合法且下游都处理得了），而是一份没有任何
+      // 音符行的文档，解析/渲染/播放/序列化没有一处为这种形状设计或测试过。
+      if (sections.length <= 1) return null;
+      const [removed] = sections.splice(at, 1);
+      return { type: 'insert_section', at, section: cloneSection(removed) };
+    }
     default:
       return null;
   }
@@ -633,6 +669,41 @@ export function pasteNotesCommands(doc, ref, notes) {
     index += 1;   // 每录一个音符就占住一格，下一个接着往后放
   }
   return cmds;
+}
+
+/**
+ * 造一个空白分段：`measureCount` 个符合该拍号的空小节。
+ *
+ * 小节内容一律走 `blankMeasureNotes`，与"新建向导生成"和"5.5a 插入空小节"是
+ * 同一条路径——分段的来路不该改变小节的形状。
+ */
+export function blankSection(timeSig, measureCount = 1) {
+  const bar = barQuarterLength(timeSig);
+  const count = Number.isInteger(measureCount) && measureCount > 0 ? measureCount : 1;
+  const measures = [];
+  for (let i = 0; i < count; i++) measures.push(blankMeasureNotes(bar));
+  return { time_sig: timeSig, measures };
+}
+
+/**
+ * 在 `at` 处插入一个空白分段的命令序列。
+ *
+ * 拍号取自文档现有分段——5.6b-3 起拍号是**一次改所有分段**的，新分段跟着走才
+ * 不会一插进来就和别人不一致。但**弱起后缀被剥掉**：`3/4,8` 里的 `8` 记的是
+ * "整份文档的第一小节是个八分音符弱起"，把它复制到新分段上，等于在曲子中间又
+ * 声明了一次弱起。
+ *
+ * 留一个已知的悬而未决处给将来接界面的人：`at === 0` 时新分段成了第一段，而
+ * 原来的第一段仍带着自己的弱起后缀 —— 那个后缀该不该跟着搬家，是个乐谱语义
+ * 问题，不是这一层能替用户决定的。目前没有界面入口，所以先不猜。
+ */
+export function insertSectionCommands(doc, at, measureCount = 1) {
+  const sections = (doc && doc.sections) || null;
+  if (!sections || !Number.isInteger(at) || at < 0 || at > sections.length) return [];
+  const source = sections[0] ? sections[0].time_sig : '4/4';
+  const { num, den } = parseTimeSig(source);
+  const timeSig = formatTimeSig(num, den, '');
+  return [{ type: 'insert_section', at, section: blankSection(timeSig, measureCount) }];
 }
 
 /**
