@@ -72,7 +72,7 @@
 #     numpy==2.4.6     此前钉 2.5.0，而 numba 0.66.0 硬要求 numpy<2.5
 #                      （`import numba` 直接 ImportError）。在装了音频栈的机器上
 #                      pip 会把 numpy 悄悄降级，锁定形同虚设。
-#     setuptools==70.2.0  此前钉 82.0.1，torch 2.12.1 要求 setuptools<82。
+#     setuptools==81.0.0  此前钉 82.0.1，torch 2.12.1 要求 setuptools<82。
 #   教训：改动本文件后，除了在干净 venv 复现，还必须在**装了音频栈的** venv 里
 #   跑一次 `pip check`——那是唯一能暴露这类冲突的地方。
 altgraph==0.17.5
@@ -132,7 +132,7 @@ reportlab==5.0.0
 requests==2.34.2
 rich==15.0.0
 ruff==0.16.3
-setuptools==70.2.0
+setuptools==81.0.0
 shapely==2.1.2
 six==1.17.0
 tqdm==4.70.0
