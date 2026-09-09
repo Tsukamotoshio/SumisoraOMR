@@ -580,6 +580,7 @@ def _run_homr_multipage_pdf(
                     selected_staff=-1,
                     transformer_use_gpu=gpu, segnet_use_gpu=gpu, coreml_encoder=False,
                     segnet_batch_size=_batch_size,
+                    title_detection=False,
                 )
 
             xml_args = homr_main.XmlGeneratorArguments(False, None, None)
@@ -776,6 +777,7 @@ def run_homr_batch(
             segnet_use_gpu=use_gpu_inference,
             coreml_encoder=False,
             segnet_batch_size=_batch_size,
+            title_detection=False,
         )
         xml_args = homr_main.XmlGeneratorArguments(False, None, None)
         mode_label = 'GPU' if use_gpu_inference else 'CPU'
@@ -807,6 +809,7 @@ def run_homr_batch(
                     segnet_use_gpu=False,
                     coreml_encoder=False,
                     segnet_batch_size=_batch_size,
+                    title_detection=False,
                 )
                 log_message('[homr] 回退到 CPU 模式重试…')
                 _run_with_heartbeat(
