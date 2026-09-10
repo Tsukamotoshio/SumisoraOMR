@@ -29,6 +29,21 @@
      单侧曲线:             0（换行悬挂或半漏检，不加分不扣分）
      阈值: score>=2 → tie; score<=-2 → no_tie; else → ambiguous（保守不写）
 
+与 homr 上游的职责划分（2026-09，合并上游 457e7c6 之后）
+------------------------------------------------------
+上游 `music_xml_generator.convert_ties()` 现在在**生成阶段**就把"连接同声部相邻
+同音高两音"的曲线改写成延音线，并移除该 slur。因此本模块的规则 E 在 Homr 路径上
+已**自然休眠**——它的前提（a 有 slurStart 且 b 有 slurStop）被上游消耗掉了，
+改由规则 A（已存在显式 tie）接手，`_add_tie_to_note` 的幂等判断保证不会写重复。
+
+**不要因此删除规则 E 和启发式层。** 理由：
+  - 上游只在它自己的事件分组口径下转换；被它拒绝的曲线（非相邻事件、跨谱表/声部
+    键不同、和弦音高不匹配）仍然只有规则 E 能救。
+  - 换模型、回退 submodule pin、或上游改掉 convert_ties，这里就是唯一退路。
+没有加"上游跑过就关掉规则 E"的开关，因为那会在零实测收益的前提下砍掉上述覆盖面；
+改为在规则 E 真的命中时打 INFO 日志（见 `reconstruct_ties_in_musicxml` 末尾），
+让分歧变成可见证据而不是静默差异。
+
 公开 API
 --------
 reconstruct_ties_in_musicxml(xml_path: Path) -> int
@@ -487,6 +502,7 @@ def reconstruct_ties_in_musicxml(xml_path: Path) -> int:
     # tie_count——以前用的是判定数，对已重建过的输入会虚报。
     tie_count = 0
     decided = 0
+    slur_derived = 0
     for group_notes in groups.values():
         group_notes.sort(key=lambda n: n.start_tick)
         for i in range(len(group_notes) - 1):
@@ -511,6 +527,7 @@ def reconstruct_ties_in_musicxml(xml_path: Path) -> int:
                 if a.has_slur_start and b.has_slur_stop:
                     _remove_slur_from_note(a.element, 'start', ns)
                     _remove_slur_from_note(b.element, 'stop',  ns)
+                    slur_derived += 1
                 if wrote_start or wrote_stop:
                     tie_count += 1
                     LOGGER.debug(
@@ -527,6 +544,17 @@ def reconstruct_ties_in_musicxml(xml_path: Path) -> int:
         LOGGER.debug(
             'reconstruct_ties: %s 判定 %d 对延音线，均已存在，未写入',
             xml_path.name, decided,
+        )
+
+    if slur_derived:
+        # 合并 homr 上游 457e7c6 之后，曲线→延音线的转换由上游
+        # music_xml_generator.convert_ties 在生成阶段完成，并会移除该 slur，
+        # 所以这里再看到成对 slur 意味着上游判定不成立而我们判定成立。
+        # 2026-09 的 14 份金样实测为 0 次；若日志里出现，说明两边口径开始分歧，
+        # 值得拿该样本对比一次，而不是默默走我们这条路。
+        LOGGER.info(
+            'reconstruct_ties: %s 有 %d 对延音线由成对 slur 推出（上游未转换）',
+            xml_path.name, slur_derived,
         )
 
     if tie_count > 0:
