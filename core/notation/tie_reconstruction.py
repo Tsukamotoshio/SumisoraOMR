@@ -413,20 +413,37 @@ def _remove_slur_from_note(note_elem: ET.Element, slur_type: str, ns: str) -> No
             return
 
 
-def _add_tie_to_note(note_elem: ET.Element, tie_type: str, ns: str) -> None:
-    """为 <note> 元素添加 <tie type="..."/> 及 <notations><tied type="..."/>。"""
-    if _has_tie_elem(note_elem, tie_type, ns):
-        return  # 已存在，跳过
+# <note> 的子元素顺序由 MusicXML DTD 固定，<tie> 只能落在一个位置：
+#   普通音符  (pitch|rest|unpitched), duration, tie*, instrument*, ..., staff?, notations*
+#   装饰音    grace, (pitch|rest|unpitched), tie*        ← 装饰音没有 <duration>
+# 放在 <notations> 之前（即 <staff> 之后）是无效顺序——2026-09 与上游对比时发现，
+# 上游 music_xml_generator.add_tie 插在 <duration> 之后，我们插在 <staff> 之后，
+# 同样的延音线在两边位置不同。走 music21 重序列化的文件会被动修正，直接输出的不会。
+_TIE_PRECEDING = ('duration', 'unpitched', 'rest', 'pitch', 'chord', 'grace')
 
-    # 找到 <notations> 的插入位置（<tie> 应位于 <notations> 之前）
-    children_tags = [_local(c.tag) for c in note_elem]
-    tie_elem = ET.Element(f'{ns}tie')
-    tie_elem.set('type', tie_type)
-    try:
-        ins = children_tags.index('notations')
-        note_elem.insert(ins, tie_elem)
-    except ValueError:
-        note_elem.append(tie_elem)
+
+def _tie_insert_index(note_elem: ET.Element) -> int:
+    """<tie> 的合法插入下标：紧跟 <duration>，装饰音则紧跟 full-note 元素。"""
+    tags = [_local(c.tag) for c in note_elem]
+    for name in _TIE_PRECEDING:
+        if name in tags:
+            return tags.index(name) + 1
+    return 0
+
+
+def _add_tie_to_note(note_elem: ET.Element, tie_type: str, ns: str) -> bool:
+    """为 <note> 元素添加 <tie type="..."/> 及 <notations><tied type="..."/>。
+
+    返回是否真的写入了元素——调用方据此统计"新增了多少对"。两者独立判断：
+    输入里可能已有 <tie> 而缺 <tied>（或反之），那仍然算一次写入。
+    """
+    wrote = False
+
+    if not _has_tie_elem(note_elem, tie_type, ns):
+        tie_elem = ET.Element(f'{ns}tie')
+        tie_elem.set('type', tie_type)
+        note_elem.insert(_tie_insert_index(note_elem), tie_elem)
+        wrote = True
 
     # 在 <notations> 内添加 <tied>
     if not _has_tied_in_notations(note_elem, tie_type, ns):
@@ -436,6 +453,9 @@ def _add_tie_to_note(note_elem: ET.Element, tie_type: str, ns: str) -> None:
         tied_elem = ET.Element(f'{ns}tied')
         tied_elem.set('type', tie_type)
         notations_e.insert(0, tied_elem)
+        wrote = True
+
+    return wrote
 
 
 # ─── 公开 API ─────────────────────────────────────────────────────────────────
@@ -462,7 +482,11 @@ def reconstruct_ties_in_musicxml(xml_path: Path) -> int:
     for n in notes:
         groups[(n.part_id, n.voice_id, n.pitch_midi)].append(n)
 
+    # tie_count 只数真正写进文件的对；decided 数判定为延音的对（两者可以差很多：
+    # 输入已带完整 tie 时判定照样成立，但没有任何元素需要写）。返回值与日志都用
+    # tie_count——以前用的是判定数，对已重建过的输入会虚报。
     tie_count = 0
+    decided = 0
     for group_notes in groups.values():
         group_notes.sort(key=lambda n: n.start_tick)
         for i in range(len(group_notes) - 1):
@@ -479,23 +503,31 @@ def reconstruct_ties_in_musicxml(xml_path: Path) -> int:
             decision = _decide(a, b)
 
             if decision is TieDecision.DEFINITE_TIE:
-                _add_tie_to_note(a.element, 'start', ns)
-                _add_tie_to_note(b.element, 'stop',  ns)
+                wrote_start = _add_tie_to_note(a.element, 'start', ns)
+                wrote_stop = _add_tie_to_note(b.element, 'stop',  ns)
+                decided += 1
                 # 规则 E 命中时曲线本体就是延音线，移除这对 slur，
                 # 避免渲染时曲线与延音线重叠（双弧线）
                 if a.has_slur_start and b.has_slur_stop:
                     _remove_slur_from_note(a.element, 'start', ns)
                     _remove_slur_from_note(b.element, 'stop',  ns)
-                tie_count += 1
-                LOGGER.debug(
-                    'reconstruct_ties: 写入 tie midi=%d tick=%d→%d',
-                    a.pitch_midi, a.start_tick, b.start_tick,
-                )
+                if wrote_start or wrote_stop:
+                    tie_count += 1
+                    LOGGER.debug(
+                        'reconstruct_ties: 写入 tie midi=%d tick=%d→%d',
+                        a.pitch_midi, a.start_tick, b.start_tick,
+                    )
             elif decision is TieDecision.AMBIGUOUS:
                 LOGGER.debug(
                     'reconstruct_ties: AMBIGUOUS midi=%d tick=%d→%d（跳过）',
                     a.pitch_midi, a.start_tick, b.start_tick,
                 )
+
+    if decided and not tie_count:
+        LOGGER.debug(
+            'reconstruct_ties: %s 判定 %d 对延音线，均已存在，未写入',
+            xml_path.name, decided,
+        )
 
     if tie_count > 0:
         tree.write(str(xml_path), encoding='unicode', xml_declaration=True)
