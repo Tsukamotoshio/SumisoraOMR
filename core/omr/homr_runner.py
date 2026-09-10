@@ -98,6 +98,15 @@ def _pdf_pages_to_png(
     """Convert all pages of a PDF to PNG files using PyMuPDF.
 
     Returns a list of PNG paths (one per page) on success, or an empty list on failure.
+
+    Kept in preference to upstream homr's own PDF support (added in 457e7c6,
+    `homr.pdf_utils.render_pdf_to_image`), decided 2026-09 during the upstream merge:
+    upstream rasterises through `pypdfium2`, which this project deliberately dropped
+    from its dependency set on 2026-08-14 once it had no remaining call sites. Adopting
+    upstream's path would re-introduce it for no gain — PyMuPDF is already a dependency
+    and is used for PDF type detection and page counting elsewhere. The fork therefore
+    imports `homr.pdf_utils` lazily (submodule commit `ef9e1fd`) so the absent
+    `pypdfium2` never breaks `import homr.main`.
     """
     try:
         import pymupdf

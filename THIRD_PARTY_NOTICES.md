@@ -56,11 +56,11 @@ This file provides license and attribution notices for third-party components di
 - Note: Windows DirectML backend for GPU-accelerated inference used by the Homr engine.
 
 ## Homr
-- Version: upstream `v0.7.0` plus fork commits (submodule pinned at `af0eb80`)
+- Version: upstream `v0.7.0` plus post-release commits through `457e7c6`, plus fork commits (submodule pinned at `ef9e1fd`)
 - License: AGPL-3.0
 - Upstream (original): <https://github.com/liebharc/homr>
 - Fork used by this project: <https://github.com/Tsukamotoshio/homr>
-- Modifications: DirectML GPU inference support, ORT thread limits, explicit resource teardown, and safe XML output preservation on post-write exceptions.
+- Modifications: DirectML GPU inference support (provider order CUDA → ROCm → DirectML → CoreML), ORT thread limits, configurable SegNet batch size, explicit resource teardown, safe XML output preservation on post-write exceptions, a weight catalog with SHA256 verification and a `HOMR_MODELS_DIR` override, a ModelScope download mirror with resume support, `preload_dlls()` guarded for non-CUDA runtimes, and `homr.pdf_utils` imported lazily so `pypdfium2` stays optional (PDF rasterisation is done by this project with PyMuPDF instead — see `core/omr/homr_runner.py:_pdf_pages_to_png`).
 - Note: End-to-end optical music recognition engine integrated as a local repository under `omr_engine/homr`.
 - Upstream foundations: Homr builds upon two prior works whose models and segmentation code are embedded in the homr package:
   - **oemer** (MIT) — segmentation models for staff lines, note heads, and bar lines.
