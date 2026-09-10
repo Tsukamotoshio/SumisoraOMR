@@ -57,6 +57,48 @@ def _report_subprogress(value: float, message: str = '') -> None:
             pass
 
 
+def _force_xml_element(raw: str, tag: str, value: str) -> tuple[str, bool]:
+    """Set the first <tag>...</tag> (or <tag/>) to `value`; delete any later duplicates.
+
+    Returns (new_raw, found_any). Matching both the paired and the self-closing
+    spelling is the point: homr writes `<work-title />` whenever title detection is
+    off (`ProcessingConfig(title_detection=False)`, which core/omr/homr_runner.py
+    passes), and the old paired-only regex missed it, fell through to the insert
+    branch and produced a *second* work-title.
+    """
+    import re as _re
+    # (?![\w-]) not \b: \b also matches before a hyphen, so tag='work' would
+    # otherwise match <work-title> too.
+    pat = _re.compile(
+        rf'<{tag}(?![\w-])[^>]*/>|<{tag}(?![\w-])[^>]*>.*?</{tag}\s*>', _re.DOTALL)
+    seen = 0
+
+    def _repl(_m: object) -> str:
+        nonlocal seen
+        seen += 1
+        return f'<{tag}>{value}</{tag}>' if seen == 1 else ''
+
+    return pat.sub(_repl, raw), seen > 0
+
+
+def _insert_work_block(raw: str, work_xml: str) -> str:
+    """Insert a <work> block at the only position MusicXML allows for it.
+
+    score-partwise content order is `work?, movement-number?, movement-title?,
+    identification?, defaults?, ...` — so <work> goes before the *first* of those
+    that is present, not merely before <identification>. The old code anchored on
+    <identification> alone, which put <work> after a music21-written
+    <movement-title> and produced an invalidly ordered document.
+    """
+    import re as _re
+    for anchor in ('<movement-number', '<movement-title', '<identification', '<defaults'):
+        i = raw.find(anchor)
+        if i >= 0:
+            return raw[:i] + work_xml + raw[i:]
+    m = _re.search(r'<score-(?:partwise|timewise)\b[^>]*>', raw)
+    return raw[:m.end()] + '\n' + work_xml + raw[m.end():] if m else raw
+
+
 def _inject_musicxml_metadata(xml_path: Path, title: str = '', tempo_bpm: int = 0) -> None:
     """Inject title and tempo into an uncompressed MusicXML file via direct XML text editing.
 
@@ -69,22 +111,20 @@ def _inject_musicxml_metadata(xml_path: Path, title: str = '', tempo_bpm: int = 
 
         if title:
             safe = title.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            # Always replace <work-title> content (or insert if missing)
-            if _re.search(r'<work-title\s*>', raw):
-                raw = _re.sub(r'<work-title\s*>[^<]*</work-title>',
-                              f'<work-title>{safe}</work-title>', raw, count=1)
-            elif '<work>' in raw:
-                raw = raw.replace('<work>', f'<work>\n    <work-title>{safe}</work-title>', 1)
-            else:
-                # Insert <work> block before <identification> or at top of root element
-                if '<identification>' in raw:
-                    raw = raw.replace('<identification>',
-                                      f'<work>\n  <work-title>{safe}</work-title>\n</work>\n<identification>', 1)
+            raw, had_work_title = _force_xml_element(raw, 'work-title', safe)
+            if not had_work_title:
+                block = f'<work-title>{safe}</work-title>'
+                if _re.search(r'<work\s*/>', raw):
+                    # bare <work/>: expand it rather than adding a sibling <work>
+                    raw = _re.sub(r'<work\s*/>', f'<work>\n  {block}\n</work>', raw, count=1)
+                elif _re.search(r'<work\s*>', raw):
+                    raw = _re.sub(r'<work\s*>', f'<work>\n    {block}', raw, count=1)
+                else:
+                    raw = _insert_work_block(raw, f'<work>\n  {block}\n</work>\n')
             # Also replace <movement-title> — music21 reads this field as score.metadata.title
             # when <work-title> is absent, and OMR engines often write their input filename here.
-            if _re.search(r'<movement-title\s*>', raw):
-                raw = _re.sub(r'<movement-title\s*>[^<]*</movement-title>',
-                              f'<movement-title>{safe}</movement-title>', raw, count=1)
+            # Replaced only, never inserted: an absent movement-title is not a defect.
+            raw, _ = _force_xml_element(raw, 'movement-title', safe)
 
         if tempo_bpm > 0 and '<sound' not in raw:
             # Inject a minimal <direction> with <sound tempo="..."> into the first measure
