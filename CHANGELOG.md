@@ -5,6 +5,53 @@ All notable changes to SumisoraOMR are documented here. Format follows
 `APP_VERSION` in `core/config.py` (the single source of truth — run
 `python scripts/sync_version.py` after bumping it).
 
+## [Unreleased]
+
+Recognition-quality work on the HOMR engine: it moves up to upstream's
+post-v0.7.0 commits, which recover ties the old pipeline dropped outright and
+untangle a spurious extra part on multi-staff scores. Measured by converting all
+21 sample inputs on both sides of the merge — 5 produced different output, 16
+came out byte-identical, none crashed.
+
+### Changed
+- **HOMR upgraded to upstream homr through `457e7c6`** (v0.7.0 plus its
+  post-release commits). The engine now decides for itself which curves are
+  ties, at the point where it still knows which notehead each curve touched.
+
+### Fixed
+- **Ties were silently disappearing from some scores.** HOMR is trained to emit
+  ties and slurs as one class, so a tie arrives as a curve; the curve carried no
+  pairing number, and music21 discards a curve it cannot pair up. On one sample
+  five ties vanished that way — the notes were right, the held note was not.
+  Upstream now resolves the curve into a tie before music21 ever sees it, so it
+  survives. On three further samples a curve joining two notes of the same pitch
+  is now read as the tie it almost certainly is (8 more ties across them) rather
+  than drawn as a phrase mark.
+- **Multi-staff scores grew a part made almost entirely of rests.** On a
+  two-staff canon, notes that belonged on the real staves were split off into a
+  trailing voice group of `0 - -` bars with a few notes scattered through it.
+  Upstream's staff detection fix folds them back where they belong: four voice
+  groups become three, and the 163 notes that included those duplicates become
+  158. Checked against the source by eye before accepting.
+- **Archived MusicXML was invalid in three ways**, all in the copy kept for the
+  transposer — the jianpu and MIDI output was never affected. Seven scores
+  carried a second, empty `<work-title>`; eleven placed `<work>` after
+  `<movement-title>`, which the format does not allow; and reconstructed ties
+  wrote their `<tie>` element after `<staff>` instead of directly after
+  `<duration>`, the one position the format permits.
+- **A crashing parallel worker re-counted files that had already finished.** The
+  attribution check compared a filename against a list of result dictionaries,
+  which never matches, so every file in a dead worker's chunk was counted as
+  failed even when it had already reported success — and the error branch added
+  the whole chunk's size to the failure total unconditionally. Batch totals now
+  reflect what actually happened.
+
+### Security
+- **setuptools 70.2.0 → 81.0.0** in both lock files, clearing
+  GHSA-5rjg-fvgr-3xxf (HIGH, path traversal). The usable window is
+  `78.1.1 <= x < 82`: below that the advisory stands, and at 82 torch 2.12.1
+  stops resolving.
+
 ## [0.5.2] - 2026-08-15
 
 Fidelity and hardening release: lyrics reach the jianpu output, Audiveris
