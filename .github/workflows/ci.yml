@@ -42,9 +42,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # 无需 submodules：ruff.toml 按路径排除子模块目录
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: Install ruff
@@ -57,9 +57,9 @@ jobs:
     env:
       PYTHONUTF8: '1'  # 语料含中文文件名，强制 UTF-8 避免 runner locale 差异
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # 无需 submodules：notation 测试仅依赖 music21，不 import homr/onnxruntime
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: Install test deps
@@ -70,9 +70,9 @@ jobs:
   lint-js:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # 无需 submodules：eslint.config.js 按路径排除 webui/static/vendor/
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Install JS deps
@@ -83,8 +83,8 @@ jobs:
   test-js:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Install JS deps
@@ -95,12 +95,12 @@ jobs:
   pyright:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # 无需 submodules：pyrightconfig.json 按路径排除子模块目录（同 ruff.toml）
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Install JS deps (pyright itself is pinned in package.json)
