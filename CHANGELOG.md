@@ -18,6 +18,11 @@ came out byte-identical, none crashed.
   post-release commits). The engine now decides for itself which curves are
   ties, at the point where it still knows which notehead each curve touched.
 
+- **noteDigger updated to upstream `006a515`.** Carries a fix for MIDI export
+  from a score whose time signature has a denominator other than 4, where the
+  written tempo was wrong — that MIDI is the input to this project's
+  noteDigger-to-jianpu path.
+
 ### Fixed
 - **Ties were silently disappearing from some scores.** HOMR is trained to emit
   ties and slurs as one class, so a tie arrives as a curve; the curve carried no
@@ -33,6 +38,24 @@ came out byte-identical, none crashed.
   Upstream's staff detection fix folds them back where they belong: four voice
   groups become three, and the 163 notes that included those duplicates become
   158. Checked against the source by eye before accepting.
+- **Scores with a repeat mark and a volta produced no MIDI at all.** music21
+  expands repeats before writing MIDI and refuses a set it cannot resolve, which
+  killed the export outright — the jianpu PDF appeared, the `.mid` silently did
+  not. 4 of 40 archived scores were affected. A closing repeat alone is fine and
+  a volta alone is fine; only a volta following the repeat fails, and OMR reads
+  those two far more reliably than the opening `|:` that would balance them. The
+  export now retries with the repeat marks dropped, so the MIDI plays straight
+  through while the PDF still shows the repeats. Inventing the missing `|:`
+  instead was rejected: OMR's repeat marks are often wrong (one sample has one on
+  two adjacent measures), and a section repeated that was never marked sounds
+  deliberate, where playing straight through is audibly checkable against the
+  score. Verified across all 40: 36 byte-identical, 4 newly exportable, none
+  lost or altered.
+- **HOMR wrote `<voice>` in a position MusicXML does not allow**, after
+  `<time-modification>` instead of between `<duration>` and `<type>`. Fixed in
+  the fork. On two sample scores 67 and 234 notes were affected; jianpu and MIDI
+  output is byte-identical either way, and a score that passes through music21 was
+  already being silently renormalised, so only the archived copy changes.
 - **Archived MusicXML was invalid in three ways**, all in the copy kept for the
   transposer — the jianpu and MIDI output was never affected. Seven scores
   carried a second, empty `<work-title>`; eleven placed `<work>` after
