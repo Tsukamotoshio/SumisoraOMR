@@ -40,6 +40,60 @@ from ..utils import (
 )
 
 
+def _is_repeat_expansion_failure(exc: BaseException) -> bool:
+    """Is this the music21 error raised for an unbalanced set of repeat marks?
+
+    Matched by class name rather than by importing ExpanderException, so that a
+    music21 refactor degrades to "report the original error" instead of an
+    ImportError at module load.
+    """
+    names = {type(e).__name__ for e in (exc, exc.__cause__, exc.__context__) if e}
+    if names & {'ExpanderException'}:
+        return True
+    return 'badly formed repeats' in str(exc)
+
+
+def _strip_repeats_for_midi(score) -> int:
+    """Remove every repeat mark from a score in place; return how many were dropped.
+
+    music21 expands repeats before writing MIDI and refuses a set it cannot
+    resolve, which killed the export outright — the batch produced no .mid at
+    all. 4 of the 40 archived sample scores were affected.
+
+    The trigger is specifically a backward repeat **together with** a volta
+    bracket *after* it, with no matching `|:` anywhere: measured on synthetic
+    scores, a lone `:|` exports fine, a lone volta exports fine, and even both
+    on the same measure exports fine — and all four failing
+    scores carry both (voltas numbered 1, or 1 and 2). OMR reads the closing
+    repeat dots and the volta brackets far more reliably than the opening `|:`,
+    so this combination is the normal shape of a recognised score, not an edge
+    case. Dropping the repeat is enough to fix the export: with nothing to
+    expand, music21 ignores the orphan bracket, so the brackets are left alone.
+
+    Dropping the marks rather than inventing the missing `|:` is deliberate. A
+    lone `:|` conventionally means "repeat from the start", so the balanced
+    reading is reconstructable in principle — but only if the mark is real, and
+    OMR's often is not (one sample had `:|` on two adjacent measures). Playing
+    the score straight through is wrong in a way the listener can hear and
+    correct against the PDF, which still shows the repeats; repeating a section
+    that was never marked is wrong in a way that looks intentional.
+    """
+    from music21 import bar as m21bar
+    from music21 import repeat as m21repeat
+
+    dropped = 0
+    for part in score.parts:
+        for measure in part.getElementsByClass('Measure'):
+            for side in ('leftBarline', 'rightBarline'):
+                if isinstance(getattr(measure, side, None), m21bar.Repeat):
+                    setattr(measure, side, None)
+                    dropped += 1
+            for mark in list(measure.getElementsByClass(m21repeat.RepeatMark)):
+                measure.remove(mark)
+                dropped += 1
+    return dropped
+
+
 def render_midi_from_score(score, midi_path: Path) -> bool:
     """Export a music21 score to a MIDI file; return True on success.
     All parts are forced to Piano (MIDI program 1) before export.
@@ -56,6 +110,22 @@ def render_midi_from_score(score, midi_path: Path) -> bool:
             part.insert(0, piano)
         score.write('midi', fp=str(midi_path))
         log_message(f'已生成 MIDI 文件: {midi_path.name}')
+        return True
+    except Exception as exc:
+        if not _is_repeat_expansion_failure(exc):
+            log_message(f'生成 MIDI 失败: {midi_path.name}，原因: {exc}', logging.WARNING)
+            return False
+
+    # 反复记号不成对（OMR 常见）——剥掉反复重试，总比完全没有 MIDI 好
+    try:
+        import copy
+        retry = copy.deepcopy(score)
+        dropped = _strip_repeats_for_midi(retry)
+        retry.write('midi', fp=str(midi_path))
+        log_message(
+            f'已生成 MIDI 文件: {midi_path.name}'
+            f'（反复记号不成对，已忽略 {dropped} 处后导出；简谱 PDF 仍保留反复标记）'
+        )
         return True
     except Exception as exc:
         log_message(f'生成 MIDI 失败: {midi_path.name}，原因: {exc}', logging.WARNING)
