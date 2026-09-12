@@ -39,6 +39,7 @@ from .measure import (
 )
 from .extract import (
     _extract_part_repeat_barlines,
+    _extract_part_volta_brackets,
     _get_voice_ids_in_part,
     _secondary_voice_overlaps_primary,
     extract_jianpu_measures,
@@ -192,7 +193,7 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                           composer: str = '', tempo: int = 0,
                           *, _return_groups: Literal[True],
-                          ) -> tuple[str, list[list[int]], dict[int, dict[str, bool]]]: ...
+                          ) -> tuple[str, list[list[int]], dict[int, dict[str, bool]], list[dict]]: ...
 def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                           composer: str = '', tempo: int = 0,
                           _return_groups: bool = False):
@@ -377,5 +378,8 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
         _repeat_barlines: dict[int, dict[str, bool]] = (
             _extract_part_repeat_barlines(_first_part) if _first_part is not None else {}
         )
-        return text, _voice_groups, _repeat_barlines
+        _volta_brackets: list[dict] = (
+            _extract_part_volta_brackets(_first_part) if _first_part is not None else []
+        )
+        return text, _voice_groups, _repeat_barlines, _volta_brackets
     return text

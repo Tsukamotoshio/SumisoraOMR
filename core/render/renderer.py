@@ -564,23 +564,24 @@ def render_score_to_jianpu_pdf(
     lyrics_lines: Optional[list[str]] = None,
     composer: str = '',
     tempo: int = 0,
-) -> tuple[bool, list[list[int]], dict[int, dict[str, bool]]]:
+) -> tuple[bool, list[list[int]], dict[int, dict[str, bool]], list[dict]]:
     """
     Render a music21 score to jianpu PDF.
     Tries in order: standard jianpu-ly → strict-timing → reportlab fallback → LilyPond markup fallback.
 
-    Returns (ok, voice_groups, repeat_barlines) — the latter two are only ever
-    non-empty on the standard jianpu-ly path (the only one that computes them);
-    every fallback path returns empty defaults, since none of them produce
-    multi-voice-aware or repeat-aware output for those to describe. Callers
-    that persist the .jianpu.txt for later editor re-render (P1-4) need these
-    to survive alongside it — see _save_editor_files.
+    Returns (ok, voice_groups, repeat_barlines, volta_brackets) — the last
+    three are only ever non-empty on the standard jianpu-ly path (the only one
+    that computes them); every fallback path returns empty defaults, since none
+    of them produce multi-voice-aware or repeat-aware output for those to
+    describe. Callers that persist the .jianpu.txt for later editor re-render
+    (P1-4) need these to survive alongside it — see _save_editor_files.
     """
     _repeat_barlines: dict = {}
+    _volta_brackets: list[dict] = []
     try:
         _jly_result = build_jianpu_ly_text(score, title, composer=composer, tempo=tempo, _return_groups=True)
-        txt_content, _voice_groups, _repeat_barlines = cast(
-            tuple[str, list[list[int]], dict], _jly_result
+        txt_content, _voice_groups, _repeat_barlines, _volta_brackets = cast(
+            tuple[str, list[list[int]], dict, list], _jly_result
         )
     except Exception as exc:
         _voice_groups = []
@@ -615,7 +616,7 @@ def render_score_to_jianpu_pdf(
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
             log_message(f'已通过 LilyPond 生成简谱 PDF: {output_pdf_path.name}')
-            return True, _voice_groups, _repeat_barlines
+            return True, _voice_groups, _repeat_barlines, _volta_brackets
         log_message('标准 jianpu-ly 路径失败，尝试严格按拍号重建简谱。', logging.WARNING)
     else:
         log_message('文本版 jianpu-ly 失败，尝试严格按拍号重建简谱。', logging.WARNING)
@@ -630,7 +631,7 @@ def render_score_to_jianpu_pdf(
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
             log_message(f'已通过 LilyPond 生成简谱 PDF: {output_pdf_path.name}')
-            return True, [], {}
+            return True, [], {}, []
         log_message('MIDI 中转后的严格拍号路径仍失败，切换到备用简谱排版。', logging.WARNING)
     else:
         log_message('MIDI 中转后的严格拍号路径也失败，切换到备用简谱排版。', logging.WARNING)
@@ -639,14 +640,14 @@ def render_score_to_jianpu_pdf(
     try:
         create_pdf(output_pdf_path, title, measures, header_lines, font_name, lyrics_lines)
         log_message(f'已生成备用简谱 PDF: {output_pdf_path.name}')
-        return True, [], {}
+        return True, [], {}, []
     except Exception as exc:
         log_message(f'图形化简谱回退失败，尝试文字版回退：{exc}', logging.WARNING)
 
     if render_lilypond_markup_pdf(output_pdf_path, title, measures, header_lines, temp_dir, lyrics_lines):
-        return True, [], {}
+        return True, [], {}, []
 
-    return False, [], {}
+    return False, [], {}, []
 
 
 # ── Editor workspace helpers ─────────────────────────────────────────────────
@@ -688,12 +689,13 @@ def _build_editor_header(
     title: str,
     voice_groups: Optional[list[list[int]]] = None,
     repeat_barlines: Optional[dict[int, dict[str, bool]]] = None,
+    volta_brackets: Optional[list[dict]] = None,
 ) -> str:
     """Return a #-prefixed instructional header for the editor .jianpu.txt file.
 
-    When *voice_groups* / *repeat_barlines* are given, also appends a single
-    machine-readable ``#__jianpu_meta__:`` line carrying them as JSON (P1-4 in
-    the fix-plan doc). Both are derived from the MusicXML score at conversion
+    When *voice_groups* / *repeat_barlines* / *volta_brackets* are given, also
+    appends a single machine-readable ``#__jianpu_meta__:`` line carrying them
+    as JSON (P1-4 in the fix-plan doc; volta brackets added in 6.2a). Both are derived from the MusicXML score at conversion
     time (build_jianpu_ly_text's _return_groups=True) and have no other source
     once only the .jianpu.txt survives — the editor's own re-render reads this
     line back via parse_jianpu_meta_comment() so a "no-op edit → re-render"
@@ -703,17 +705,23 @@ def _build_editor_header(
     line (not reformatted) keeps it trivial to locate and replace.
     """
     header = _EDITOR_HEADER_TEMPLATE.format(title=title)
-    if voice_groups or repeat_barlines:
+    if voice_groups or repeat_barlines or volta_brackets:
         meta = {
             'voice_groups': voice_groups or [],
             'repeat_barlines': {str(k): v for k, v in (repeat_barlines or {}).items()},
+            # Written unconditionally once anything else is, so a file's meta
+            # line has a stable shape; an older file simply lacks the key and
+            # parse_jianpu_meta_comment defaults it to [].
+            'volta_brackets': list(volta_brackets or []),
         }
         header = header.rstrip('\n') + f'\n{_META_LINE_PREFIX} {json.dumps(meta, separators=(",", ":"))}\n\n'
     return header
 
 
-def parse_jianpu_meta_comment(header_text: str) -> tuple[list[list[int]], dict[int, dict[str, bool]]]:
-    """Recover (voice_groups, repeat_barlines) from an editor .jianpu.txt header.
+def parse_jianpu_meta_comment(
+    header_text: str,
+) -> tuple[list[list[int]], dict[int, dict[str, bool]], list[dict]]:
+    """Recover (voice_groups, repeat_barlines, volta_brackets) from an editor header.
 
     Counterpart to _build_editor_header's meta line. Defensive by design: a
     missing or malformed line (hand-edited file, older file predating P1-4,
@@ -729,10 +737,13 @@ def parse_jianpu_meta_comment(header_text: str) -> tuple[list[list[int]], dict[i
             meta = json.loads(line[len(_META_LINE_PREFIX):].strip())
             voice_groups = [list(g) for g in meta.get('voice_groups', [])]
             repeat_barlines = {int(k): v for k, v in meta.get('repeat_barlines', {}).items()}
-            return voice_groups, repeat_barlines
+            # Files written before volta extraction existed have no such key —
+            # they read back as "no brackets", which is exactly what they are.
+            volta_brackets = [dict(b) for b in meta.get('volta_brackets', [])]
+            return voice_groups, repeat_barlines, volta_brackets
         except (ValueError, TypeError, AttributeError):
-            return [], {}
-    return [], {}
+            return [], {}, []
+    return [], {}, []
 
 
 def _build_validation_annotation(errors: list) -> str:
@@ -770,6 +781,7 @@ def _save_editor_files(
     validation_errors: Optional[list] = None,
     voice_groups: Optional[list[list[int]]] = None,
     repeat_barlines: Optional[dict[int, dict[str, bool]]] = None,
+    volta_brackets: Optional[list[dict]] = None,
 ) -> None:
     """Copy the jianpu.txt (prepending a human-readable header) and the original
     source file into *editor_workspace_dir* so the user can later manually edit
@@ -804,7 +816,8 @@ def _save_editor_files(
         dest_txt = editor_workspace_dir / f'{safe_title}.jianpu.txt'
         if txt_path.exists():
             original = txt_path.read_text(encoding='utf-8', errors='ignore')
-            content = _build_editor_header(title, voice_groups, repeat_barlines) + original
+            content = _build_editor_header(
+                title, voice_groups, repeat_barlines, volta_brackets) + original
             if validation_errors:
                 content += _build_validation_annotation(validation_errors)
             dest_txt.write_text(content, encoding='utf-8')
@@ -904,7 +917,7 @@ def generate_jianpu_pdf_from_mxl(
         # core/notation/jianpu/primitives.py:build_lyric_lines），不再走这里的
         # lyrics_lines 参数——那是给已废弃的 \markup 歌词方案用的（见 B10.1）。
         log_message('当前转换链路: 乐谱文件(PDF/JPG/PNG) -> MXL/MusicXML -> 简谱 PDF')
-        result, _voice_groups_out, _repeat_barlines_out = render_score_to_jianpu_pdf(
+        result, _voice_groups_out, _repeat_barlines_out, _volta_brackets_out = render_score_to_jianpu_pdf(
             source_score, title, output_pdf_path, temp_dir, txt_path, ly_path,
             composer=composer, tempo=tempo_bpm,
         )
@@ -913,7 +926,8 @@ def generate_jianpu_pdf_from_mxl(
         if result and editor_workspace_dir is not None:
             _ws_stem = (preferred_title or output_pdf_path.stem.replace('.jianpu', '') or mxl_path.stem).strip()
             _save_editor_files(_ws_stem, txt_path, source_path, editor_workspace_dir,
-                                voice_groups=_voice_groups_out, repeat_barlines=_repeat_barlines_out)
+                                voice_groups=_voice_groups_out, repeat_barlines=_repeat_barlines_out,
+                                volta_brackets=_volta_brackets_out)
 
         return result
     except Exception as exc:

@@ -14,8 +14,9 @@ class TestMetaCommentRoundTrip:
             [[0, 1, 2], [3]],
             {5: {'start': True, 'end': False}, 10: {'start': False, 'end': True}},
         )
-        voice_groups, repeat_barlines = parse_jianpu_meta_comment(header)
+        voice_groups, repeat_barlines, volta_brackets = parse_jianpu_meta_comment(header)
         assert voice_groups == [[0, 1, 2], [3]]
+        assert volta_brackets == []
         assert repeat_barlines == {5: {'start': True, 'end': False}, 10: {'start': False, 'end': True}}
 
     def test_repeat_barlines_keys_are_int_not_str(self):
@@ -23,7 +24,7 @@ class TestMetaCommentRoundTrip:
         # this dict by an int loop variable, so a str-keyed dict would silently
         # match nothing and inject zero repeat marks.
         header = _build_editor_header('T', [[0]], {5: {'start': True, 'end': False}})
-        _, repeat_barlines = parse_jianpu_meta_comment(header)
+        _, repeat_barlines, _voltas = parse_jianpu_meta_comment(header)
         assert all(isinstance(k, int) for k in repeat_barlines)
 
     def test_meta_line_is_hash_prefixed(self):
@@ -42,6 +43,16 @@ class TestMetaCommentRoundTrip:
         header = _build_editor_header('T', [], {})
         assert 'jianpu_meta' not in header
 
+    def test_volta_brackets_alone_still_write_a_meta_line(self):
+        # A score can have 1./2. endings without multi-voice merging and
+        # without the repeat barlines surviving validation, so the brackets
+        # have to be able to carry the meta line on their own.
+        header = _build_editor_header(
+            'T', [], {}, [{'number': '1', 'first': 41, 'last': 44}])
+        assert 'jianpu_meta' in header
+        _, _, volta_brackets = parse_jianpu_meta_comment(header)
+        assert volta_brackets == [{'number': '1', 'first': 41, 'last': 44}]
+
 
 class TestMetaCommentDefensiveFallback:
     """A missing/malformed meta line must degrade to "no groups, no repeats"
@@ -49,18 +60,32 @@ class TestMetaCommentDefensiveFallback:
     files predating this feature, and truncated copies."""
 
     def test_missing_meta_line(self):
-        voice_groups, repeat_barlines = parse_jianpu_meta_comment('# just a comment\n\n')
+        voice_groups, repeat_barlines, voltas = parse_jianpu_meta_comment('# just a comment\n\n')
         assert voice_groups == []
         assert repeat_barlines == {}
+        assert voltas == []
 
     def test_malformed_json(self):
-        voice_groups, repeat_barlines = parse_jianpu_meta_comment(
+        voice_groups, repeat_barlines, voltas = parse_jianpu_meta_comment(
             '#__jianpu_meta__: {this is not valid json\n'
         )
         assert voice_groups == []
         assert repeat_barlines == {}
+        assert voltas == []
 
     def test_empty_header(self):
-        voice_groups, repeat_barlines = parse_jianpu_meta_comment('')
+        voice_groups, repeat_barlines, voltas = parse_jianpu_meta_comment('')
         assert voice_groups == []
         assert repeat_barlines == {}
+        assert voltas == []
+
+    def test_file_predating_volta_extraction(self):
+        # A meta line written before volta_brackets existed has no such key.
+        # It must read back as "no brackets" rather than raising — those
+        # files are sitting in every existing editor-workspace right now.
+        old_line = ('#__jianpu_meta__: {"voice_groups":[[0]],'
+                    '"repeat_barlines":{"7":{"start":false,"end":true}}}\n')
+        voice_groups, repeat_barlines, voltas = parse_jianpu_meta_comment(old_line)
+        assert voice_groups == [[0]]
+        assert repeat_barlines == {7: {'start': False, 'end': True}}
+        assert voltas == []

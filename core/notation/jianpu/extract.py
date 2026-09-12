@@ -170,6 +170,57 @@ def _extract_part_repeat_barlines(part) -> dict[int, dict[str, bool]]:
     return result
 
 
+def _extract_part_volta_brackets(part) -> list[dict]:
+    """Return the volta (1./2. ending) brackets of *part*, as measure ranges.
+
+    ``[{'number': '1', 'first': 41, 'last': 44}, ...]`` — measure indices are
+    0-based, matching ``_extract_part_repeat_barlines``.
+
+    MusicXML writes a volta as a ``<ending type="start">`` / ``type="stop">``
+    pair; music21 turns each pair into one ``RepeatBracket`` spanner. Until
+    now nothing read them, so every 1./2. bracket in an OMR result was dropped
+    on the floor with no warning — the repeat *barlines* came through (they
+    live on ``leftBarline``/``rightBarline``, which the sibling function does
+    read) but the brackets telling you which bar to take on each pass did not.
+
+    A list of ranges, not a measure-keyed dict: a bracket is a span, two of
+    them cannot be keyed by one measure, and a list also sidesteps the JSON
+    string-key round-trip that ``repeat_barlines`` has to undo by hand.
+    """
+    try:
+        from music21 import spanner as m21spanner
+    except ImportError:
+        return []  # pragma: no cover - music21 is always present in the app runtime
+
+    measures = list(part.getElementsByClass('Measure'))
+    if len(measures) > MAX_SANE_BARS:
+        measures = measures[:MAX_SANE_BARS]
+    index_of = {id(m): i for i, m in enumerate(measures)}
+
+    out: list[dict] = []
+    for bracket in part.getElementsByClass(m21spanner.RepeatBracket):
+        # **getFirst()/getLast(), not getSpannedElements()**: a RepeatBracket
+        # holds only its endpoints, so a 4-measure bracket arrives as 2
+        # elements. Iterating the spanned list as "the measures covered" would
+        # silently drop the middle of every bracket longer than two bars
+        # (measured: Do_You_Hear_the_People_Sing's first bracket spans 41-44
+        # and holds exactly 2 elements).
+        first_m, last_m = bracket.getFirst(), bracket.getLast()
+        first = index_of.get(id(first_m))
+        last = index_of.get(id(last_m))
+        if first is None or last is None:
+            continue                      # outside the sane-bars cap, or detached
+        if last < first:
+            first, last = last, first
+        number = str(getattr(bracket, 'number', '') or '').strip()
+        if not number:
+            continue                      # an unnumbered bracket has nothing to print
+        out.append({'number': number, 'first': first, 'last': last})
+
+    out.sort(key=lambda b: (b['first'], b['number']))
+    return out
+
+
 def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                              _part=None, _voice_id: str = '1',
                              _multi_voice_mode: bool = False,

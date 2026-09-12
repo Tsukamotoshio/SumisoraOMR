@@ -434,7 +434,11 @@ class EditorService:
                             # 头部的 #__jianpu_meta__ 行（用户不可见）；这里读回并重放
                             # 同样两步，否则"打开→不改动→重渲染"会悄悄丢掉多声部合并
                             # 与反复记号，产出与原始转换结果不一致。
-                            voice_groups, repeat_barlines = parse_jianpu_meta_comment(self._header)
+                            # _voltas 是阶段6.2a-1 刚开始持久化的跳跃括号；注入 .ly 的
+                            # 那一步在 6.2a-2，所以这里先只读出来不用——留着这个名字是为了
+                            # 让"读到了但还没消费"一眼可见，而不是看起来像漏了一项。
+                            voice_groups, repeat_barlines, _voltas = parse_jianpu_meta_comment(
+                                self._header)
                             merge_polyphonic_jianpu_staves(ly, voice_groups)
                             inject_repeat_barlines_to_ly(ly, repeat_barlines)
                             produced = render_lilypond_pdf(ly)
