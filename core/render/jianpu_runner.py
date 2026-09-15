@@ -456,12 +456,17 @@ def inject_repeat_barlines_to_ly(
         LOGGER.warning('inject_repeat_barlines_to_ly failed: %s', exc)
 
 
-def _insert_repeat_bar_commands(content: str, repeat_info: 'dict[int, dict[str, bool]]') -> str:
-    """Locate the first \\new Voice block and insert \\bar commands at measure boundaries."""
+def _first_voice_block_span(content: str) -> 'tuple[int, int] | None':
+    """Return the (start, end) offsets of the body of the first \\new Voice block.
+
+    Shared by both injectors on purpose: repeat barlines and volta brackets are
+    placed against the same bar markers, so they must be looking at the same
+    block — two copies of this search could quietly drift apart.
+    """
     voice_re = re.compile(r'\\new\s+Voice\s*(?:=\s*"[^"]*")?\s*\{')
     m = voice_re.search(content)
     if not m:
-        return content
+        return None
 
     start = m.end()
     depth = 1
@@ -472,8 +477,15 @@ def _insert_repeat_bar_commands(content: str, repeat_info: 'dict[int, dict[str, 
         elif content[pos] == '}':
             depth -= 1
         pos += 1
-    end = pos - 1
+    return start, pos - 1
 
+
+def _insert_repeat_bar_commands(content: str, repeat_info: 'dict[int, dict[str, bool]]') -> str:
+    """Locate the first \\new Voice block and insert \\bar commands at measure boundaries."""
+    span = _first_voice_block_span(content)
+    if span is None:
+        return content
+    start, end = span
     block = content[start:end]
     modified = _inject_barlines_into_voice_block(block, repeat_info)
     return content[:start] + modified + content[end:]
@@ -528,4 +540,142 @@ def _inject_barlines_into_voice_block(block: str, repeat_info: 'dict[int, dict[s
     if repeat_info.get(0, {}).get('start'):
         result = f'{_START} ' + result
 
+    return result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Volta (1./2. ending) bracket injection — stage 6.2a-2
+# ──────────────────────────────────────────────────────────────────────────────
+
+_BAR_MARKER_RE = re.compile(r'\|\s*%\{\s*bar\s+(\d+)\s*:\s*%\}')
+_FINAL_BARLINE_RE = re.compile(r'\|\s*\\bar\s*"\|\."\s*$')
+_VOLTA_LABEL_UNSAFE_RE = re.compile(r'[^0-9,.\- ]')
+
+
+def _volta_label(number: str) -> str:
+    """Turn a MusicXML ending number into a bracket label: ``'1'`` → ``'1.'``.
+
+    MusicXML allows ``"1, 2"`` for an ending taken on several passes, so commas
+    and spaces survive; anything else is dropped rather than written into a
+    LilyPond string literal. Returns ``''`` when nothing printable is left.
+    """
+    label = _VOLTA_LABEL_UNSAFE_RE.sub('', str(number or '')).strip()
+    if not label:
+        return ''
+    return label if label.endswith('.') else f'{label}.'
+
+
+def inject_volta_brackets_to_ly(ly_path: Path, volta_brackets: 'list[dict]') -> None:
+    """Draw volta (1./2. ending) brackets into the first Voice block of a .ly file.
+
+    *volta_brackets* is ``[{'number': '1', 'first': i, 'last': j}, ...]`` with
+    0-based measure indices, as produced by
+    ``core.notation.jianpu.extract._extract_part_volta_brackets``.
+
+    Uses LilyPond's manual ``\\set Score.repeatCommands`` rather than
+    restructuring the music into ``\\repeat volta { } \\alternative { }``. That
+    choice is forced by the data, not taste: OMR reads closing repeat dots and
+    volta brackets far more reliably than the opening ``|:`` that would balance
+    them (see render_midi_from_score), so a bracket with no matching start
+    repeat is the normal shape of a recognised score. ``\\repeat volta`` needs a
+    balanced structure and would reject exactly those scores; a manual bracket
+    only draws what was recognised. The repeat *barlines* are still drawn by
+    inject_repeat_barlines_to_ly, which this is meant to run after.
+
+    Measure indices are placed against jianpu-ly's ``| %{ bar N: %}`` markers,
+    the same convention inject_repeat_barlines_to_ly relies on: marker N sits
+    immediately before 0-based measure ``N - 1``.
+    """
+    if not volta_brackets:
+        return
+    try:
+        content = ly_path.read_text(encoding='utf-8', errors='ignore')
+        result = _insert_volta_commands(content, volta_brackets)
+        if result != content:
+            ly_path.write_text(result, encoding='utf-8')
+            LOGGER.debug('inject_volta_brackets_to_ly: injected %d volta brackets', len(volta_brackets))
+    except Exception as exc:
+        LOGGER.warning('inject_volta_brackets_to_ly failed: %s', exc)
+
+
+def _insert_volta_commands(content: str, volta_brackets: 'list[dict]') -> str:
+    span = _first_voice_block_span(content)
+    if span is None:
+        return content
+    start, end = span
+    block = content[start:end]
+    modified = _inject_voltas_into_voice_block(block, volta_brackets)
+    return content[:start] + modified + content[end:]
+
+
+def _inject_voltas_into_voice_block(block: str, volta_brackets: 'list[dict]') -> str:
+    """Insert one ``\\set Score.repeatCommands`` per affected bar boundary.
+
+    关键在"同一个边界只发一条命令"：第一房结束、第二房开始往往落在同一根小节线
+    上。\\set 是**赋值**，同一时刻连写两条，后一条会覆盖前一条——于是第一房永远
+    关不上。LilyPond 文档给的正确写法是把两件事并进一个列表：
+    ``#'((volta #f) (volta "2."))``，而且关闭必须排在开启之前。
+    """
+    markers = {int(m.group(1)): m for m in _BAR_MARKER_RE.finditer(block)}
+    last_marker = max(markers) if markers else 0
+
+    # 位置 → 这个时刻要做的 repeatCommands 列表项
+    at_pos: 'dict[int, list[str]]' = {}
+    at_head: 'list[str]' = []
+
+    def _add(pos: 'int | None', item: str) -> None:
+        if pos is None:
+            at_head.append(item)
+        else:
+            at_pos.setdefault(pos, []).append(item)
+
+    # 先逐条校验、再排序。反过来的话，排序键会先去比较一个坏条目里的字符串和
+    # 别人的整数，直接抛 TypeError——外层 try 兜住了不会崩，但结果是**一条坏
+    # 数据让整首曲子的括号全部静默消失**。元数据行是 # 注释，用户手改过就可能
+    # 出现这种条目；逐条校验的本意是跳过坏的、保留好的。
+    valid: 'list[tuple[int, int, str]]' = []
+    for bracket in volta_brackets:
+        try:
+            first, last = int(bracket['first']), int(bracket['last'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        label = _volta_label(bracket.get('number', ''))
+        if not label or first < 0 or last < first:
+            continue
+        valid.append((first, last, label))
+
+    for first, last, label in sorted(valid):
+
+        # 开：第 first 小节的第一个音符之前
+        if first == 0:
+            start_pos = None
+        elif (first + 1) in markers:
+            start_pos = markers[first + 1].end()
+        else:
+            continue      # 定位不到起点就整个不画——画一个起点错位的括号比不画更糟
+
+        # 关：第 last 小节的最后一个音符之后，即下一小节的标记处
+        if (last + 2) in markers:
+            end_pos: 'int | None' = markers[last + 2].end()
+        elif last + 1 >= last_marker:
+            # 括号落在最后一小节上：它后面没有标记了，关在终止线之前
+            final = _FINAL_BARLINE_RE.search(block.rstrip())
+            end_pos = final.start() if final else len(block.rstrip())
+        else:
+            end_pos = -1  # 定位不到终点：只开不关，LilyPond 会一直画到曲末
+
+        _add(start_pos, f'(volta "{label}")')
+        if end_pos != -1:
+            _add(end_pos, '(volta #f)')
+
+    def _command(items: 'list[str]') -> str:
+        # 关闭排在开启之前（见上面的说明）
+        ordered = sorted(items, key=lambda it: 0 if it == '(volta #f)' else 1)
+        return "\\set Score.repeatCommands = #'(" + ' '.join(ordered) + ')'
+
+    result = block
+    for pos in sorted(at_pos, reverse=True):
+        result = result[:pos] + f' {_command(at_pos[pos])} ' + result[pos:]
+    if at_head:
+        result = f'{_command(at_head)} ' + result
     return result

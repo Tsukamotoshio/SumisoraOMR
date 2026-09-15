@@ -408,6 +408,7 @@ class EditorService:
                     import tempfile
                     from core.render.jianpu_runner import (
                         inject_repeat_barlines_to_ly,
+                        inject_volta_brackets_to_ly,
                         merge_polyphonic_jianpu_staves,
                     )
                     from core.render.lilypond_runner import render_jianpu_ly, render_lilypond_pdf
@@ -434,13 +435,13 @@ class EditorService:
                             # 头部的 #__jianpu_meta__ 行（用户不可见）；这里读回并重放
                             # 同样两步，否则"打开→不改动→重渲染"会悄悄丢掉多声部合并
                             # 与反复记号，产出与原始转换结果不一致。
-                            # _voltas 是阶段6.2a-1 刚开始持久化的跳跃括号；注入 .ly 的
-                            # 那一步在 6.2a-2，所以这里先只读出来不用——留着这个名字是为了
-                            # 让"读到了但还没消费"一眼可见，而不是看起来像漏了一项。
-                            voice_groups, repeat_barlines, _voltas = parse_jianpu_meta_comment(
+                            voice_groups, repeat_barlines, volta_brackets = parse_jianpu_meta_comment(
                                 self._header)
                             merge_polyphonic_jianpu_staves(ly, voice_groups)
                             inject_repeat_barlines_to_ly(ly, repeat_barlines)
+                            # 必须排在反复线之后：括号与反复线落在同一套小节标记上，
+                            # 而跳跃括号的注入函数假定反复线已经在位（见其 docstring）。
+                            inject_volta_brackets_to_ly(ly, volta_brackets)
                             produced = render_lilypond_pdf(ly)
                             if produced is None or not produced.exists():
                                 error = 'LilyPond 渲染失败'

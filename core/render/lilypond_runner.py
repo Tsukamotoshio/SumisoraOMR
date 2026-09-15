@@ -1092,4 +1092,5 @@ from .jianpu_runner import (  # noqa: E402, F401
     render_jianpu_ly_from_mxl,
     merge_polyphonic_jianpu_staves,
     inject_repeat_barlines_to_ly,
+    inject_volta_brackets_to_ly,
 )

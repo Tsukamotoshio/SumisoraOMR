@@ -29,6 +29,7 @@ from .lilypond_runner import (
 )
 from .jianpu_runner import (
     inject_repeat_barlines_to_ly,
+    inject_volta_brackets_to_ly,
     merge_polyphonic_jianpu_staves,
     render_jianpu_ly,
 )
@@ -612,6 +613,7 @@ def render_score_to_jianpu_pdf(
         sanitize_generated_lilypond_file(ly_path, title, lyrics_lines, composer=composer)
         merge_polyphonic_jianpu_staves(ly_path, _voice_groups)
         inject_repeat_barlines_to_ly(ly_path, _repeat_barlines)
+        inject_volta_brackets_to_ly(ly_path, _volta_brackets)
         pdf_path = render_lilypond_pdf(ly_path)
         if pdf_path is not None:
             copy_generated_pdf(pdf_path, output_pdf_path)
