@@ -114,6 +114,33 @@ test('classifies known 🟡-tier (jianpu-ly-supports-but-unproduced) tokens as i
   }
 });
 
+// The bundled LilyPond 2.24.4's AbsoluteDynamicEvent list. The linter used to
+// know only 10 of these, and the other 12 fell through to bad-token: underlined
+// as errors in the text view while the parser accepted them and they rendered.
+const ALL_DYNAMIC_MARKS = [
+  'ppppp', 'pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'fffff',
+  'fp', 'sf', 'sfp', 'sff', 'sfz', 'fz', 'sp', 'spp', 'rfz', 'n',
+];
+
+test('every one of LilyPond\'s 22 dynamic marks is info, none is an error', () => {
+  for (const mark of ALL_DYNAMIC_MARKS) {
+    const { diagnostics } = lintJianpuText(`4/4\n\n1 \\${mark} 2 3 4 |\n`);
+    assert.deepEqual(errorsOf(diagnostics), [], `\\${mark} should not be an error`);
+    assert.deepEqual(warningsOf(diagnostics), [], 'a full measure: nothing else to report');
+    assert.equal(infosOf(diagnostics).length, 1, `\\${mark} should be one info diagnostic`);
+  }
+});
+
+test('a backslash word that is not a LilyPond dynamic is still an error', () => {
+  // \PP: dynamics are case-sensitive, LilyPond rejects it. \foo: not a command.
+  for (const tok of ['\\PP', '\\Mf', '\\foo', '\\pppppp']) {
+    const { diagnostics } = lintJianpuText(`4/4\n\n1 ${tok} 2 3 4 |\n`);
+    const errors = errorsOf(diagnostics);
+    assert.equal(errors.length, 1, `expected exactly one error for ${tok}`);
+    assert.equal(errors[0].code, 'bad-token');
+  }
+});
+
 test('treats a bracketed grace-note/tuplet/repeat region as one opaque info span, not per-word errors', () => {
   const { diagnostics } = lintJianpuText("4/4\n\n1 g[#45] 1 |\n3[ q1 q1 q1 ] |\nR4{ 1 2 } |\n");
   assert.deepEqual(errorsOf(diagnostics), []);

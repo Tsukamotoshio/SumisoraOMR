@@ -47,6 +47,25 @@ def test_hairpins_are_not_dynamic_marks():
     assert not ({'<', '>', '!'} & DYNAMIC_MARKS)
 
 
+def test_the_real_time_linter_knows_exactly_the_same_marks():
+    # The parser and webui/static/js/jianpu-lint.js each hold a hand-written
+    # copy of this list, and they cannot import each other. A hand-written list
+    # drifting from the truth is precisely how 12 legal marks came to be
+    # underlined as errors in the text view (the linter had 10). This reads the
+    # JS source so the two copies cannot quietly disagree again.
+    import pathlib
+    import re
+
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / 'webui' / 'static' / 'js' / 'jianpu-lint.js').read_text(encoding='utf-8')
+    block = re.search(r'const DYNAMIC_MARKS = new Set\(\[(.*?)\]\);', src, re.S)
+    assert block, 'DYNAMIC_MARKS not found in jianpu-lint.js -- renamed? update this test'
+    js_marks = set(re.findall(r"'([^']+)'", block.group(1)))
+    assert js_marks == DYNAMIC_MARKS, (
+        f'only in the linter: {sorted(js_marks - DYNAMIC_MARKS)}; '
+        f'only in the parser: {sorted(DYNAMIC_MARKS - js_marks)}')
+
+
 # ── parsing: accepted placements ─────────────────────────────────────────────
 
 class TestAccepted:

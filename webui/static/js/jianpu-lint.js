@@ -28,11 +28,29 @@ const DASH_RE = /^([qsd]?)(-)(\.?)$/;
 const TIMESIG_RE = /^(\d+)\/(\d+)(?:,(\S+))?$/;
 const HEADER_LINE_RE = /^(title=.*|composer=.*|1=\S+|6=\S+|4=\d+)$/;
 
+// LilyPond 的全部 22 个绝对力度记号——打包的 LilyPond 2.24.4 里
+// ly/dynamic-scripts-init.ly 定义的 AbsoluteDynamicEvent，一个不多一个不少。
+// 必须与 core/notation/jianpu/primitives.py 的 DYNAMIC_MARKS 逐字一致：
+// tests/test_jianpu_dynamics.py 会把这里的清单读出来和 Python 那份对比。
+//
+// 这份清单以前是手写的 10 个（p pp ppp mp mf f ff fff sf sfz），另外 12 个合法记号
+// 落进最后的 bad-token 分支被标成红色错误；6.1a 解析器开始接受全部 22 个之后，
+// 同一个 \fp 就变成了"文本页标红、图形页正常打开、PDF 正常渲染"。
+// 区分大小写：\PP 在 LilyPond 里是错误，这里也不认。
+const DYNAMIC_MARKS = new Set([
+  'ppppp', 'pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'fffff',
+  'fp', 'sf', 'sfp', 'sff', 'sfz', 'fz', 'sp', 'spp', 'rfz', 'n',
+]);
+
+function isDynamicWord(word) {
+  return word.length > 1 && word[0] === '\\' && DYNAMIC_MARKS.has(word.slice(1));
+}
+
 // 🟡 docs §2 — jianpu-ly 支持、管线未产出：整词即可识别的部分，归 info 级。
+// 力度记号不在这张正则表里，由上面的 isDynamicWord 单独判断（见 isUnproducedWord）。
 const UNPRODUCED_WORD_RE = [
   /^~$/,
   /^(Fine|DC|DS|Segno|ToCoda)$/,
-  /^\\(p|pp|ppp|mp|mf|f|ff|fff|sf|sfz)$/,
   /^R\*\d+$/,
   /^\d+\/{3,}$/,
   /^letter[A-Za-z0-9]+$/,
@@ -54,7 +72,7 @@ function isHeaderLine(word) {
 }
 
 function isUnproducedWord(word) {
-  return UNPRODUCED_WORD_RE.some((re) => re.test(word));
+  return isDynamicWord(word) || UNPRODUCED_WORD_RE.some((re) => re.test(word));
 }
 
 function isExcludedWord(word) {
