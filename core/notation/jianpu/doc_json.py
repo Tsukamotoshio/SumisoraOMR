@@ -30,7 +30,12 @@ and tuples come back as lists. Three of those changes are not cosmetic:
   string raises ``TypeError`` instead of serializing.
 
 All three were reproduced against the real serializer before this module was
-written. Coercing here — at the one place untrusted data enters — keeps every
+written.
+
+``JianpuNote.dynamic`` (阶段6.1a) is checked against
+``primitives.DYNAMIC_MARKS`` and dropped to ``''`` otherwise. It is written
+verbatim into the LilyPond input, so a value that is not a real dynamic
+would not produce a wrong mark — it would make LilyPond reject the file. Coercing here — at the one place untrusted data enters — keeps every
 downstream consumer able to assume the declared types hold.
 """
 from __future__ import annotations
@@ -39,7 +44,7 @@ from dataclasses import asdict
 from typing import Any
 
 from ...config import JianpuDoc, JianpuNote, JianpuSection
-from .primitives import jianpu_note_to_midi, key_header_tonic_semitone
+from .primitives import DYNAMIC_MARKS, jianpu_note_to_midi, key_header_tonic_semitone
 
 
 def jianpu_doc_to_dict(doc: JianpuDoc) -> dict:
@@ -89,6 +94,10 @@ def _lyrics_from_raw(raw: Any) -> dict[int, tuple[str, bool]]:
     return out
 
 
+def _dynamic_from_raw(value: Any) -> str:
+    return value if isinstance(value, str) and value in DYNAMIC_MARKS else ''
+
+
 def _note_from_raw(raw: Any) -> JianpuNote:
     raw = raw if isinstance(raw, dict) else {}
     symbol = str(raw.get('symbol', '0'))
@@ -106,6 +115,11 @@ def _note_from_raw(raw: Any) -> JianpuNote:
         midi=None if midi_raw is None else _as_int(midi_raw),
         is_rest=bool(raw.get('is_rest', symbol == '0')),
         lyrics=_lyrics_from_raw(raw.get('lyrics')),
+        # This is the inbound half. jianpu_doc_to_dict uses asdict(), so the
+        # field already travelled OUT automatically — which is exactly why it
+        # has to be named here: leaving it off would let every dynamic reach
+        # the editor and then vanish on the first graphical edit.
+        dynamic=_dynamic_from_raw(raw.get('dynamic')),
     )
 
 

@@ -17,7 +17,23 @@ anchored per note so that inserting or deleting notes cannot desynchronise
 them), and ``primitives.build_lyric_lines`` already wrote them back out, so
 only the reading half was missing — see ``_apply_lyric_line``.
 
-The remaining 🟡-tier syntax (ties, grace notes, dynamics, repeat brackets,
+**Dynamics** (阶段6.1a) are parsed too, and only LilyPond's own absolute
+marks (``primitives.DYNAMIC_MARKS``). A dynamic attaches to the note written
+just before it, which is how jianpu-ly reads it. Three placements are
+rejected, each because the real jianpu-ly → LilyPond chain was run on it and
+silently lost or discarded the mark while still exiting 0 and producing a
+PDF:
+
+* first thing in a measure (``| \\p 5``) or in the whole piece — LilyPond
+  warns ``AbsoluteDynamicEvent`` has nothing to attach to, and drops it. It
+  is *not* re-attached to the previous measure's last note: that would turn
+  a mark that never rendered into one that does, changing what the file means;
+* two on one note (``1 \\p \\f``) — LilyPond reports the events conflict and
+  discards one;
+* anything outside the whitelist, including a wrong case (``\\PP``) — a
+  LilyPond error.
+
+The remaining 🟡-tier syntax (ties, grace notes, hairpins, repeat brackets,
 ...) and the ⚪ explicitly-excluded constructs (``LP: ... :LP``, ``chords=``
 and friends) are still **not** parsed — a ``JianpuParseError`` is raised
 rather than silently dropping them, per that doc's §3 rule ("解析器必须报错，
@@ -38,7 +54,12 @@ from __future__ import annotations
 import re
 
 from ...config import JianpuDoc, JianpuNote, JianpuSection
-from .primitives import jianpu_note_to_midi, key_header_tonic_semitone, lyric_target_notes
+from .primitives import (
+    DYNAMIC_MARKS,
+    jianpu_note_to_midi,
+    key_header_tonic_semitone,
+    lyric_target_notes,
+)
 
 _NOTE_RE = re.compile(r"^([qsd]?)([#b]?)([0-7])('+|,+)?(\.?)$")
 _DASH_RE = re.compile(r"^([qsd]?)(-)(\.?)$")
@@ -127,6 +148,33 @@ def _decode_note_or_dash(word: _Word) -> JianpuNote:
             midi=None, is_rest=False,
         )
     raise JianpuParseError('非法记号，不属于本解析器覆盖的 🟢 文法', word.line, word.col, word.text)
+
+
+def _attach_dynamic(measure: list[JianpuNote], word: _Word) -> None:
+    """Attach a ``\\mark`` word to the last note of *measure*.
+
+    See the module docstring for why each rejected placement is rejected;
+    every one of them was checked against the real jianpu-ly and LilyPond.
+    """
+    name = word.text[1:]
+    if name not in DYNAMIC_MARKS:
+        if name.lower() in DYNAMIC_MARKS:
+            message = f'力度记号区分大小写，应写作 \\{name.lower()}'
+        else:
+            message = '不认识的反斜杠记号：只支持 LilyPond 的力度记号（如 \\p \\mf \\f \\sfz）'
+        raise JianpuParseError(message, word.line, word.col, word.text)
+    if not measure:
+        # 写在小节开头或全曲开头：LilyPond 找不到可附着的音符，静默丢弃（exit 0、照样出 PDF）
+        raise JianpuParseError(
+            '力度记号前面没有音符——写在小节开头或全曲开头时 LilyPond 会静默丢弃它，'
+            '请写在它所修饰的那个音符后面', word.line, word.col, word.text)
+    target = measure[-1]
+    if target.dynamic:
+        # 同一个音挂两个：LilyPond 报“与事件冲突 / 废除事件”，只保留其中一个
+        raise JianpuParseError(
+            f'这个音符已经有力度记号 \\{target.dynamic}——LilyPond 只会保留其中一个',
+            word.line, word.col, word.text)
+    target.dynamic = name
 
 
 def _apply_lyric_line(section: JianpuSection, line: str) -> None:
@@ -244,6 +292,9 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
         if current_section is None:
             # 拍号缺失（不应发生在真实文件里,但要给出可定位的错误而不是 None 解引用）
             raise JianpuParseError('小节内容出现在拍号声明之前', word.line, word.col, text)
+        if text.startswith('\\'):
+            _attach_dynamic(current_measure, word)
+            continue
         current_measure.append(_decode_note_or_dash(word))
 
     flush_pending_defensively()

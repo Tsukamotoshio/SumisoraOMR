@@ -463,8 +463,43 @@ def jianpu_octave_symbol(upper_dots: int, lower_dots: int) -> str:
     return ''
 
 
+# LilyPond's absolute dynamic marks — exactly the ``AbsoluteDynamicEvent``
+# definitions in the bundled LilyPond 2.24.4's ly/dynamic-scripts-init.ly, not
+# a list from memory. jianpu-ly itself has no list: it forwards any
+# backslash word to LilyPond verbatim, so the only real authority on what is
+# legal is LilyPond. All 22 were rendered through jianpu-ly and that LilyPond
+# with no error and no dropped event; an unknown word (``\foo``) or a
+# wrong case (``\PP``) is a LilyPond error.
+#
+# Hairpins (``\<`` ``\>`` ``\!``) are deliberately absent: they are spanner
+# start/stop events rather than a mark on one note, which is a different
+# shape of data — closer to a repeat than to a per-note attribute.
+DYNAMIC_MARKS: frozenset[str] = frozenset((
+    'ppppp', 'pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'fffff',
+    'fp', 'sf', 'sfp', 'sff', 'sfz', 'fz', 'sp', 'spp', 'rfz', 'n',
+))
+
+
 def jianpu_note_token(note: JianpuNote) -> str:
-    """Produce the jianpu-ly token string for a single note (pitch, octave marker, duration)."""
+    """Produce the jianpu-ly token string for a single note, dynamic included.
+
+    The dynamic goes right after the note's *head* token, before any
+    continuation dashes: ``1 \\f - - -``, not ``1 - - - \\f``. jianpu-ly attaches a
+    dynamic to the note written just before it, so after the last dash it
+    would land three beats late instead of on the attack.
+
+    A value outside ``DYNAMIC_MARKS`` is not written: it could only reach here
+    through a bug, and writing it would make LilyPond reject the whole file.
+    """
+    token = _jianpu_note_token_bare(note)
+    if note.dynamic not in DYNAMIC_MARKS:
+        return token
+    head, _, tail = token.partition(' ')
+    return f'{head} \\{note.dynamic}' + (f' {tail}' if tail else '')
+
+
+def _jianpu_note_token_bare(note: JianpuNote) -> str:
+    """The token for pitch, octave marker and duration only — no dynamic."""
     if note.is_rest:
         base_note = '0'
     else:
@@ -540,14 +575,18 @@ def infer_duration_dots(duration: float) -> int:
     return 0
 
 
-def clone_jianpu_note(note: JianpuNote, duration: float, carry_lyrics: bool = True) -> JianpuNote:
+def clone_jianpu_note(note: JianpuNote, duration: float, is_first_fragment: bool = True) -> JianpuNote:
     """Clone a JianpuNote with a new duration (auto-normalised and dotted).
 
-    *carry_lyrics*: when a note is split into several duration-limited fragments
-    (see ``repair_jianpu_measure``'s ``split_duration_chunks`` loop), only the
-    *first* fragment should keep the original syllable — jianpu-ly counts every
-    emitted token as one lyric slot, so carrying the syllable onto every
-    fragment would desync all following lyrics by the fragment count minus one.
+    *is_first_fragment*: when a note is split into several duration-limited
+    fragments (see ``repair_jianpu_measure``'s ``split_duration_chunks`` loop),
+    only the *first* fragment keeps what is anchored to the note's attack:
+
+    * the syllable — jianpu-ly counts every emitted token as one lyric slot, so
+      carrying it onto every fragment would desync all following lyrics by
+      the fragment count minus one;
+    * the dynamic — it marks where the note begins; repeating it on each
+      fragment would print the same mark several times in a row.
     """
     normalized_duration = normalize_jianpu_duration(duration)
     return JianpuNote(
@@ -559,7 +598,8 @@ def clone_jianpu_note(note: JianpuNote, duration: float, carry_lyrics: bool = Tr
         duration_dots=infer_duration_dots(normalized_duration),
         midi=note.midi,
         is_rest=note.is_rest,
-        lyrics=note.lyrics if carry_lyrics else {},
+        lyrics=note.lyrics if is_first_fragment else {},
+        dynamic=note.dynamic if is_first_fragment else '',
     )
 
 

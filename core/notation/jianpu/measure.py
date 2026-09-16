@@ -149,9 +149,9 @@ def repair_jianpu_measure(measure_notes: list[JianpuNote], measure_length: float
         for piece_idx, piece in enumerate(split_duration_chunks(remaining)):
             if current_total >= measure_length - tol:
                 break
-            # Only the first fragment keeps the syllable — see clone_jianpu_note's
-            # carry_lyrics docstring.
-            new_note = clone_jianpu_note(note, piece, carry_lyrics=(piece_idx == 0))
+            # Only the first fragment keeps the syllable and the dynamic — see
+            # clone_jianpu_note's is_first_fragment docstring.
+            new_note = clone_jianpu_note(note, piece, is_first_fragment=(piece_idx == 0))
             repaired.append(new_note)
             current_total += new_note.duration
 

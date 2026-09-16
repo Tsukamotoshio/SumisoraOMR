@@ -1379,3 +1379,42 @@ test('insertSectionCommands returns nothing for an impossible index', () => {
   assert.deepEqual(insertSectionCommands(doc, -1), []);
   assert.deepEqual(insertSectionCommands({ sections: null }, 0), []);
 });
+
+// ── dynamics survive editing (stage 6.1a) ────────────────────────────────────
+// Nothing on this side registers the field: cloneNote copies the whole object
+// and each command touches only its own fields. That is a property of how the
+// commands happen to be written, so it is pinned here — a command rewritten to
+// rebuild the note field by field would otherwise drop every dynamic silently.
+
+const KEEPS_DYNAMIC = [
+  ['set_pitch', { type: 'set_pitch', ref: noteRef(0, 0, 0), symbol: '5' }],
+  ['set_rest', { type: 'set_rest', ref: noteRef(0, 0, 0) }],
+  ['set_accidental', { type: 'set_accidental', ref: noteRef(0, 0, 0), accidental: '#' }],
+  ['set_octave', { type: 'set_octave', ref: noteRef(0, 0, 0), delta: 1 }],
+  ['set_duration', { type: 'set_duration', ref: noteRef(0, 0, 0), duration: 0.5 }],
+  ['toggle_dot', { type: 'toggle_dot', ref: noteRef(0, 0, 0) }],
+];
+
+for (const [name, cmd] of KEEPS_DYNAMIC) {
+  test(`${name} keeps the note's dynamic, and undo restores the note exactly`, () => {
+    const doc = makeDoc();
+    doc.sections[0].measures[0][0].dynamic = 'mf';
+    const before = clone(doc);
+    const inverse = applyCommand(doc, cmd);
+    assert.ok(inverse, 'command applied');
+    assert.equal(doc.sections[0].measures[0][0].dynamic, 'mf');
+    applyCommand(doc, inverse);
+    assert.deepEqual(doc, before);
+  });
+}
+
+test('deleting a note takes its dynamic with it, and undo brings both back', () => {
+  const doc = makeDoc();
+  doc.sections[0].measures[0][0].dynamic = 'sfz';
+  const before = clone(doc);
+  const history = new EditHistory(doc);
+  history.do({ type: 'delete_note', ref: noteRef(0, 0, 0) });
+  assert.ok(doc.sections[0].measures[0].every((n) => n.dynamic !== 'sfz'));
+  history.undo();
+  assert.deepEqual(doc, before);
+});

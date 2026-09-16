@@ -130,6 +130,12 @@ class JianpuNote:
     # text stream) means inserting/deleting notes never desyncs the lyrics — see
     # docs/修复计划2与简谱编辑器规划.md's B10.4 for the rationale.
     lyrics: dict[int, tuple[str, bool]] = field(default_factory=dict)
+    # A LilyPond absolute dynamic mark attached to this note, without its
+    # backslash ('p', 'mf', 'sfz', ...), or '' for none. Anchored to the note
+    # for the same reason lyrics are: jianpu-ly applies ``\p`` to the
+    # preceding note, so inserting or deleting notes must not move it. The
+    # allowed values are ``primitives.DYNAMIC_MARKS``.
+    dynamic: str = ''
 
 
 @dataclass

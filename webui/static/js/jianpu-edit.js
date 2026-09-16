@@ -11,7 +11,11 @@
 //   doc  = { title, composer, key_header, tempo, sections: [section, ...] }
 //   sect = { time_sig, measures: [[note, ...], ...] }
 //   note = { symbol, accidental, upper_dots, lower_dots, duration, duration_dots,
-//            midi, is_rest }
+//            midi, is_rest, lyrics, dynamic }
+//
+// 新字段不需要在这一侧逐个登记：cloneNote 用展开运算整份复制，命令只改自己负责
+// 的那几个字段，所以 lyrics（5.2.5）和 dynamic（6.1a）都会原样活过图形编辑。真正
+// 要逐个点名的是回程——Python 侧 doc_json._note_from_raw 是手写的字段表。
 //
 // 本阶段刻意**不做**"把模型写回文本"——那属于 5.3，而且要先定计划文档里记的那条
 // 甲/乙抉择（含 🟡 档语法的文件要不要开放图形编辑）。这里的设计对两条路都中立。
