@@ -35,7 +35,9 @@ written.
 ``JianpuNote.dynamic`` (阶段6.1a) is checked against
 ``primitives.DYNAMIC_MARKS`` and dropped to ``''`` otherwise. It is written
 verbatim into the LilyPond input, so a value that is not a real dynamic
-would not produce a wrong mark — it would make LilyPond reject the file. Coercing here — at the one place untrusted data enters — keeps every
+would not produce a wrong mark — it would make LilyPond reject the file.
+``hairpin_start`` is held to ``'<'``/``'>'``/``''`` and ``hairpin_end`` to a
+real bool for the same reason. Coercing here — at the one place untrusted data enters — keeps every
 downstream consumer able to assume the declared types hold.
 """
 from __future__ import annotations
@@ -44,7 +46,12 @@ from dataclasses import asdict
 from typing import Any
 
 from ...config import JianpuDoc, JianpuNote, JianpuSection
-from .primitives import DYNAMIC_MARKS, jianpu_note_to_midi, key_header_tonic_semitone
+from .primitives import (
+    DYNAMIC_MARKS,
+    HAIRPIN_STARTS,
+    jianpu_note_to_midi,
+    key_header_tonic_semitone,
+)
 
 
 def jianpu_doc_to_dict(doc: JianpuDoc) -> dict:
@@ -120,6 +127,10 @@ def _note_from_raw(raw: Any) -> JianpuNote:
         # has to be named here: leaving it off would let every dynamic reach
         # the editor and then vanish on the first graphical edit.
         dynamic=_dynamic_from_raw(raw.get('dynamic')),
+        hairpin_start=(raw.get('hairpin_start')
+                       if raw.get('hairpin_start') in HAIRPIN_STARTS else ''),
+        # `is True`, not truthiness: a string "false" must not become a \!.
+        hairpin_end=raw.get('hairpin_end') is True,
     )
 
 

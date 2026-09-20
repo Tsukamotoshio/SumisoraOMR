@@ -98,6 +98,18 @@ function edJumpTo(start, end) {
   edSyncHighlightScroll();
 }
 
+// 每类校验警告的提示文案：单条时点名行号，多条时计数。新增一种警告 code 时在这里
+// 登记；漏登记的会退回到通用措辞，不会借用别的种类的话。
+const WARNING_TOASTS = {
+  'measure-mismatch': { one: 'w.ed.lint.warning_at', many: 'w.ed.lint.warnings_toast' },
+  'mark-no-note': { one: 'w.ed.lint.mark_no_note_at', many: 'w.ed.lint.mark_no_note_n' },
+  'dynamic-twice': { one: 'w.ed.lint.dynamic_twice_at', many: 'w.ed.lint.dynamic_twice_n' },
+  'hairpin-twice': { one: 'w.ed.lint.hairpin_twice_at', many: 'w.ed.lint.hairpin_twice_n' },
+  'hairpin-end-twice': { one: 'w.ed.lint.hairpin_end_twice_at', many: 'w.ed.lint.hairpin_end_twice_n' },
+  'hairpin-unterminated': { one: 'w.ed.lint.hairpin_unterminated_at', many: 'w.ed.lint.hairpin_unterminated_n' },
+  generic: { one: 'w.ed.lint.warning_generic_at', many: 'w.ed.lint.warnings_generic' },
+};
+
 // 汇总而非刷屏：同类问题合并计数一条 toast；诊断集合不变时不重复弹出。
 function edShowLintToasts(diagnostics) {
   const errors = diagnostics.filter((d) => d.severity === 'error');
@@ -115,15 +127,20 @@ function edShowLintToasts(diagnostics) {
       severity: 'error', onClick: () => edJumpTo(errors[0].start, errors[0].end),
     });
   }
-  if (warnings.length === 1) {
-    const wDiag = warnings[0];
-    toast(t('w.ed.lint.warning_at', { line: wDiag.line, got: wDiag.params.got, expected: wDiag.params.expected }), {
-      severity: 'warning', onClick: () => edJumpTo(wDiag.start, wDiag.end),
-    });
-  } else if (warnings.length > 1) {
-    toast(t('w.ed.lint.warnings_toast', { n: warnings.length }), {
-      severity: 'warning', onClick: () => edJumpTo(warnings[0].start, warnings[0].end),
-    });
+  // 警告按种类各弹一条：各类的措辞与参数都不同，混在一起只能说个笼统的数，
+  // 而用"小节拍数不符"去概括一个力度位置问题就是在说错话。
+  const groups = new Map();
+  for (const wDiag of warnings) {
+    if (!groups.has(wDiag.code)) groups.set(wDiag.code, []);
+    groups.get(wDiag.code).push(wDiag);
+  }
+  for (const [code, list] of groups) {
+    const keys = WARNING_TOASTS[code] || WARNING_TOASTS.generic;
+    const first = list[0];
+    const text = list.length === 1
+      ? t(keys.one, { line: first.line, ...first.params })
+      : t(keys.many, { n: list.length });
+    toast(text, { severity: 'warning', onClick: () => edJumpTo(first.start, first.end) });
   }
 }
 

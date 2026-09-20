@@ -18,22 +18,34 @@ them), and ``primitives.build_lyric_lines`` already wrote them back out, so
 only the reading half was missing — see ``_apply_lyric_line``.
 
 **Dynamics** (阶段6.1a) are parsed too, and only LilyPond's own absolute
-marks (``primitives.DYNAMIC_MARKS``). A dynamic attaches to the note written
-just before it, which is how jianpu-ly reads it. Three placements are
-rejected, each because the real jianpu-ly → LilyPond chain was run on it and
-silently lost or discarded the mark while still exiting 0 and producing a
-PDF:
+marks (``primitives.DYNAMIC_MARKS``); so are **hairpins** (``\\<`` ``\\>``
+``\\!``). A mark attaches to the note written just before it. When its measure
+has no note before it -- first in a measure, or first in the piece -- it
+attaches to the *next* note instead, even across a barline: rendered through
+the real jianpu-ly and LilyPond, ``| \\p 5`` is pixel-identical to ``| 5 \\p``, and
+an empty measure holding only a mark matches that mark written after the
+following measure's first note. LilyPond does print "AbsoluteDynamicEvent
+缺少附属对象" for these, but the warning does not mean the mark is lost. An
+earlier version of this parser concluded exactly that from the warning text
+alone and rejected these placements; the renders show otherwise.
 
-* first thing in a measure (``| \\p 5``) or in the whole piece — LilyPond
-  warns ``AbsoluteDynamicEvent`` has nothing to attach to, and drops it. It
-  is *not* re-attached to the previous measure's last note: that would turn
-  a mark that never rendered into one that does, changing what the file means;
-* two on one note (``1 \\p \\f``) — LilyPond reports the events conflict and
-  discards one;
-* anything outside the whitelist, including a wrong case (``\\PP``) — a
+Rejected, each confirmed by rendering rather than by reading a warning:
+
+* a mark with no note after it either -- at the end of a section or of the
+  piece. That one really is lost (the page matches one without it), and
+  LilyPond adds a programming error;
+* a second dynamic, a second hairpin start or a second ``\\!`` on one note.
+  LilyPond keeps the first of two dynamics or starts and discards the later
+  one (the page matches the first alone); a second ``\\!`` changes nothing.
+  The per-note model holds one of each either way;
+* anything outside the whitelist, including a wrong case (``\\PP``) -- a
   LilyPond error.
 
-The remaining 🟡-tier syntax (ties, grace notes, hairpins, repeat brackets,
+An *unfinished* hairpin is accepted although LilyPond drops it: it is
+representable, and it is the normal state of a line someone is still typing.
+The real-time linter is what warns about it.
+
+The remaining 🟡-tier syntax (ties, grace notes, repeat brackets,
 ...) and the ⚪ explicitly-excluded constructs (``LP: ... :LP``, ``chords=``
 and friends) are still **not** parsed — a ``JianpuParseError`` is raised
 rather than silently dropping them, per that doc's §3 rule ("解析器必须报错，
@@ -56,6 +68,7 @@ import re
 from ...config import JianpuDoc, JianpuNote, JianpuSection
 from .primitives import (
     DYNAMIC_MARKS,
+    HAIRPIN_STARTS,
     jianpu_note_to_midi,
     key_header_tonic_semitone,
     lyric_target_notes,
@@ -150,31 +163,43 @@ def _decode_note_or_dash(word: _Word) -> JianpuNote:
     raise JianpuParseError('非法记号，不属于本解析器覆盖的 🟢 文法', word.line, word.col, word.text)
 
 
-def _attach_dynamic(measure: list[JianpuNote], word: _Word) -> None:
-    """Attach a ``\\mark`` word to the last note of *measure*.
+def _check_mark_name(word: _Word) -> None:
+    """Raise unless *word* is a dynamic mark or a hairpin (``\\<`` ``\\>`` ``\\!``)."""
+    name = word.text[1:]
+    if name in DYNAMIC_MARKS or name in HAIRPIN_STARTS or name == '!':
+        return
+    if name.lower() in DYNAMIC_MARKS:
+        message = f'力度记号区分大小写，应写作 \\{name.lower()}'
+    else:
+        message = ('不认识的反斜杠记号：只支持 LilyPond 的力度记号（如 \\p \\mf \\sfz）'
+                   '和渐强渐弱（\\< \\> \\!）')
+    raise JianpuParseError(message, word.line, word.col, word.text)
 
-    See the module docstring for why each rejected placement is rejected;
-    every one of them was checked against the real jianpu-ly and LilyPond.
+
+def _attach_mark(target: JianpuNote, word: _Word) -> None:
+    """Attach an already-checked mark to *target*, refusing a second of its kind.
+
+    See the module docstring for what LilyPond does with a second one; the
+    renders showed it keeps the first, hence the wording below.
     """
     name = word.text[1:]
-    if name not in DYNAMIC_MARKS:
-        if name.lower() in DYNAMIC_MARKS:
-            message = f'力度记号区分大小写，应写作 \\{name.lower()}'
-        else:
-            message = '不认识的反斜杠记号：只支持 LilyPond 的力度记号（如 \\p \\mf \\f \\sfz）'
-        raise JianpuParseError(message, word.line, word.col, word.text)
-    if not measure:
-        # 写在小节开头或全曲开头：LilyPond 找不到可附着的音符，静默丢弃（exit 0、照样出 PDF）
-        raise JianpuParseError(
-            '力度记号前面没有音符——写在小节开头或全曲开头时 LilyPond 会静默丢弃它，'
-            '请写在它所修饰的那个音符后面', word.line, word.col, word.text)
-    target = measure[-1]
-    if target.dynamic:
-        # 同一个音挂两个：LilyPond 报“与事件冲突 / 废除事件”，只保留其中一个
-        raise JianpuParseError(
-            f'这个音符已经有力度记号 \\{target.dynamic}——LilyPond 只会保留其中一个',
-            word.line, word.col, word.text)
-    target.dynamic = name
+    if name == '!':
+        if target.hairpin_end:
+            raise JianpuParseError('这个音符上已经有 \\! 了，重复的没有作用',
+                                   word.line, word.col, word.text)
+        target.hairpin_end = True
+    elif name in HAIRPIN_STARTS:
+        if target.hairpin_start:
+            raise JianpuParseError(
+                f'这个音符上已经开始了 \\{target.hairpin_start}——LilyPond 只保留先写的那个',
+                word.line, word.col, word.text)
+        target.hairpin_start = name
+    else:
+        if target.dynamic:
+            raise JianpuParseError(
+                f'这个音符已经有力度记号 \\{target.dynamic}——LilyPond 只保留先写的那个',
+                word.line, word.col, word.text)
+        target.dynamic = name
 
 
 def _apply_lyric_line(section: JianpuSection, line: str) -> None:
@@ -233,6 +258,9 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
     current_section: JianpuSection | None = None
     current_measure: list[JianpuNote] = []
     pending_lyrics: list[tuple[JianpuSection, str]] = []
+    # 前面没有音符可挂的记号（小节开头/全曲开头），等下一个音符出现时挂上去——
+    # 实测与写在那个音符后面逐像素一致，跨小节线也一样。
+    pending_marks: list[_Word] = []
 
     def close_measure_on_bar() -> None:
         """`|` always ends a measure — even an empty one (`| |`) is a real,
@@ -241,6 +269,15 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
         if current_section is not None:
             current_section.measures.append(current_measure)
         current_measure = []
+
+    def reject_orphaned_marks() -> None:
+        """A mark still waiting at the end of a section or of the input has no
+        note left to attach to -- the one placement that really is lost."""
+        if pending_marks:
+            first = pending_marks[0]
+            raise JianpuParseError(
+                '记号后面没有音符可以附着——写在分段或全曲的最末尾时 LilyPond 会把它丢掉',
+                first.line, first.col, first.text)
 
     def flush_pending_defensively() -> None:
         """Called at a section boundary (NextPart) or EOF, where a
@@ -257,6 +294,7 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
             close_measure_on_bar()
             continue
         if text == 'NextPart':
+            reject_orphaned_marks()
             flush_pending_defensively()
             current_section = None
             continue
@@ -278,6 +316,7 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
         if m:
             # 拍号总是开启一个新 section——真实文件里 NextPart 后一定紧跟一条
             # 拍号行（§1.6 更正），开局第一条拍号行同理开启第 0 个 section。
+            reject_orphaned_marks()
             flush_pending_defensively()
             current_section = JianpuSection(time_sig=text)
             sections.append(current_section)
@@ -293,10 +332,19 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
             # 拍号缺失（不应发生在真实文件里,但要给出可定位的错误而不是 None 解引用）
             raise JianpuParseError('小节内容出现在拍号声明之前', word.line, word.col, text)
         if text.startswith('\\'):
-            _attach_dynamic(current_measure, word)
+            _check_mark_name(word)
+            if current_measure:
+                _attach_mark(current_measure[-1], word)
+            else:
+                pending_marks.append(word)
             continue
-        current_measure.append(_decode_note_or_dash(word))
+        note = _decode_note_or_dash(word)
+        current_measure.append(note)
+        for mark in pending_marks:
+            _attach_mark(note, mark)
+        pending_marks.clear()
 
+    reject_orphaned_marks()
     flush_pending_defensively()
 
     for section, lyric_line in pending_lyrics:

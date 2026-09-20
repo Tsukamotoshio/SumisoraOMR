@@ -390,6 +390,39 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.lint.warning_at": {"zh": "第 {line} 行小节拍数不符（实际 {got} 拍，期望 {expected} 拍）",
                              "en": "Line {line}: measure duration mismatch ({got} beats, expected {expected})"},
     "w.ed.lint.warnings_toast": {"zh": "{n} 个小节拍数不符", "en": "{n} measures have a duration mismatch"},
+    # 力度记号与渐强渐弱（阶段6.1a）。每条说"会被丢掉"的，都是把写法拿真实 LilyPond
+    # 渲染、与不写它的版本逐像素对比确认过的——不是看警告文字推断的。措辞说后果而
+    # 不说"非法"：记号本身合法，导出照常成功，只是 PDF 里少了东西。
+    # 注意：写在小节开头的记号**不在**此列，它会挂到下一个音符上、渲染完全正常。
+    "w.ed.lint.mark_no_note_at": {
+        "zh": "第 {line} 行：“{token}” 后面没有音符可以附着，导出时会被丢掉",
+        "en": "Line {line}: “{token}” has no note after it to attach to and will be dropped on export"},
+    "w.ed.lint.mark_no_note_n": {"zh": "{n} 个记号后面没有音符可以附着，导出时会被丢掉",
+                                 "en": "{n} marks have no note after them and will be dropped on export"},
+    "w.ed.lint.dynamic_twice_at": {
+        "zh": "第 {line} 行：这个音符已经有力度记号，“{token}” 导出时会被丢掉",
+        "en": "Line {line}: this note already has a dynamic, so “{token}” will be dropped on export"},
+    "w.ed.lint.dynamic_twice_n": {"zh": "{n} 个音符挂了不止一个力度记号，多出的导出时会被丢掉",
+                                  "en": "{n} notes carry more than one dynamic; the extra ones will be dropped on export"},
+    "w.ed.lint.hairpin_twice_at": {
+        "zh": "第 {line} 行：这个音符上已经开始了一个渐强或渐弱，“{token}” 导出时会被丢掉",
+        "en": "Line {line}: a crescendo or decrescendo already starts on this note, so “{token}” will be dropped on export"},
+    "w.ed.lint.hairpin_twice_n": {"zh": "{n} 个音符上开始了不止一个渐强或渐弱，多出的导出时会被丢掉",
+                                  "en": "{n} notes start more than one crescendo or decrescendo; the extra ones will be dropped on export"},
+    "w.ed.lint.hairpin_end_twice_at": {
+        "zh": "第 {line} 行：这个音符上已经有 “\\!” 了，重复的没有作用",
+        "en": "Line {line}: this note already has a “\\!”; the repeated one does nothing"},
+    "w.ed.lint.hairpin_end_twice_n": {"zh": "{n} 处重复的 “\\!”，没有作用",
+                                      "en": "{n} repeated “\\!” marks that do nothing"},
+    "w.ed.lint.hairpin_unterminated_at": {
+        "zh": "第 {line} 行：“{token}” 开始的渐强或渐弱没有结束，导出时整个会被丢掉，连同这个音符上的力度记号"
+              "——请在结束的音符后面写 “\\!” 或一个力度记号",
+        "en": "Line {line}: the crescendo or decrescendo started by “{token}” never ends, so it will be dropped "
+              "on export together with any dynamic on that note — end it with “\\!” or a dynamic"},
+    "w.ed.lint.hairpin_unterminated_n": {"zh": "{n} 个渐强或渐弱没有结束，导出时会被丢掉",
+                                         "en": "{n} crescendos or decrescendos never end and will be dropped on export"},
+    "w.ed.lint.warning_generic_at": {"zh": "第 {line} 行有需要注意的地方", "en": "Line {line} needs attention"},
+    "w.ed.lint.warnings_generic": {"zh": "{n} 处需要注意", "en": "{n} places need attention"},
     "w.ed.lint.export_blocked": {"zh": "存在非法记号，请先修正后再导出", "en": "Fix the invalid token(s) before exporting"},
 }
 

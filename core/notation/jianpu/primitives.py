@@ -474,6 +474,8 @@ def jianpu_octave_symbol(upper_dots: int, lower_dots: int) -> str:
 # Hairpins (``\<`` ``\>`` ``\!``) are deliberately absent: they are spanner
 # start/stop events rather than a mark on one note, which is a different
 # shape of data — closer to a repeat than to a per-note attribute.
+HAIRPIN_STARTS: frozenset[str] = frozenset(('<', '>'))
+
 DYNAMIC_MARKS: frozenset[str] = frozenset((
     'ppppp', 'pppp', 'ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff', 'ffff', 'fffff',
     'fp', 'sf', 'sfp', 'sff', 'sfz', 'fz', 'sp', 'spp', 'rfz', 'n',
@@ -481,21 +483,35 @@ DYNAMIC_MARKS: frozenset[str] = frozenset((
 
 
 def jianpu_note_token(note: JianpuNote) -> str:
-    """Produce the jianpu-ly token string for a single note, dynamic included.
+    """Produce the jianpu-ly token string for a single note, with its marks.
 
-    The dynamic goes right after the note's *head* token, before any
+    Marks go right after the note's *head* token, before any
     continuation dashes: ``1 \\f - - -``, not ``1 - - - \\f``. jianpu-ly attaches a
     dynamic to the note written just before it, so after the last dash it
     would land three beats late instead of on the attack.
 
-    A value outside ``DYNAMIC_MARKS`` is not written: it could only reach here
-    through a bug, and writing it would make LilyPond reject the whole file.
+    A value outside ``DYNAMIC_MARKS`` / ``HAIRPIN_STARTS`` is not written: it
+    could only reach here through a bug, and writing it would make LilyPond
+    reject the whole file.
+
+    The order is always end, dynamic, start: close what was running, set the
+    level, open what comes next. It is a choice, not a requirement -- every
+    permutation was rendered through jianpu-ly and LilyPond and gave
+    pixel-identical pages and byte-identical MIDI -- so text written in
+    another order is normalised without changing what is heard or printed.
     """
     token = _jianpu_note_token_bare(note)
-    if note.dynamic not in DYNAMIC_MARKS:
+    marks = []
+    if note.hairpin_end:
+        marks.append('\\!')
+    if note.dynamic in DYNAMIC_MARKS:
+        marks.append('\\' + note.dynamic)
+    if note.hairpin_start in HAIRPIN_STARTS:
+        marks.append('\\' + note.hairpin_start)
+    if not marks:
         return token
     head, _, tail = token.partition(' ')
-    return f'{head} \\{note.dynamic}' + (f' {tail}' if tail else '')
+    return ' '.join([head, *marks] + ([tail] if tail else []))
 
 
 def _jianpu_note_token_bare(note: JianpuNote) -> str:
@@ -585,8 +601,9 @@ def clone_jianpu_note(note: JianpuNote, duration: float, is_first_fragment: bool
     * the syllable — jianpu-ly counts every emitted token as one lyric slot, so
       carrying it onto every fragment would desync all following lyrics by
       the fragment count minus one;
-    * the dynamic — it marks where the note begins; repeating it on each
-      fragment would print the same mark several times in a row.
+    * the dynamic and any hairpin start/end — they mark where the note begins;
+      repeating them on each fragment would print the same mark several
+      times in a row.
     """
     normalized_duration = normalize_jianpu_duration(duration)
     return JianpuNote(
@@ -600,6 +617,8 @@ def clone_jianpu_note(note: JianpuNote, duration: float, is_first_fragment: bool
         is_rest=note.is_rest,
         lyrics=note.lyrics if is_first_fragment else {},
         dynamic=note.dynamic if is_first_fragment else '',
+        hairpin_start=note.hairpin_start if is_first_fragment else '',
+        hairpin_end=note.hairpin_end if is_first_fragment else False,
     )
 
 

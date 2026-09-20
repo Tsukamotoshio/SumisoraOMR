@@ -136,6 +136,14 @@ class JianpuNote:
     # preceding note, so inserting or deleting notes must not move it. The
     # allowed values are ``primitives.DYNAMIC_MARKS``.
     dynamic: str = ''
+    # Hairpins, as jianpu-ly writes them: post-events on the note written just
+    # before, so they anchor to notes like a dynamic does. ``hairpin_start`` is
+    # '<' (crescendo) or '>' (decrescendo) when one begins on this note;
+    # ``hairpin_end`` is True for a ``\!`` on this note. Pairing a start with its
+    # end is left to whoever draws them: storing the two halves where they were
+    # written is what keeps an unfinished one (normal while typing) representable.
+    hairpin_start: str = ''
+    hairpin_end: bool = False
 
 
 @dataclass

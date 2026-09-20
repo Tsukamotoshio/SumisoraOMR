@@ -141,6 +141,159 @@ test('a backslash word that is not a LilyPond dynamic is still an error', () => 
   }
 });
 
+// ── dynamics and hairpins (stage 6.1a) ───────────────────────────────────────
+// Same placements as tests/test_jianpu_dynamics.py's parser tests. Every rule was
+// set by rendering the placement through the real jianpu-ly + LilyPond and
+// comparing pages pixel for pixel, not by reading LilyPond's warnings. A mark
+// with no note before it in its measure attaches to the NEXT note -- the page is
+// identical to writing it after that note -- so it is fine. An earlier version of
+// this linter took LilyPond's "缺少附属对象" warning for a loss and flagged it.
+// The ones that really lose something are warnings, not errors: the marks are
+// legal and export still succeeds, and B5 lets only illegal tokens block export.
+
+function markDiags(body) {
+  const { diagnostics } = lintJianpuText(body);
+  return {
+    errors: errorsOf(diagnostics),
+    warnings: warningsOf(diagnostics),
+    infos: infosOf(diagnostics),
+  };
+}
+const codesOf = (d) => d.warnings.map((w) => w.code);
+const textOf = (body, diag) => body.slice(diag.start, diag.end);
+
+test('a dynamic first in a measure attaches to the next note and is fine', () => {
+  const d = markDiags('4/4\n\n1 2 3 4 | \\p 5 6 7 1 |\n');
+  assert.deepEqual(d.errors, []);
+  assert.deepEqual(d.warnings, [], 'renders exactly like "5 \\p": nothing to warn about');
+  assert.equal(d.infos.length, 1);
+});
+
+test('a dynamic first in the piece attaches to the first note and is fine', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n\\p 1 2 3 4 |\n')), []);
+});
+
+test('a mark in an otherwise empty measure waits for the next measure', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 2 3 4 | \\p | 5 6 7 1 |\n')), []);
+});
+
+test('a mark after the last note of the piece is dropped', () => {
+  const body = '4/4\n\n1 2 3 4 | 5 6 7 1 | \\p\n';
+  const d = markDiags(body);
+  assert.deepEqual(codesOf(d), ['mark-no-note']);
+  assert.equal(textOf(body, d.warnings[0]), '\\p');
+  assert.deepEqual(d.errors, [], 'a warning: export is not blocked');
+});
+
+test('a mark after the last note of a section is dropped', () => {
+  // Both boundaries end a section: NextPart, and a time-signature line (which
+  // is what normally follows NextPart, but also starts a section on its own).
+  for (const body of [
+    '4/4\n\n1 2 3 4 | \\f\nNextPart\n4/4\n5 6 7 1 |\n',
+    '4/4\n\n1 2 3 4 | \\f\nNextPart\n5 6 7 1 |\n',
+    '4/4\n\n1 2 3 4 | \\f\n3/4\n5 6 7 |\n',
+  ]) {
+    assert.deepEqual(codesOf(markDiags(body)), ['mark-no-note'], body);
+  }
+});
+
+test('a second dynamic on the same note warns on the second one only', () => {
+  const body = '4/4\n\n1 \\p \\f 2 3 4 |\n';
+  const d = markDiags(body);
+  assert.deepEqual(codesOf(d), ['dynamic-twice']);
+  assert.equal(textOf(body, d.warnings[0]), '\\f', 'the page matches the first alone');
+  assert.equal(d.infos.length, 1);
+});
+
+test('a waiting dynamic and one written after that same note clash', () => {
+  const body = '4/4\n\n1 2 3 4 | \\p 5 \\f 6 7 1 |\n';
+  const d = markDiags(body);
+  assert.deepEqual(codesOf(d), ['dynamic-twice']);
+  assert.equal(textOf(body, d.warnings[0]), '\\f');
+});
+
+test('dynamics on different notes are both fine', () => {
+  const d = markDiags('4/4\n\n1 \\p 2 \\f 3 4 |\n');
+  assert.deepEqual(d.warnings, []);
+  assert.equal(d.infos.length, 2);
+});
+
+test('a rest or a continuation dash counts as the note a mark attaches to', () => {
+  for (const body of ['4/4\n\n0 \\mf 2 3 4 |\n', '4/4\n\n1 - \\ff 3 4 |\n']) {
+    const d = markDiags(body);
+    assert.deepEqual(d.warnings, [], body);
+    assert.deepEqual(d.errors, [], body);
+  }
+});
+
+test('valid hairpins are info, no longer the bad-token error they used to be', () => {
+  const d = markDiags('4/4\n\n1 \\< 2 3 4 \\! |\n');
+  assert.deepEqual(d.errors, []);
+  assert.deepEqual(d.warnings, []);
+  assert.equal(d.infos.length, 2);
+});
+
+test('a hairpin closed across a barline is fine', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 \\> 2 3 4 | 5 6 7 1 \\! |\n')), []);
+});
+
+test('a dynamic on a later note closes a hairpin', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 \\< 2 3 4 | 5 6 7 1 \\f |\n')), []);
+});
+
+test('a new start on a later note closes the earlier one', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 \\< 2 3 \\> 4 | 5 6 7 1 \\! |\n')), []);
+});
+
+test('an end first in a measure waits for the next note and still closes', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 \\< 2 3 4 | \\! 5 6 7 1 |\n')), []);
+});
+
+test('an unfinished hairpin warns, pointing at where it starts', () => {
+  const body = '4/4\n\n1 2 \\< 3 4 | 5 6 7 1 |\n';
+  const d = markDiags(body);
+  assert.deepEqual(codesOf(d), ['hairpin-unterminated']);
+  assert.equal(textOf(body, d.warnings[0]), '\\<');
+});
+
+test('an end on the same note as the start does not close it', () => {
+  // Rendered: "crescendo 缺少结尾" and no wedge, in either order.
+  for (const body of ['4/4\n\n1 \\< \\! 2 3 4 |\n', '4/4\n\n1 \\! \\< 2 3 4 |\n']) {
+    assert.deepEqual(codesOf(markDiags(body)), ['hairpin-unterminated'], body);
+  }
+});
+
+test('a dynamic on the start note does not close it either', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 \\< \\p 2 3 4 |\n')), ['hairpin-unterminated']);
+});
+
+test('an unfinished hairpin ends with its section', () => {
+  // The \! in the next section has nothing of its own to close: no second warning.
+  for (const body of [
+    '4/4\n\n1 \\< 2 3 4 |\nNextPart\n4/4\n5 6 7 1 \\! |\n',
+    '4/4\n\n1 \\< 2 3 4 |\nNextPart\n5 6 7 1 \\! |\n',
+    '4/4\n\n1 \\< 2 3 4 |\n3/4\n5 6 7 \\! |\n',
+  ]) {
+    assert.deepEqual(codesOf(markDiags(body)), ['hairpin-unterminated'], body);
+  }
+});
+
+test('two starts on one note warn on the later one', () => {
+  const body = '4/4\n\n1 \\< \\> 2 3 4 \\! |\n';
+  const d = markDiags(body);
+  assert.deepEqual(codesOf(d), ['hairpin-twice']);
+  assert.equal(textOf(body, d.warnings[0]), '\\>');
+});
+
+test('a repeated end warns', () => {
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 \\< 2 3 4 \\! \\! |\n')), ['hairpin-end-twice']);
+});
+
+test('a stray end with nothing running is fine', () => {
+  // Rendered: LilyPond ignores it without a word.
+  assert.deepEqual(codesOf(markDiags('4/4\n\n1 2 3 4 \\! |\n')), []);
+});
+
 test('treats a bracketed grace-note/tuplet/repeat region as one opaque info span, not per-word errors', () => {
   const { diagnostics } = lintJianpuText("4/4\n\n1 g[#45] 1 |\n3[ q1 q1 q1 ] |\nR4{ 1 2 } |\n");
   assert.deepEqual(errorsOf(diagnostics), []);

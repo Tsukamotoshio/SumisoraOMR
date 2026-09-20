@@ -46,8 +46,13 @@ function isDynamicWord(word) {
   return word.length > 1 && word[0] === '\\' && DYNAMIC_MARKS.has(word.slice(1));
 }
 
+// 渐强 \<、渐弱 \>、结束 \!——LilyPond 里是跨音符的起止事件，不在力度记号表里。
+function isHairpinWord(word) {
+  return word === '\\<' || word === '\\>' || word === '\\!';
+}
+
 // 🟡 docs §2 — jianpu-ly 支持、管线未产出：整词即可识别的部分，归 info 级。
-// 力度记号不在这张正则表里，由上面的 isDynamicWord 单独判断（见 isUnproducedWord）。
+// 力度记号不在这张表里：它合不合法还取决于写在哪，由主循环里的力度分支单独判断。
 const UNPRODUCED_WORD_RE = [
   /^~$/,
   /^(Fine|DC|DS|Segno|ToCoda)$/,
@@ -72,7 +77,7 @@ function isHeaderLine(word) {
 }
 
 function isUnproducedWord(word) {
-  return isDynamicWord(word) || UNPRODUCED_WORD_RE.some((re) => re.test(word));
+  return UNPRODUCED_WORD_RE.some((re) => re.test(word));
 }
 
 function isExcludedWord(word) {
@@ -157,6 +162,66 @@ function lintJianpuText(text) {
   let bracketDepth = 0;
   let bracketStartWord = null;
 
+  // 力度与渐强渐弱，规则与 core/notation/jianpu/parser.py 相同，每一条都是把写法
+  // 拿真实 jianpu-ly + LilyPond 渲染、逐像素对比得出的，不是看警告文字推断的：
+  // 记号挂在前一个音符上；小节里前面没有音符时（小节开头、全曲开头）它挂到**下一个**
+  // 音符上，跨小节线也一样——渲染与写在那个音符后面完全相同。LilyPond 对这种写法
+  // 会报"缺少附属对象"，但并没有丢任何东西（早先一版正是被这条警告误导，把它当成
+  // 丢弃来报错）。真正丢掉的只有：分段/全曲末尾后面再没有音符的记号、同一个音上
+  // 后写的那个同类记号、以及没收尾的渐强渐弱（连同它起点那个音上的力度记号）。
+  let noteMarks = null;       // 最近一个音符已挂的记号 { dynamic, start, end, index }
+  let noteCount = 0;          // 已出现的音符个数（含休止、延音线），用来给渐强起点排先后
+  let waitingMarks = [];      // 前面没有音符、正等着下一个音符的记号
+  let openHairpin = null;     // 尚未收尾的渐强/渐弱 { word, index }
+
+  function pushAt(w, severity, code, messageKey, params) {
+    diagnostics.push({
+      severity, code,
+      start: w.offset, end: w.offset + w.text.length, line: w.line, col: w.col,
+      messageKey, params: params || {},
+    });
+  }
+
+  // 把记号挂到 marks 代表的那个音符上。归 warning 而不是 error：B5 不阻断原则只让
+  // **非法 token** 在导出时硬拦截，这里的记号本身合法、导出也照常成功，性质和
+  // "小节拍数不符"一样。
+  function attachMark(w, marks) {
+    const word = w.text;
+    if (word === '\\!') {
+      // 重复的 \! 实测不改变任何渲染，所以措辞只说"没有作用"，不说"会丢"。
+      if (marks.end) { pushAt(w, 'warning', 'hairpin-end-twice', 'w.ed.lint.hairpin_end_twice_at', { token: word }); return; }
+      marks.end = true;
+      // \! 只收尾更早的音符上开始的渐强：同一个音上既开始又 \!，实测照样"缺少结尾"。
+      if (openHairpin && openHairpin.index < marks.index) openHairpin = null;
+    } else if (word === '\\<' || word === '\\>') {
+      // 两个开头：渲染与只写第一个完全相同，后写的那个被丢掉。
+      if (marks.start) { pushAt(w, 'warning', 'hairpin-twice', 'w.ed.lint.hairpin_twice_at', { token: word }); return; }
+      marks.start = true;
+      openHairpin = { word: w, index: marks.index };   // 更早开始的那个就此收尾（换方向合法）
+    } else {
+      // 两个力度：渲染与只写第一个完全相同，后写的那个被丢掉。
+      if (marks.dynamic) { pushAt(w, 'warning', 'dynamic-twice', 'w.ed.lint.dynamic_twice_at', { token: word }); return; }
+      marks.dynamic = true;
+      // 后面音符上的力度记号同样能给渐强收尾（实测跨小节线也行）。
+      if (openHairpin && openHairpin.index < marks.index) openHairpin = null;
+    }
+    pushAt(w, 'info', 'unproduced-syntax', 'w.ed.lint.unproduced');
+  }
+
+  // 一个分段（或全文）结束：还在等音符的记号已经没有音符可挂——这是真的会丢的
+  // 情况（实测渲染与不写它相同，LilyPond 还报程序错误）；没收尾的渐强也到此为止。
+  function endOfPart() {
+    for (const w of waitingMarks) {
+      pushAt(w, 'warning', 'mark-no-note', 'w.ed.lint.mark_no_note_at', { token: w.text });
+    }
+    waitingMarks = [];
+    if (openHairpin) {
+      pushAt(openHairpin.word, 'warning', 'hairpin-unterminated', 'w.ed.lint.hairpin_unterminated_at',
+        { token: openHairpin.word.text });
+      openHairpin = null;
+    }
+  }
+
   function flushMeasure(endWord) {
     if (measureStartWord === null) return;
     if (measureHasNote) {
@@ -211,6 +276,7 @@ function lintJianpuText(text) {
     }
     if (word === 'NextPart') {
       flushMeasure(w);
+      endOfPart();
       timesigUnits = 64;
       pendingAnacrusisUnits = null;
       measureStartWord = words[i + 1] || null;
@@ -228,6 +294,7 @@ function lintJianpuText(text) {
     if (isHeaderLine(word)) {
       const tm = TIMESIG_RE.exec(word);
       if (tm) {
+        endOfPart();   // 拍号行开启新分段，同 parser.py（开头或紧跟 NextPart 时是空操作）
         timesigUnits = 64 * Number(tm[1]) / Number(tm[2]);
         pendingAnacrusisUnits = tm[3] ? (ANACRUSIS_UNITS[tm[3]] ?? null) : null;
       }
@@ -259,6 +326,11 @@ function lintJianpuText(text) {
       bracketStartWord = w;
       continue;
     }
+    if (isDynamicWord(word) || isHairpinWord(word)) {
+      if (measureHasNote) attachMark(w, noteMarks);
+      else waitingMarks.push(w);        // 前面没有音符：挂到下一个音符上
+      continue;
+    }
     if (isUnproducedWord(word)) {
       diagnostics.push({
         severity: 'info', code: 'unproduced-syntax',
@@ -276,6 +348,10 @@ function lintJianpuText(text) {
       const base = PREFIX_UNITS[prefix] ?? 16;
       measureUnits += dotted ? base * 1.5 : base;
       measureHasNote = true;
+      noteCount += 1;
+      noteMarks = { dynamic: false, start: false, end: false, index: noteCount };
+      for (const waiting of waitingMarks) attachMark(waiting, noteMarks);
+      waitingMarks = [];
       continue;
     }
 
@@ -286,6 +362,7 @@ function lintJianpuText(text) {
     });
   }
   if (words.length) flushMeasure(words[words.length - 1]);
+  endOfPart();
 
   return { diagnostics };
 }
