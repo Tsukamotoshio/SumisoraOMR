@@ -27,6 +27,11 @@ def generate_outputs(musicxml_path: Path) -> dict[str, str]:
         lines.append(f'M{i + 1}: ' + ' '.join(
             f'{n.symbol}{n.accidental}/u{n.upper_dots}l{n.lower_dots}'
             f'/d{n.duration:g}.{n.duration_dots}/{"R" if n.is_rest else "N"}'
+            # Marks are appended only when present, so adding a field here does
+            # not rewrite the golden of every file that carries none.
+            + (f'/dy={n.dynamic}' if n.dynamic else '')
+            + (f'/hp={n.hairpin_start}' if n.hairpin_start else '')
+            + ('/hp=!' if n.hairpin_end else '')
             for n in m
         ))
     return {'.jly.txt': jly, '.measures.txt': '\n'.join(lines)}

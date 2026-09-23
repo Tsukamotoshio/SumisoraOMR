@@ -2,11 +2,12 @@
 import logging as _logging
 from typing import Optional
 
-from music21 import chord as m21chord, note as m21note, stream
+from music21 import chord as m21chord, dynamics as m21dynamics, note as m21note, stream
 
 from ...config import JianpuNote
 from ...utils import log_message
 from .primitives import (
+    DYNAMIC_MARKS,
     MAX_SANE_BARS,
     _QL_TO_ANACRUSIS_CODE,
     infer_duration_dots,
@@ -221,6 +222,95 @@ def _extract_part_volta_brackets(part) -> list[dict]:
     return out
 
 
+def _extract_part_dynamics(part) -> dict[int, list[tuple[float, str]]]:
+    """Return the dynamic marks of *part*: measure index -> [(offset, mark), ...].
+
+    Measure *index* (0-based, positional), not the printed measure number: a
+    pickup bar is numbered 0 and OMR output sometimes skips numbers, while the
+    jianpu measure list is built by walking the same sequence positionally.
+    Offsets are quarter lengths from the start of their measure, sorted.
+
+    Only the 22 marks LilyPond defines are kept. jianpu-ly passes any
+    backslash word straight through to LilyPond, so letting an unrecognised
+    one out would turn into a LilyPond error, and the editor's parser would
+    refuse to open the file -- the same whitelist rule as stage 6.1a.
+    """
+    found: dict[int, list[tuple[float, str]]] = {}
+    try:
+        measure_streams = list(part.getElementsByClass(stream.Measure))
+    except Exception:
+        return found
+    for idx, measure in enumerate(measure_streams):
+        marks: list[tuple[float, str]] = []
+        for element in measure.recurse().getElementsByClass(m21dynamics.Dynamic):
+            value = str(getattr(element, 'value', '') or '').strip()
+            if value not in DYNAMIC_MARKS:
+                log_message(
+                    f'[jianpu] 第 {idx + 1} 小节的力度记号 "{value}" 不在 LilyPond 的记号表里，已跳过',
+                    _logging.DEBUG,
+                )
+                continue
+            try:
+                offset = float(element.getOffsetInHierarchy(measure))
+            except Exception:
+                offset = float(getattr(element, 'offset', 0.0) or 0.0)
+            marks.append((offset, value))
+        if marks:
+            marks.sort(key=lambda pair: pair[0])
+            found[idx] = marks
+    return found
+
+
+def _attach_dynamics_to_measures(measures: list[list[JianpuNote]],
+                                 dynamics_by_measure: dict[int, list[tuple[float, str]]]) -> None:
+    """Put each mark on the note that sounds it, editing *measures* in place.
+
+    Run on the finished measure list, so the offsets are the ones the text will
+    actually have (repair_jianpu_measure may have trimmed or padded).
+
+    A mark landing between two notes goes on the **later** one, and one left
+    over past the last note of its measure moves to the first note of the next
+    measure. That is what LilyPond itself does with a dynamic that has no note
+    before it -- pixel-verified, see tests/test_jianpu_dynamics.py's header --
+    so the text says what the page will show. A note that already carries a
+    mark keeps it: LilyPond discards the second one, and the editor's parser
+    rejects a file that writes two on one note.
+    """
+    if not dynamics_by_measure:
+        return
+    tol = 0.01
+    carried: list[str] = []          # marks pushed past the end of their measure
+    for idx, notes in enumerate(measures):
+        pending = [(0.0, value) for value in carried]
+        carried = []
+        pending.extend(dynamics_by_measure.get(idx, ()))
+        if not pending:
+            continue
+        starts: list[float] = []
+        running = 0.0
+        for note in notes:
+            starts.append(running)
+            running += float(note.duration or 0.0)
+        for offset, value in pending:
+            target = next((i for i, start in enumerate(starts) if start >= offset - tol), None)
+            if target is None:
+                carried.append(value)
+                continue
+            if notes[target].dynamic:
+                log_message(
+                    f'[jianpu] 第 {idx + 1} 小节同一个音符上有两个力度记号，'
+                    f'保留先出现的 "{notes[target].dynamic}"，丢弃 "{value}"',
+                    _logging.DEBUG,
+                )
+                continue
+            notes[target].dynamic = value
+    for value in carried:
+        log_message(
+            f'[jianpu] 末尾的力度记号 "{value}" 后面已没有音符可附着，已丢弃',
+            _logging.DEBUG,
+        )
+
+
 def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                              _part=None, _voice_id: str = '1',
                              _multi_voice_mode: bool = False,
@@ -428,6 +518,11 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
 
         measures.append(repair_jianpu_measure(measure_notes, measure_length))
 
+    # Dynamics belong to the staff, not to one voice: attaching them to every
+    # voice of a polyphonic part would print the same mark two to four times.
+    if _is_primary_voice:
+        _attach_dynamics_to_measures(measures, _extract_part_dynamics(part))
+
     return measures, time_signature
 
 
@@ -442,6 +537,11 @@ def extract_strict_jianpu_measures(score, key_tonic_semitone: int = 0,
     _part : If provided, use this Part stream directly instead of score.parts[0].
             All voices are merged (flattened) — use extract_jianpu_measures with
             _voice_id for per-voice extraction.
+
+    Dynamics are *not* carried over here. This path re-slices the notes by bar
+    length and ignores the score's own measures, so a source measure index no
+    longer identifies an output measure — the same reason the caller drops the
+    repeat barlines and volta brackets when it falls back to this function.
     """
     part = _part if _part is not None else (score.parts[0] if score.parts else score.flatten())
     # 合并延音线：同小节 start→stop 对合并为单音符；跨小节 tie 的合并音符由
