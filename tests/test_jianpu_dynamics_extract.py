@@ -16,6 +16,7 @@ from core.config import JianpuNote
 from core.notation.jianpu.extract import (
     _attach_dynamics_to_measures,
     _extract_part_dynamics,
+    _rescue_dynamics_from_lyrics,
     extract_jianpu_measures,
 )
 
@@ -200,3 +201,82 @@ class TestThroughTheExtractor:
         doc = parse_jianpu_ly_text(text)
         marks = [n.dynamic for section in doc.sections for m in section.measures for n in m if n.dynamic]
         assert marks == ['p', 'f', 'ff']
+
+
+# ── rescuing a mark OMR read as a lyric (stage 6.1c) ─────────────────────────
+
+class TestRescuedFromLyrics:
+    """OMR sometimes reads the dynamic printed under the staff as a syllable.
+
+    On the local corpus: Bakamitai's ``mf``, Somnus's ``mf`` and
+    Sunset_Waltz's ``PP``. In the first two it is the only lyric in the file,
+    so the whole ``L:`` line exists to print the mark as a word. The fixtures
+    here are synthetic -- all three scores are copyrighted, and the golden
+    corpus holds only public-domain or self-scanned material.
+    """
+
+    def test_a_standalone_syllable_that_is_a_mark_becomes_one(self):
+        measures = [[_note(), _note()]]
+        measures[0][0].lyrics = {1: ('mf', False)}
+        _rescue_dynamics_from_lyrics(measures)
+        assert measures[0][0].dynamic == 'mf'
+        assert measures[0][0].lyrics == {}, 'and it stops being printed as a word'
+
+    def test_the_ocr_spelling_is_normalised(self):
+        # Audiveris read Sunset_Waltz's pp as 'PP'; LilyPond only knows \pp.
+        measures = [[_note()]]
+        measures[0][0].lyrics = {1: ('PP', False)}
+        _rescue_dynamics_from_lyrics(measures)
+        assert measures[0][0].dynamic == 'pp'
+
+    def test_a_syllable_hyphenated_to_the_next_is_a_word(self):
+        measures = [[_note(), _note()]]
+        measures[0][0].lyrics = {1: ('mf', True)}
+        _rescue_dynamics_from_lyrics(measures)
+        assert measures[0][0].dynamic == ''
+        assert measures[0][0].lyrics == {1: ('mf', True)}
+
+    def test_a_syllable_continuing_the_previous_one_is_a_word(self):
+        measures = [[_note(), _note()]]
+        measures[0][0].lyrics = {1: ('sing', True)}
+        measures[0][1].lyrics = {1: ('p', False)}
+        _rescue_dynamics_from_lyrics(measures)
+        assert measures[0][1].dynamic == ''
+
+    def test_a_note_that_already_has_a_mark_keeps_its_lyric(self):
+        # Two readings of different things; dropping one would be a guess.
+        measures = [[_note()]]
+        measures[0][0].dynamic = 'f'
+        measures[0][0].lyrics = {1: ('mf', False)}
+        _rescue_dynamics_from_lyrics(measures)
+        assert measures[0][0].dynamic == 'f'
+        assert measures[0][0].lyrics == {1: ('mf', False)}
+
+    def test_an_ordinary_word_is_left_alone(self):
+        measures = [[_note(), _note()]]
+        measures[0][0].lyrics = {1: ('If', False)}      # Sunset_Waltz has this one
+        measures[0][1].lyrics = {1: ('love', False)}
+        _rescue_dynamics_from_lyrics(measures)
+        assert [n.dynamic for n in measures[0]] == ['', '']
+        assert measures[0][0].lyrics == {1: ('If', False)}
+
+    def test_only_the_matching_verse_is_taken(self):
+        measures = [[_note()]]
+        measures[0][0].lyrics = {1: ('ff', False), 2: ('love', False)}
+        _rescue_dynamics_from_lyrics(measures)
+        assert measures[0][0].dynamic == 'ff'
+        assert measures[0][0].lyrics == {2: ('love', False)}
+
+    def test_the_lyric_line_disappears_when_it_held_only_the_mark(self):
+        # What the two real files look like: one lyric in the whole score.
+        from music21 import stream
+
+        from core.notation.jianpu import build_jianpu_ly_text
+
+        part, ms = _part(2)
+        ms[0].recurse().notes[1].addLyric('mf')
+        score = stream.Score()
+        score.insert(0, part)
+        text = build_jianpu_ly_text(score, title='T')
+        assert r'\mf' in text
+        assert 'L:' not in text and 'mf _' not in text

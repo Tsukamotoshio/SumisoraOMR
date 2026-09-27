@@ -311,6 +311,48 @@ def _attach_dynamics_to_measures(measures: list[list[JianpuNote]],
         )
 
 
+def _rescue_dynamics_from_lyrics(measures: list[list[JianpuNote]]) -> None:
+    """Turn a lyric syllable that is really a dynamic back into a mark.
+
+    OMR reads the dynamic printed under a staff as a lyric now and then. On the
+    local corpus that is 3 files of 40 -- Bakamitai's ``mf``, Sunset_Waltz's
+    ``PP``, Somnus's ``mf`` -- and in two of them it is the *only* lyric in the
+    file, so the whole ``L:`` line exists to print the mark as a word under one
+    note. Without this the mark is both in the wrong place and in the wrong
+    role, and no amount of reading ``<dynamics>`` finds it: it never was one.
+
+    Only a standalone syllable qualifies. One hyphenated to the next, or one
+    continuing the previous, is part of a word (``mf-`` in "mf-ter" would be
+    absurd, but the guard costs nothing and the corpus cannot prove a negative).
+    Case is ignored because the text comes from OCR -- 'PP' for 'pp' -- and the
+    mark is stored in LilyPond's own spelling. A note that already carries a
+    mark is left alone: there the lyric is evidence of something else, and
+    guessing which of the two to keep is worse than printing what was read.
+    """
+    canonical = {mark.lower(): mark for mark in DYNAMIC_MARKS}
+    notes = [note for measure in measures for note in measure]
+    for idx, note in enumerate(notes):
+        if note.dynamic or not note.lyrics:
+            continue
+        for verse, (text, hyphenated) in list(note.lyrics.items()):
+            if hyphenated:
+                continue
+            mark = canonical.get(text.strip().lower())
+            if mark is None:
+                continue
+            # 前一个带本段歌词的音符若把音节连过来，这里就是一个词的后半截。
+            previous = next(
+                (notes[j].lyrics[verse] for j in range(idx - 1, -1, -1) if verse in notes[j].lyrics),
+                None,
+            )
+            if previous is not None and previous[1]:
+                continue
+            note.dynamic = mark
+            del note.lyrics[verse]
+            log_message(f'[jianpu] 歌词里的 "{text}" 认作力度记号 \\{mark}', _logging.DEBUG)
+            break
+
+
 def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
                              _part=None, _voice_id: str = '1',
                              _multi_voice_mode: bool = False,
@@ -522,6 +564,9 @@ def extract_jianpu_measures(score, key_tonic_semitone: int = 0,
     # voice of a polyphonic part would print the same mark two to four times.
     if _is_primary_voice:
         _attach_dynamics_to_measures(measures, _extract_part_dynamics(part))
+    # The rescue runs for every voice, unlike the line above: a misread mark is
+    # a lyric on one particular note, so it belongs to whichever voice owns it.
+    _rescue_dynamics_from_lyrics(measures)
 
     return measures, time_signature
 
