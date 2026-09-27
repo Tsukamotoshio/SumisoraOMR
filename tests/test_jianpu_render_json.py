@@ -160,3 +160,38 @@ def test_total_length_matches_the_end_of_the_last_slot():
     render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
     last = render['slots'][-1]
     assert render['totalLength'] == last['start'] + last['duration']
+
+
+# ── dynamics reaching the renderer (stage 6.1d) ──────────────────────────────
+
+def test_a_dynamic_rides_along_on_the_note_it_belongs_to():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 \\mf 3 4 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert [n.get('dynamic') for n in render['notes']] == [None, 'mf', None, None]
+
+
+def test_notes_without_a_dynamic_carry_no_such_key():
+    # Absent rather than empty: the payload of a score with no dynamics --
+    # nearly all of them -- must stay exactly as it was before 6.1d.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert all('dynamic' not in note for note in render['notes'])
+
+
+def test_a_dynamic_waiting_at_the_start_of_a_measure_lands_on_the_next_note():
+    # The parser moves it onto the note it attaches to, so by the time the
+    # renderer sees it there is nothing positional left to decide.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 | \\p 5 6 7 1 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    marked = [(n['start'], n['dynamic']) for n in render['notes'] if 'dynamic' in n]
+    assert marked == [(4.0, 'p')]
+
+
+def test_a_dynamic_on_a_rest_is_not_drawn_but_does_not_shift_anything():
+    # A rest never becomes a drawn note, so its mark has nowhere to go. What
+    # matters is that the remaining notes keep their positions and refs.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 0 \\f 3 4 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert [(n['start'], n['ref']['index']) for n in render['notes']] == [
+        (0.0, 0), (2.0, 2), (3.0, 3),
+    ]

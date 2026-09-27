@@ -86,7 +86,7 @@ def jianpu_section_to_render_json(
                 start += note.duration
                 continue
             if note.midi is not None:
-                notes.append({
+                entry = {
                     'start': start, 'length': note.duration,
                     'pitch': note.midi, 'intensity': 80,
                     # Where this drawn note came from in the model. The
@@ -100,7 +100,13 @@ def jianpu_section_to_render_json(
                     # to keep in step. JianpuRender ignores fields it does not
                     # know about, so this rides along harmlessly.
                     'ref': {'measure': measure_index, 'index': note_index},
-                })
+                }
+                # Only when there is one: the renderer treats absent and empty
+                # alike, and leaving the key out keeps the payload of a score
+                # without dynamics (the overwhelming majority) unchanged.
+                if note.dynamic:
+                    entry['dynamic'] = note.dynamic
+                notes.append(entry)
             start += note.duration
 
     numerator, denominator = _parse_time_sig(section.time_sig)
