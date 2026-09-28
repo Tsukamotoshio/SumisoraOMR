@@ -64,9 +64,10 @@ def _load_homr_weight_manifest() -> tuple[list[str], dict[str, str]]:
 
 
 def _homr_model_version(files: list[str]) -> str:
-    """Extract the transformer model version (e.g. '426') from _WEIGHT_FILES.
+    """Extract the transformer model version from _WEIGHT_FILES.
 
-    Weight filenames look like ``encoder_pytorch_model_426-<hash>.onnx``.
+    Weight filenames look like ``encoder_pytorch_model_<version>-<hash>.onnx``,
+    so the version is the digits after ``pytorch_model_``.
     Returns '' if no versioned transformer weight is found, so callers can
     hide the version label instead of showing a blank one.
     """
