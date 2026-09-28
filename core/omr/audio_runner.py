@@ -455,12 +455,15 @@ def run_audio_transcription(
     try:
         import torch  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
         from piano_transcription_inference import PianoTranscription  # pyright: ignore[reportMissingImports] — heavy optional dep, not installed in the pyright CI venv
+        # 下游（步骤 3 / _events_to_midi）才真正用到 pretty_midi；在这里预检，缺包时
+        # 走下面的安装提示，而不是等模型推理跑完才抛裸 ModuleNotFoundError。
+        import pretty_midi  # noqa: F401  # pyright: ignore[reportMissingImports, reportUnusedImport] — heavy optional dep, not installed in the pyright CI venv
     except Exception as exc:
         log_message(
             f'  ✗ 钢琴转录引擎未安装或导入失败：{exc}\n'
             '    → 音频转录依赖需手动安装：\n'
             '      pip install torch --index-url https://download.pytorch.org/whl/cpu\n'
-            '      pip install piano_transcription_inference torchlibrosa',
+            '      pip install piano_transcription_inference torchlibrosa audioread pretty_midi',
             logging.WARNING,
         )
         return None

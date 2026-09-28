@@ -49,8 +49,15 @@ truststore>=0.10.0      # 需 Python 3.10+
 # torch 需指定 CPU wheel index（否则会拉完整 CUDA 版，体积暴涨），不适合写成普通
 # requirements 行，按下列命令手动安装（与本仓库 llama-cpp-python 分支的处理方式一致）：
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
-#   pip install piano_transcription_inference torchlibrosa
+#   pip install piano_transcription_inference torchlibrosa audioread pretty_midi
 # 说明：
+#   - audioread / pretty_midi 必须显式列出，不能指望被传递安装（2026-09-29 在全新
+#     venv 按旧命令安装后音频转简谱整条路径不可用时发现）：
+#       audioread    piano_transcription_inference 顶层 `import audioread` 却没声明
+#                    该依赖，以往靠 librosa 顺带装上；librosa 1.0.0 去掉了这个依赖，
+#                    于是 `from piano_transcription_inference import ...` 直接失败。
+#       pretty_midi  本仓库 audio_runner.py 自己 import，从来就不在任何包的依赖里，
+#                    旧环境里有它只是因为手动装过。
 #   - **这套栈不在两份 lock 里，因此它的约束不会出现在任何"对 lock 做可达性
 #     分析"的清理里。** 2026-08-14 就是这样误删了 msgpack（librosa 的硬依赖，
 #     被当成 Flet 遗留），导致音频转简谱整条路径 ModuleNotFoundError；librosa
