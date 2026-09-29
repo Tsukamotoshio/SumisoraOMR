@@ -5,10 +5,24 @@ import certifi
 import os
 
 
+# 运行时永远用不到、却可能躺在工作树里的东西。collect_tree 会把目录下的一切都打包，
+# 0.5.2 就因此把一个未跟踪的 JianpuRender 工作副本（图形编辑器分支的 submodule）连同
+# 16761 个 node_modules 文件（约 118 MB）一起发了出去；submodule 的 .git 指针文件同理。
+# 只排除这两类，不排除整个 jianpu-render：图形编辑器分支运行时要用它的 dist/。
+_NEVER_SHIP_DIRS = {'node_modules', '.git'}
+_NEVER_SHIP_FILES = {'.git'}   # submodule 里的 .git 是一个指向 gitdir 的文件
+
+
 def collect_tree(source, prefix):
-    """Recursively collect files from a directory tree into PyInstaller datas."""
-    for root, _, files in os.walk(source):
+    """Recursively collect files from a directory tree into PyInstaller datas.
+
+    Skips `node_modules` and git metadata, which are never runtime assets.
+    """
+    for root, dirs, files in os.walk(source):
+        dirs[:] = [d for d in dirs if d not in _NEVER_SHIP_DIRS]
         for file in files:
+            if file in _NEVER_SHIP_FILES:
+                continue
             src = os.path.join(root, file)
             rel_root = os.path.relpath(root, source)
             dest = prefix if rel_root == '.' else os.path.join(prefix, rel_root).replace('\\', '/')
