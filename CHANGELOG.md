@@ -69,6 +69,23 @@ came out byte-identical, none crashed.
   the whole chunk's size to the failure total unconditionally. Batch totals now
   reflect what actually happened.
 
+- **The installer defaulted to `D:\SumisoraOMR` even on machines without a D:
+  drive**, and nothing stopped a user from picking `C:\Program Files` instead.
+  The app keeps its inputs, outputs, models and settings inside its own install
+  directory and installs without administrator rights, so a Program Files
+  install could not write any of them and misbehaved in many small ways. The
+  default is now `D:\SumisoraOMR` only when D: is a local fixed disk with room
+  and write access, falling back to `C:\SumisoraOMR`, then to the per-user
+  programs folder; Program Files, the Windows directory and bare drive roots
+  are refused with an explanation.
+- **Upgrading moved the install to `D:\SumisoraOMR` regardless of where the
+  previous version lived, and could lose user data doing so.** An upgrade now
+  stays in the existing location unless that location is unusable. When it
+  does move, the migration now carries over the jianpu editor workspace, the
+  MusicXML archive the transposer reads, downloaded models and UI settings —
+  previously only Input, Output and the conversion history were copied before
+  the old directory was deleted. That delete also no longer runs when the old
+  location is a drive root or contains the new one.
 
 ### Security
 - **setuptools 70.2.0 → 81.0.0** in both lock files, clearing
