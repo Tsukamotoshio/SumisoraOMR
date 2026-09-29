@@ -153,7 +153,7 @@ This file provides license and attribution notices for third-party components di
   mutual clauses that permit the two to be combined.
 
 ## pdf.js
-- Version: `6.1.200`
+- Version: `6.3.289`
 - License: Apache-2.0
 - Upstream: <https://github.com/mozilla/pdf.js>
 - Note: Client-side PDF rendering for the in-app preview panes, vendored

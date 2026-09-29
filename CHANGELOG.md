@@ -69,11 +69,20 @@ came out byte-identical, none crashed.
   the whole chunk's size to the failure total unconditionally. Batch totals now
   reflect what actually happened.
 
+
 ### Security
 - **setuptools 70.2.0 → 81.0.0** in both lock files, clearing
   GHSA-5rjg-fvgr-3xxf (HIGH, path traversal). The usable window is
   `78.1.1 <= x < 82`: below that the advisory stands, and at 82 torch 2.12.1
   stops resolving.
+- **pdf.js 6.1.200 → 6.3.289**, clearing CVE-2026-16633 (HIGH): opening a
+  crafted PDF could run arbitrary JavaScript in the page. That page is the one
+  holding the bridge into the Python side, and user-supplied PDFs do reach
+  pdf.js — the jianpu editor's reference pane opens the score's source file
+  directly. The preview uses only pdf.js's core API, not the viewer whose
+  scripting the advisory names, so exposure was probably limited, but the page
+  sets no CSP either, so nothing else stood in the way. Verified as a drop-in:
+  the old and new builds render the same pages to identical canvases.
 
 ## [0.5.2] - 2026-08-15
 
