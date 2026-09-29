@@ -5,7 +5,7 @@ All notable changes to SumisoraOMR are documented here. Format follows
 `APP_VERSION` in `core/config.py` (the single source of truth — run
 `python scripts/sync_version.py` after bumping it).
 
-## [Unreleased]
+## [0.5.3] - 2026-09-29
 
 Recognition-quality work on the HOMR engine, which moves to upstream's latest
 commits and to its new transformer model 465; plus security updates to the
@@ -35,7 +35,6 @@ bundled pdf.js and JDK, and an installer that no longer assumes a D: drive.
   `pretty_midi` was only ever present if installed by hand. A missing package
   is now reported up front with the install hint, instead of as a bare error
   after the model has already spent half a minute on inference.
-
 - **noteDigger updated to upstream `006a515`.** Carries a fix for MIDI export
   from a score whose time signature has a denominator other than 4, where the
   written tempo was wrong — that MIDI is the input to this project's
@@ -90,7 +89,6 @@ bundled pdf.js and JDK, and an installer that no longer assumes a D: drive.
   failed even when it had already reported success — and the error branch added
   the whole chunk's size to the failure total unconditionally. Batch totals now
   reflect what actually happened.
-
 - **The installer defaulted to `D:\SumisoraOMR` even on machines without a D:
   drive**, and nothing stopped a user from picking `C:\Program Files` instead.
   The app keeps its inputs, outputs, models and settings inside its own install
