@@ -83,6 +83,13 @@ came out byte-identical, none crashed.
   scripting the advisory names, so exposure was probably limited, but the page
   sets no CSP either, so nothing else stood in the way. Verified as a drop-in:
   the old and new builds render the same pages to identical canvases.
+- **Bundled JDK: Temurin 25.0.2 → 25.0.4.1**, picking up the April and July
+  2026 quarterly Java security updates. This is the runtime Audiveris uses to
+  read user-supplied scores. Same module set as before; an end-to-end Audiveris
+  conversion completes on it.
+- Checked and not applicable: setuptools CVE-2026-59890 affects only sdist
+  builds on macOS, and torch CVE-2025-3000 only `torch.jit.script`, which
+  neither this project nor the audio libraries it ships call.
 
 ## [0.5.2] - 2026-08-15
 

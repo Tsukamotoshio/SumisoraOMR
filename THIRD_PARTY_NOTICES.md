@@ -116,7 +116,7 @@ This file provides license and attribution notices for third-party components di
   text is included in `waifu2x-runtime/LICENSE`.
 
 ## Eclipse Temurin JDK
-- Version: `25.0.2+10` (Temurin-25.0.2+10)
+- Version: `25.0.4.1+1` (Temurin-25.0.4.1+1)
 - Implementor: Eclipse Adoptium
 - License: GPLv2 with Classpath Exception
 - Official site: <https://adoptium.net/>
