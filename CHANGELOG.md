@@ -7,16 +7,34 @@ All notable changes to SumisoraOMR are documented here. Format follows
 
 ## [Unreleased]
 
-Recognition-quality work on the HOMR engine: it moves up to upstream's
-post-v0.7.0 commits, which recover ties the old pipeline dropped outright and
-untangle a spurious extra part on multi-staff scores. Measured by converting all
-21 sample inputs on both sides of the merge — 5 produced different output, 16
-came out byte-identical, none crashed.
+Recognition-quality work on the HOMR engine, which moves to upstream's latest
+commits and to its new transformer model 465; plus security updates to the
+bundled pdf.js and JDK, and an installer that no longer assumes a D: drive.
 
 ### Changed
-- **HOMR upgraded to upstream homr through `457e7c6`** (v0.7.0 plus its
-  post-release commits). The engine now decides for itself which curves are
-  ties, at the point where it still knows which notehead each curve touched.
+- **HOMR upgraded to upstream homr through `93e17ba`, with transformer model
+  465** (v0.7.0 plus its post-release commits). Taken in two steps, each
+  measured by converting all 21 sample inputs before and after, and neither
+  crashed on any of them:
+  - Through `457e7c6`, still on model 426: the engine now decides for itself
+    which curves are ties, at the point where it still knows which notehead
+    each curve touched. 5 of 21 outputs changed, all for the better (see the
+    two tie and multi-staff entries under Fixed); the other 16 were
+    byte-identical.
+  - Model 465 through `93e17ba`: stray mid-score time-signature changes such as
+    `12/16` and `16/16`, which 426 invented on 3 of the 21 inputs, are gone, and
+    first/second-ending brackets are now read where 426 missed them. Bar counts
+    shift on about half the inputs as the model reads rests differently. 465 can
+    also give one staff two voices, but none of the 21 inputs came out with a
+    different voice layout, so that part is not yet exercised. The new weights
+    are fetched on first use and are mirrored on ModelScope as well as GitHub.
+- **The audio-to-jianpu install instructions now list `audioread` and
+  `pretty_midi`.** Following the documented install in a fresh environment left
+  audio transcription unusable: librosa 1.0 stopped pulling in `audioread`,
+  which piano_transcription_inference imports without declaring, and
+  `pretty_midi` was only ever present if installed by hand. A missing package
+  is now reported up front with the install hint, instead of as a bare error
+  after the model has already spent half a minute on inference.
 
 - **noteDigger updated to upstream `006a515`.** Carries a fix for MIDI export
   from a score whose time signature has a denominator other than 4, where the
@@ -24,6 +42,10 @@ came out byte-identical, none crashed.
   noteDigger-to-jianpu path.
 
 ### Fixed
+- **HOMR could crash while writing MusicXML** for a chord whose notes had
+  durations with different denominators: the shared division ignored them, a
+  duration truncated to zero, and the MusicXML writer rejected it. Also fixed
+  upstream: multi-measure rests came out with the wrong duration.
 - **Ties were silently disappearing from some scores.** HOMR is trained to emit
   ties and slurs as one class, so a tie arrives as a curve; the curve carried no
   pairing number, and music21 discards a curve it cannot pair up. On one sample
@@ -107,6 +129,17 @@ came out byte-identical, none crashed.
 - Checked and not applicable: setuptools CVE-2026-59890 affects only sdist
   builds on macOS, and torch CVE-2025-3000 only `torch.jit.script`, which
   neither this project nor the audio libraries it ships call.
+
+### Known issues
+- **A repeat written as `:|` with first/second endings but no opening `|:`
+  plays straight through in the MIDI**, sounding both endings in turn. Scores
+  conventionally omit `|:` when the repeat goes back to the start, but the
+  MIDI export cannot expand that shape and falls back to dropping the repeats;
+  the jianpu PDF still shows them. Model 465 reads endings that 426 missed, so
+  this now affects 6 of the 21 sample inputs rather than 4.
+- **A multi-measure rest counts as a single bar** in the jianpu output and the
+  MIDI, so the other bars of rest it stands for are missing. This predates
+  model 465.
 
 ## [0.5.2] - 2026-08-15
 
