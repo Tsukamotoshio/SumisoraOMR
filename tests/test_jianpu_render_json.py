@@ -195,3 +195,50 @@ def test_a_dynamic_on_a_rest_is_not_drawn_but_does_not_shift_anything():
     assert [(n['start'], n['ref']['index']) for n in render['notes']] == [
         (0.0, 0), (2.0, 2), (3.0, 3),
     ]
+
+
+# ── hairpins reaching the renderer (stage 6.1d-2) ────────────────────────────
+
+def test_the_two_halves_of_a_hairpin_ride_on_their_own_notes():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 \\< 2 3 4 \\! |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert [(n['start'], n.get('hairpinStart'), n.get('hairpinEnd'))
+            for n in render['notes']] == [
+        (0.0, '<', None), (1.0, None, None), (2.0, None, None), (3.0, None, True),
+    ]
+
+
+def test_a_decrescendo_keeps_its_direction():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 \\> 2 3 4 \\! |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert render['notes'][0]['hairpinStart'] == '>'
+
+
+def test_notes_without_hairpins_carry_no_such_keys():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert all('hairpinStart' not in n and 'hairpinEnd' not in n for n in render['notes'])
+
+
+def test_an_unfinished_hairpin_is_still_sent():
+    # Normal while typing, and the renderer is the one that decides what an
+    # unpaired half looks like (nothing, as in the PDF). Dropping it here
+    # would make the editor unable to show the state the file is really in.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 \\< 2 3 4 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert render['notes'][0]['hairpinStart'] == '<'
+
+
+def test_a_note_can_end_one_hairpin_and_start_the_next():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 \\< 2 \\! \\> 3 4 \\! |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    middle = render['notes'][1]
+    assert (middle['hairpinEnd'], middle['hairpinStart']) == (True, '>')
+
+
+def test_a_hairpin_and_a_dynamic_can_share_one_note():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 \\p \\< 2 3 4 \\f |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    first, last = render['notes'][0], render['notes'][3]
+    assert (first['dynamic'], first['hairpinStart']) == ('p', '<')
+    assert last['dynamic'] == 'f'

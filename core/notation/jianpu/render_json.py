@@ -106,6 +106,14 @@ def jianpu_section_to_render_json(
                 # without dynamics (the overwhelming majority) unchanged.
                 if note.dynamic:
                     entry['dynamic'] = note.dynamic
+                # Both halves of a hairpin ride on the notes that carry them;
+                # pairing them up is the renderer's job, exactly as it is
+                # LilyPond's. An unpaired half is normal rather than an error
+                # — it is what a half-typed crescendo looks like.
+                if note.hairpin_start:
+                    entry['hairpinStart'] = note.hairpin_start
+                if note.hairpin_end:
+                    entry['hairpinEnd'] = True
                 notes.append(entry)
             start += note.duration
 
