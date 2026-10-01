@@ -135,3 +135,34 @@ def test_lyric_fixture_is_idempotent_and_loses_no_syllable(name):
 
     assert _normalized_words(once) == _normalized_words(twice), 'second pass must be a no-op'
     assert _syllables(doc1) == _syllables(doc2), 'no syllable may be lost or altered'
+
+
+def test_every_builder_ends_its_last_line():
+    """A generated .jianpu.txt is a text file, so its last line ends too.
+
+    Found through the graphical editor: a file read from disk ended in a
+    newline, the text rebuilt from the model did not, so one edit and one
+    undo left the file a character shorter than it started. The rule is one
+    newline, exactly, from all three builders -- the golden files are the
+    fixtures for the OMR one, so this covers the other two.
+    """
+    from core.config import JianpuDoc, JianpuNote, JianpuSection
+    from core.notation.jianpu import build_jianpu_ly_text_from_measures
+
+    note = JianpuNote(symbol='1', accidental='', upper_dots=0, lower_dots=0,
+                      duration=1.0, duration_dots=0, midi=60, is_rest=False)
+    doc = JianpuDoc(title='T', composer='', key_header='1=C', tempo=0,
+                    sections=[JianpuSection(time_sig='4/4', measures=[[note] * 4])])
+    from_doc = build_jianpu_ly_text_from_doc(doc)
+    from_measures = build_jianpu_ly_text_from_measures([[note] * 4], '4/4', '1=C', 'T')
+    for text in (from_doc, from_measures):
+        assert text.endswith('\n'), repr(text[-20:])
+        assert not text.endswith('\n\n'), 'one newline, not a blank line at the end'
+
+
+def test_the_golden_files_carry_that_newline():
+    # They are what build_jianpu_ly_text wrote, so they are the evidence for
+    # the third builder -- and for the files the pipeline leaves on disk.
+    for path in glob.glob(os.path.join(GOLDEN_DIR, '*.jly.txt')):
+        text = open(path, encoding='utf-8').read()
+        assert text.endswith('\n') and not text.endswith('\n\n'), os.path.basename(path)

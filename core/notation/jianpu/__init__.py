@@ -85,6 +85,20 @@ def parse_score_to_jianpu(score) -> tuple[list[list[JianpuNote]], list[str], str
     return measures, header_lines, time_signature
 
 
+def _finish_text(lines: 'list[str]') -> str:
+    """Join the lines of a jianpu-ly file, ending the last one.
+
+    Every writer of this text ends up on disk, and a text file's last line
+    ends like all the others. Without it the graphical editor could not round
+    trip a file byte for byte: `.jianpu.txt` read from disk ended in a
+    newline, the text rebuilt from the model did not, so an edit and an undo
+    left a file one character shorter than it started (found in stage 6.1e-2's
+    browser run). One rule for all three builders instead of a fix at the one
+    place it happened to show.
+    """
+    return '\n'.join(lines) + '\n'
+
+
 def build_jianpu_ly_text_from_measures(
     measures: 'list[list[JianpuNote]]',
     time_sig: str,
@@ -121,7 +135,7 @@ def build_jianpu_ly_text_from_measures(
         ]
         header.append(' | '.join(measure_texts) + ' |')
     header.extend(build_lyric_lines(measures))
-    return '\n'.join(header)
+    return _finish_text(header)
 
 
 def build_jianpu_ly_text_from_doc(doc: 'JianpuDoc') -> str:
@@ -148,7 +162,7 @@ def build_jianpu_ly_text_from_doc(doc: 'JianpuDoc') -> str:
         header.append(f'4={doc.tempo}')
     header.append('')
     header.extend(_doc_body_lines(doc))
-    return '\n'.join(header)
+    return _finish_text(header)
 
 
 def _doc_body_lines(doc: 'JianpuDoc') -> list[str]:
@@ -372,7 +386,7 @@ def build_jianpu_ly_text(score, title: str, use_strict_timing: bool = False,
                 raise
         header.extend(build_lyric_lines(padded))
 
-    text = '\n'.join(header)
+    text = _finish_text(header)
     if _return_groups:
         _first_part = _parts[0] if _parts else None
         _repeat_barlines: dict[int, dict[str, bool]] = (

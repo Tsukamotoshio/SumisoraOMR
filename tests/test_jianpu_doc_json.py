@@ -55,7 +55,7 @@ def test_string_verse_key_is_repaired_rather_than_trusted():
     raw = jianpu_doc_to_dict(doc)
     raw['sections'][0]['measures'][0][0]['lyrics'] = {'1': ['la', True]}
     out = build_jianpu_ly_text_from_doc(jianpu_doc_from_dict(raw))
-    assert out.endswith('L: la-'), out
+    assert out.splitlines()[-1] == 'L: la-', out
     assert '1. la-' not in out, 'a string key must not introduce a stanza prefix'
 
 
@@ -66,7 +66,7 @@ def test_mixed_int_and_string_verse_keys_do_not_crash_serialization():
     raw = jianpu_doc_to_dict(doc)
     raw['sections'][0]['measures'][0][0]['lyrics'] = {1: ['a', False]}
     raw['sections'][0]['measures'][0][1]['lyrics'] = {'1': ['b', False]}
-    assert build_jianpu_ly_text_from_doc(jianpu_doc_from_dict(raw)).endswith('L: a b')
+    assert build_jianpu_ly_text_from_doc(jianpu_doc_from_dict(raw)).splitlines()[-1] == 'L: a b'
 
 
 def test_string_tempo_is_repaired_rather_than_trusted():
@@ -141,4 +141,4 @@ def test_a_note_added_by_the_front_end_serializes_correctly():
         'symbol': '5', 'accidental': '#', 'upper_dots': 1, 'lower_dots': 0,
         'duration': 0.5, 'duration_dots': 0, 'is_rest': False,
     })
-    assert build_jianpu_ly_text_from_doc(jianpu_doc_from_dict(raw)).endswith("1 q#5' |")
+    assert build_jianpu_ly_text_from_doc(jianpu_doc_from_dict(raw)).splitlines()[-1] == "1 q#5' |"
