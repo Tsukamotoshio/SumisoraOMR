@@ -367,4 +367,8 @@ function lintJianpuText(text) {
   return { diagnostics };
 }
 
-export { lintJianpuText, tokenize, isHeaderLine };
+// DYNAMIC_MARKS is exported for the edit layer, which has to refuse a mark
+// LilyPond does not know before it reaches the model. One list, three places
+// that must agree (here, primitives.py, and whatever the user types), with
+// tests/test_jianpu_dynamics.py holding the first two to each other.
+export { lintJianpuText, tokenize, isHeaderLine, DYNAMIC_MARKS };

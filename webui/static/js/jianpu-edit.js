@@ -1,8 +1,10 @@
 // webui/static/js/jianpu-edit.js — 编辑模型 + 撤销/重做命令栈（阶段5.1）。
 //
-// 纯逻辑：不碰 DOM、不碰渲染、零静态 import，可直接 node --test。这不是偷懒，
-// 是 B7 风险6 自己开的药方——"阶段5 的撤销/重做 + 光标模型：多数编辑器死在这
-// 一步；独立于渲染先行设计；command pattern 单测覆盖"。
+// 纯逻辑：不碰 DOM、不碰渲染，可直接 node --test。这不是偷懒，是 B7 风险6
+// 自己开的药方——"阶段5 的撤销/重做 + 光标模型：多数编辑器死在这一步；独立于
+// 渲染先行设计；command pattern 单测覆盖"。唯一的 import 是 jianpu-lint.js 里
+// 那份力度记号白名单（6.1e）：那边同样是纯逻辑、不碰 DOM，照抄一份到这里只会
+// 多出第三处要同步的清单。
 //
 // 模型形状**逐字段镜像 Python 的 JianpuDoc/JianpuSection/JianpuNote**（core/config.py），
 // 连字段名的 snake_case 都照搬。这样等 5.3 真要把 JianpuDoc 通过桥传过来时，
@@ -20,6 +22,11 @@
 // 本阶段刻意**不做**"把模型写回文本"——那属于 5.3，而且要先定计划文档里记的那条
 // 甲/乙抉择（含 🟡 档语法的文件要不要开放图形编辑）。这里的设计对两条路都中立。
 'use strict';
+
+import { DYNAMIC_MARKS } from './jianpu-lint.js';
+
+/** 渐强 '<' / 渐弱 '>'，或 '' 表示这个音符上没有起点。 */
+const HAIRPIN_STARTS = new Set(['<', '>']);
 
 /** 八度点最多叠 3 层（与 B5 渲染层"可叠 2–3 层"一致）。 */
 const MAX_OCTAVE_DOTS = 3;
@@ -133,6 +140,19 @@ export function prevRef(doc, ref) {
 // 个字段就是一个撤销 bug），不如现场把旧音符整个收起来。代价是一个音符的内存，
 // 换来的是逆操作正确性**由构造保证**而不是靠我把每种连带影响都想全。
 // 结构类命令（增删音符）无法这样表达，各自有明确的逆。
+
+/**
+ * 记号（力度、渐强渐弱）只挂在**画得出来的音符**上。
+ *
+ * 休止符和延音横线在送往渲染器的投影里都不是独立音符——休止是音符之间的空隙，
+ * 横线被折进前一个音符的时值（见 render_json.py）——所以挂在它们身上的记号在
+ * 图形页上根本画不出来，而导出的 PDF 里 LilyPond 会照印不误。那就成了"屏幕上
+ * 的谱"和"导出的谱"不一致，还是用户自己点出来的。文本里手写仍然允许（解析器
+ * 照收），只是图形编辑这条路不去制造这种分歧。
+ */
+function canCarryMark(note) {
+  return !!note && !note.is_rest && note.symbol !== '-';
+}
 
 function cloneNote(note) {
   const copy = { ...note };
@@ -354,6 +374,37 @@ export function applyCommand(doc, cmd) {
       octave = Math.max(-MAX_OCTAVE_DOTS, Math.min(MAX_OCTAVE_DOTS, octave));
       note.upper_dots = Math.max(0, octave);
       note.lower_dots = Math.max(0, -octave);
+      return { type: 'restore_note', ref: cmd.ref, note: before };
+    }
+    case 'set_dynamic': {
+      // '' 清除记号；别的值必须是 LilyPond 认得的那 22 个之一，不然写回文本后
+      // 解析器会拒绝打开这个文件、LilyPond 会直接报错。
+      const note = getNote(doc, cmd.ref);
+      if (!note || !canCarryMark(note)) return null;
+      const value = cmd.value || '';
+      if (value && !DYNAMIC_MARKS.has(value)) return null;
+      if ((note.dynamic || '') === value) return null;   // 没变就不进撤销栈
+      const before = cloneNote(note);
+      note.dynamic = value;
+      return { type: 'restore_note', ref: cmd.ref, note: before };
+    }
+    case 'set_hairpin_start': {
+      const note = getNote(doc, cmd.ref);
+      if (!note || !canCarryMark(note)) return null;
+      const value = cmd.value || '';
+      if (value && !HAIRPIN_STARTS.has(value)) return null;
+      if ((note.hairpin_start || '') === value) return null;
+      const before = cloneNote(note);
+      note.hairpin_start = value;
+      return { type: 'restore_note', ref: cmd.ref, note: before };
+    }
+    case 'set_hairpin_end': {
+      const note = getNote(doc, cmd.ref);
+      if (!note || !canCarryMark(note)) return null;
+      const value = cmd.value === true;
+      if ((note.hairpin_end === true) === value) return null;
+      const before = cloneNote(note);
+      note.hairpin_end = value;
       return { type: 'restore_note', ref: cmd.ref, note: before };
     }
     case 'set_duration': {

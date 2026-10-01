@@ -102,6 +102,9 @@ const CASES = [
   ['delete_note (last in measure)', { type: 'delete_note', ref: noteRef(0, 1, 2) }],
   ['insert_note', { type: 'insert_note', ref: noteRef(0, 0, 1), note: note('7') }],
   ['insert_note at measure end', { type: 'insert_note', ref: noteRef(0, 0, 2), note: note('7') }],
+  ['set_dynamic', { type: 'set_dynamic', ref: noteRef(0, 0, 0), value: 'mf' }],
+  ['set_hairpin_start', { type: 'set_hairpin_start', ref: noteRef(0, 0, 0), value: '<' }],
+  ['set_hairpin_end', { type: 'set_hairpin_end', ref: noteRef(0, 0, 0), value: true }],
 ];
 
 for (const [name, cmd] of CASES) {
@@ -1417,4 +1420,96 @@ test('deleting a note takes its dynamic with it, and undo brings both back', () 
   assert.ok(doc.sections[0].measures[0].every((n) => n.dynamic !== 'sfz'));
   history.undo();
   assert.deepEqual(doc, before);
+});
+
+
+// ── marks: dynamics and hairpins (stage 6.1e) ───────────────────────────────
+
+test('set_dynamic takes a mark LilyPond knows and clears on an empty value', () => {
+  const doc = makeDoc();
+  applyCommand(doc, { type: 'set_dynamic', ref: noteRef(0, 0, 0), value: 'sfz' });
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).dynamic, 'sfz');
+  applyCommand(doc, { type: 'set_dynamic', ref: noteRef(0, 0, 0), value: '' });
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).dynamic, '');
+});
+
+test('set_dynamic refuses a mark LilyPond does not know', () => {
+  // Not a style question: the file is written back as text, and `\\loud` makes
+  // the parser refuse to reopen it and LilyPond refuse to render it.
+  const doc = makeDoc();
+  for (const value of ['loud', 'PP', 'mf ', '<']) {
+    assert.equal(applyCommand(doc, { type: 'set_dynamic', ref: noteRef(0, 0, 0), value }), null, value);
+  }
+  assert.equal(getNote(doc, noteRef(0, 0, 0)).dynamic, undefined, 'nothing was written');
+});
+
+test('setting the mark a note already has is not an undo step', () => {
+  // Clicking `mf` twice should not make Ctrl+Z appear to do nothing once.
+  const doc = makeDoc();
+  applyCommand(doc, { type: 'set_dynamic', ref: noteRef(0, 0, 0), value: 'mf' });
+  assert.equal(applyCommand(doc, { type: 'set_dynamic', ref: noteRef(0, 0, 0), value: 'mf' }), null);
+  assert.equal(applyCommand(doc, { type: 'set_hairpin_end', ref: noteRef(0, 0, 0), value: false }), null);
+  assert.equal(applyCommand(doc, { type: 'set_hairpin_start', ref: noteRef(0, 0, 0), value: '' }), null);
+});
+
+test('marks are refused on a rest and on a continuation dash', () => {
+  // Neither is a drawn note in the projection, so the mark would be invisible
+  // here and printed in the PDF -- a disagreement the editor must not create.
+  const doc = makeDoc();
+  doc.sections[0].measures[0].push(note('-'));
+  const restRef = noteRef(0, 1, 1);
+  const dashRef = noteRef(0, 0, 2);
+  for (const ref of [restRef, dashRef]) {
+    assert.equal(applyCommand(doc, { type: 'set_dynamic', ref, value: 'f' }), null);
+    assert.equal(applyCommand(doc, { type: 'set_hairpin_start', ref, value: '<' }), null);
+    assert.equal(applyCommand(doc, { type: 'set_hairpin_end', ref, value: true }), null);
+  }
+});
+
+test('set_hairpin_start takes only the two directions', () => {
+  const doc = makeDoc();
+  const ref = noteRef(0, 0, 0);
+  assert.ok(applyCommand(doc, { type: 'set_hairpin_start', ref, value: '>' }));
+  assert.equal(getNote(doc, ref).hairpin_start, '>');
+  assert.equal(applyCommand(doc, { type: 'set_hairpin_start', ref, value: 'cresc' }), null);
+  assert.equal(getNote(doc, ref).hairpin_start, '>', 'the refused value changed nothing');
+});
+
+test('one note can carry a dynamic, an end and a start at once', () => {
+  // `5 \\! \\f \\>` is legal and common: close one hairpin, state the level,
+  // open the next. The three commands must not tread on each other.
+  const doc = makeDoc();
+  const ref = noteRef(0, 0, 0);
+  applyCommand(doc, { type: 'set_hairpin_end', ref, value: true });
+  applyCommand(doc, { type: 'set_dynamic', ref, value: 'f' });
+  applyCommand(doc, { type: 'set_hairpin_start', ref, value: '>' });
+  const n = getNote(doc, ref);
+  assert.deepEqual([n.hairpin_end, n.dynamic, n.hairpin_start], [true, 'f', '>']);
+});
+
+test('history: a mark survives undo and redo intact', () => {
+  const doc = makeDoc();
+  const history = new EditHistory(doc);
+  const ref = noteRef(0, 0, 0);
+  history.do({ type: 'set_dynamic', ref, value: 'p' });
+  history.do({ type: 'set_hairpin_start', ref, value: '<' });
+  history.undo();
+  // Undo puts back the note as it was, which for a note that never had the
+  // field is a note without the field — absent, not empty.
+  assert.ok(!getNote(history.doc, ref).hairpin_start);
+  assert.equal(getNote(history.doc, ref).dynamic, 'p', 'only the last edit came off');
+  history.undo();
+  assert.ok(!getNote(history.doc, ref).dynamic);
+  history.redo();
+  assert.equal(getNote(history.doc, ref).dynamic, 'p');
+});
+
+test('a mark rides along when the note is copied as a fragment', () => {
+  const doc = makeDoc();
+  applyCommand(doc, { type: 'set_dynamic', ref: noteRef(0, 0, 0), value: 'ff' });
+  // One note out of two: a partial selection comes back as loose notes, a
+  // whole-measure one as measures (see extractFragment).
+  const span = selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 0, 0));
+  const fragment = extractFragment(doc, 0, span);
+  assert.equal(fragment.notes[0].dynamic, 'ff');
 });
