@@ -6,7 +6,7 @@
 
 import { $, api, t, toast, showPage } from './core.js';
 import { PdfView } from './pdfview.js';
-import { lintJianpuText, isHeaderLine } from './jianpu-lint.js';
+import { lintJianpuText, isHeaderLine, DYNAMIC_MARKS } from './jianpu-lint.js';
 import { jianpuPlayer, activeNotesAt } from './jianpu-play.js';
 import {
   EditHistory, KEY_TONICS, barQuarterLength, blankMeasureNotes, extractFragment,
@@ -558,6 +558,7 @@ function edSelectionRange() {
 }
 
 function edRenderSelection() {
+  edSyncDynButton();   // 选区没了就没有可挂记号的音符，按钮跟着置灰
   const container = $('ed-gr-container');
   container.querySelectorAll('.jp-sel-rect').forEach((el) => el.remove());
   const range = edSelectionRange();
@@ -625,6 +626,13 @@ $('ed-gr-container').addEventListener('click', (e) => {
   // 命中的可能是休止符块之类没有对应 render 音符的分组——那些不可选。
   if (index === undefined) { edClearSelection(); return; }
   edSetSelection(section, index, e.shiftKey);
+  // 点在画出来的力度记号上：既然用户已经指着它了，直接把浮层开在那儿，
+  // 省掉"先选中、再去工具条找按钮"这一步。
+  const mark = e.target.closest ? e.target.closest('text[data-dynamic]') : null;
+  if (mark) {
+    e.stopPropagation();
+    edToggleDynPop(mark);
+  }
 });
 
 // ── 键盘编辑（阶段5.3b）──────────────────────────────────────────────────────
@@ -1244,6 +1252,7 @@ function edCloseTimePop() {
 function edClosePopovers() {
   edCloseKeyPop();
   edCloseTimePop();
+  edCloseDynPop();
 }
 
 function edOpenTimePop(target) {
@@ -1273,6 +1282,105 @@ async function edCommitTimeSig() {
 $('ed-timepop-num').addEventListener('change', edCommitTimeSig);
 $('ed-timepop-den').addEventListener('change', edCommitTimeSig);
 
+// ── 力度与渐强渐弱的图形编辑（阶段6.1e-2）───────────────────────────────────
+// 记号本身 6.1a–d 已经一路打通（解析器→模型→序列化→PDF→谱面绘制），这里只补
+// "用鼠标或键盘改"。沿用调号/拍号那套浮层：一个下拉选力度，三个开关管渐强、
+// 渐弱与收口。
+//
+// 为什么力度不做单键映射：合法的力度记号有 22 个，没有哪套单键记得住；而渐强
+// 渐弱天然是开关。所以 D 键只负责把浮层叫出来，选什么交给浮层。
+//
+// 作用范围是**整个选区**，与 5.6a 定的其它编辑键一致——给一串音符一次性加同一
+// 个记号是常事（整段 piu forte），逐个点太笨。
+
+let edDynPopOpen = false;
+
+/** 下拉里的顺序就是 jianpu-lint.js 那份清单的书写顺序（由弱到强）。 */
+function edPopulateDynamics() {
+  const sel = $('ed-dynpop-mark');
+  if (sel.options.length) return;
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = '—';     // 不走 i18n：换语言时浮层不会重建，破折号到哪都读得懂
+  sel.appendChild(none);
+  for (const mark of DYNAMIC_MARKS) {
+    const opt = document.createElement('option');
+    opt.value = mark;
+    opt.textContent = mark;
+    sel.appendChild(opt);
+  }
+}
+
+/** 焦点音符在模型里的那个对象——开关按钮按不按下去照它来。 */
+function edFocusedModelNote() {
+  const ref = edFocusedRef();
+  if (!ref || !edDoc) return null;
+  const section = edDoc.sections[ref.section];
+  const measure = section && section.measures && section.measures[ref.measure];
+  return (measure && measure[ref.index]) || null;
+}
+
+function edCloseDynPop() {
+  edDynPopOpen = false;
+  $('ed-dynpop').classList.add('hidden');
+}
+
+/** 没有选中音符就没有可挂记号的地方——按钮置灰，浮层也跟着收起。 */
+function edSyncDynButton() {
+  const enabled = edSelectedRefs().length > 0;
+  $('ed-gr-dyn').disabled = !enabled;
+  if (!enabled && edDynPopOpen) edCloseDynPop();
+}
+
+function edOpenDynPop(target) {
+  if (!edDoc || !edSelectedRefs().length) return;
+  edPopulateDynamics();
+  const note = edFocusedModelNote();
+  $('ed-dynpop-mark').value = (note && note.dynamic) || '';
+  // 两个方向互斥（一个音符上只能开一条），收口是独立的另一件事。
+  $('ed-dynpop-cresc').classList.toggle('on', !!note && note.hairpin_start === '<');
+  $('ed-dynpop-dim').classList.toggle('on', !!note && note.hairpin_start === '>');
+  $('ed-dynpop-end').classList.toggle('on', !!note && note.hairpin_end === true);
+  edPositionPopover($('ed-dynpop'), target);
+  edDynPopOpen = true;
+}
+
+/** 给选区里每个音符生成一条命令，整组进一次撤销栈。 */
+async function edApplyMarkCommand(build) {
+  const refs = edSelectedRefs();
+  if (!refs.length) return;
+  edCloseDynPop();
+  await edRunSelectionCommands(refs.map(build), refs);
+}
+
+$('ed-dynpop-mark').addEventListener('change', () => {
+  const value = $('ed-dynpop-mark').value;
+  edApplyMarkCommand((ref) => ({ type: 'set_dynamic', ref, value }));
+});
+
+for (const [id, direction] of [['ed-dynpop-cresc', '<'], ['ed-dynpop-dim', '>']]) {
+  $(id).addEventListener('click', () => {
+    const note = edFocusedModelNote();
+    // 再点一次同一个方向 = 取消；点另一个方向 = 换向（一个音符上只能有一条）。
+    const value = note && note.hairpin_start === direction ? '' : direction;
+    edApplyMarkCommand((ref) => ({ type: 'set_hairpin_start', ref, value }));
+  });
+}
+
+$('ed-dynpop-end').addEventListener('click', () => {
+  const note = edFocusedModelNote();
+  const value = !(note && note.hairpin_end === true);
+  edApplyMarkCommand((ref) => ({ type: 'set_hairpin_end', ref, value }));
+});
+
+function edToggleDynPop(target) {
+  const wasOpen = edDynPopOpen;
+  edClosePopovers();
+  if (!wasOpen) edOpenDynPop(target);
+}
+
+$('ed-gr-dyn').addEventListener('click', (e) => edToggleDynPop(e.currentTarget));
+
 // fork 给调号与拍号字样都打了 data-signature（5.6b-2 加的，此前是匿名
 // <text>，没有任何可命中的属性）。两者会同时画在固定 overlay 与可滚动层
 // 里，两处都带这个标记，点哪个都算。
@@ -1289,8 +1397,9 @@ $('ed-gr-container').addEventListener('click', (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  if (!edKeyPopOpen && !edTimePopOpen) return;
-  if (e.target.closest && e.target.closest('#ed-keypop, #ed-timepop')) return;
+  if (!edKeyPopOpen && !edTimePopOpen && !edDynPopOpen) return;
+  // 力度浮层的开关按钮自己会 toggle，别让这里抢在前头把它关掉又打开。
+  if (e.target.closest && e.target.closest('#ed-keypop, #ed-timepop, #ed-dynpop, #ed-gr-dyn')) return;
   edClosePopovers();
 });
 
@@ -1458,6 +1567,14 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();
       edSetSelection(edSelection.section, next, e.shiftKey);
     }
+    return;
+  }
+
+  // D：打开力度浮层。单独拦在编辑键前面，因为它不生成命令，只开界面。
+  if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (!edSelectedRefs().length) return;
+    e.preventDefault();
+    edToggleDynPop($('ed-gr-dyn'));
     return;
   }
 

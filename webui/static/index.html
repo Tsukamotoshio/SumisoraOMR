@@ -441,6 +441,7 @@
                 <span class="lbl" data-i18n="w.ed.goto_measure">跳到小节</span>
                 <input type="number" id="ed-gr-goto" class="textinput tiny" min="1" step="1">
               </div>
+              <button class="pvbtn wide" id="ed-gr-dyn" title="力度记号（选中音符后按 D）" data-i18n-title="w.ed.dynamics_btn" disabled><span data-i18n="w.ed.dynamics_short">力度</span></button>
               <div class="grzoom btngroup">
                 <button class="pvbtn" id="ed-gr-zoomout" title="缩小谱面" data-i18n-title="w.ed.gr_zoomout"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" fill="none"><path d="M6 12h12" stroke-linecap="round"/></svg></button>
                 <button class="pvbtn wide" id="ed-gr-zoomreset" title="恢复原始大小" data-i18n-title="w.ed.gr_zoomreset"><span id="ed-gr-zoomlabel">100%</span></button>
@@ -459,6 +460,14 @@
               <input type="number" id="ed-timepop-num" class="textinput tiny" min="1" max="32" step="1">
               <span class="slash">/</span>
               <div class="selectwrap"><select id="ed-timepop-den"></select></div>
+            </div>
+            <div class="keypop hidden" id="ed-dynpop">
+              <div class="selectwrap"><select id="ed-dynpop-mark"></select></div>
+              <div class="btngroup">
+                <button class="pvbtn" id="ed-dynpop-cresc" title="渐强" data-i18n-title="w.ed.hairpin_cresc">&lt;</button>
+                <button class="pvbtn" id="ed-dynpop-dim" title="渐弱" data-i18n-title="w.ed.hairpin_dim">&gt;</button>
+                <button class="pvbtn" id="ed-dynpop-end" title="渐强渐弱结束" data-i18n-title="w.ed.hairpin_end">!</button>
+              </div>
             </div>
             <div class="grtransport hidden" id="ed-gr-transport">
               <button class="pvbtn" id="ed-gr-play" title="播放" data-i18n-title="w.ed.play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>

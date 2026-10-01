@@ -175,6 +175,9 @@ button { font-family: inherit; cursor: default; }
   box-shadow: 0 6px 20px rgba(0,0,0,.18); }
 .keypop .tiny { width: 56px; }
 .keypop .slash { color: var(--muted); }
+/* 渐强/渐弱/收口是开关，按下去要看得出来（阶段6.1e-2）。沿用 .cbx.on 的做法：
+   强调色铺底 + 反白前景，不另造一套语义。 */
+.keypop .pvbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* 表头字段（阶段5.6b-1）。调号与拍号不在这里——它们画在 SVG 上，点谱面直接改
    （5.6b-2/b-3）；只有标题/作曲/速度在谱面上没有对应图元，才需要表单。 */
