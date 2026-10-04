@@ -42,6 +42,7 @@ downstream consumer able to assume the declared types hold.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from typing import Any
 
@@ -52,6 +53,11 @@ from .primitives import (
     jianpu_note_to_midi,
     key_header_tonic_semitone,
 )
+
+# The repeat words a section may carry (6.2b). `|` is the separator between
+# two alternatives, not a barline — see JianpuSection.repeats.
+_REPEAT_TOKENS = frozenset(('A{', '}', '|'))
+_REPEAT_OPEN_RE = re.compile(r'^R(?:[1-9][0-9]*)?\{$')
 
 
 def jianpu_doc_to_dict(doc: JianpuDoc) -> dict:
@@ -142,7 +148,26 @@ def _section_from_raw(raw: Any) -> JianpuSection:
         for measure in measures_raw:
             if isinstance(measure, list):
                 measures.append([_note_from_raw(n) for n in measure])
-    return JianpuSection(time_sig=str(raw.get('time_sig', '4/4')), measures=measures)
+    # Repeat words (6.2b) come back as {'at': int, 'token': str}. Anything
+    # else in that list is dropped rather than trusted: the serializer writes
+    # these straight into the file, so a bad token would make the result
+    # unparseable the next time it is opened.
+    repeats: list[dict] = []
+    for item in raw.get('repeats') or []:
+        if not isinstance(item, dict):
+            continue
+        token = str(item.get('token', ''))
+        if token not in _REPEAT_TOKENS and not _REPEAT_OPEN_RE.match(token):
+            continue
+        try:
+            at = int(item.get('at', -1))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= at <= len(measures):
+            repeats.append({'at': at, 'token': token})
+    repeats.sort(key=lambda item: item['at'])
+    return JianpuSection(time_sig=str(raw.get('time_sig', '4/4')), measures=measures,
+                         repeats=repeats)
 
 
 def jianpu_doc_from_dict(raw: Any) -> JianpuDoc:

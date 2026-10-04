@@ -165,6 +165,43 @@ def build_jianpu_ly_text_from_doc(doc: 'JianpuDoc') -> str:
     return _finish_text(header)
 
 
+def _section_measure_lines(section: 'JianpuSection') -> list[str]:
+    """The note lines of one section, four measures to a line.
+
+    A measure is normally followed by ``|``. Two of the repeat words (6.2b)
+    stand in for that barline, and the other two do not — jianpu-ly writes
+    ``1 1 1 1 | R{ 2 2 2 2 | 3 3 3 3 } A{ 4 4 4 4 | 5 5 5 5 }``:
+
+    * ``}`` ends the measure inside the block, so no ``|`` before it;
+    * the ``|`` separating two alternatives is itself that barline;
+    * ``R{`` and ``A{`` open a block *after* a measure that ended normally,
+      so the ``|`` before them stays — except right after a ``}``, which
+      already did the job.
+
+    Which is why the barline after a measure is decided by looking at the
+    *next* boundary rather than the current one.
+    """
+    by_boundary: dict[int, list[str]] = {}
+    for item in section.repeats:
+        by_boundary.setdefault(int(item['at']), []).append(str(item['token']))
+
+    lines: list[str] = []
+    pending: list[str] = []          # words waiting for the start of the next line
+    for index, measure in enumerate(section.measures):
+        if index and index % 4 == 0:
+            lines.append(' '.join(pending))
+            pending = []
+        pending.extend(by_boundary.get(index, []))
+        pending.append(' '.join(jianpu_note_token(note) for note in measure))
+        following = by_boundary.get(index + 1, [])
+        if not following or following[0] not in ('}', '|'):
+            pending.append('|')
+    pending.extend(by_boundary.get(len(section.measures), []))
+    if pending:
+        lines.append(' '.join(pending))
+    return lines
+
+
 def _doc_body_lines(doc: 'JianpuDoc') -> list[str]:
     """The note (and lyric) lines of *doc*, with no header block in front."""
     lines: list[str] = []
@@ -172,10 +209,7 @@ def _doc_body_lines(doc: 'JianpuDoc') -> list[str]:
         if section_idx > 0:
             lines.append('NextPart')
             lines.append(section.time_sig)
-        for i in range(0, len(section.measures), 4):
-            line_measures = section.measures[i:i + 4]
-            measure_texts = [' '.join(jianpu_note_token(note) for note in m) for m in line_measures]
-            lines.append(' | '.join(measure_texts) + ' |')
+        lines.extend(_section_measure_lines(section))
         # 歌词行跟在本分段所有小节之后（与 build_jianpu_ly_text 的位置一致）。
         # 歌词锚在音符上（JianpuNote.lyrics），所以图形编辑增删音符时不会错位——
         # 这正是 B10.4 当初把它设计成按音符存、而不是存成一条独立文本流的理由。

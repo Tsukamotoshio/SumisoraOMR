@@ -137,6 +137,12 @@ def _tokenize(text: str) -> list[_Word]:
     return words
 
 
+# 正文反复语法（6.2b）：`R{ ... }` 一段反复两遍，`R3{ ... }` 反复 3 遍，
+# `A{ ... | ... }` 是跟在后面的跳跃房（一房/二房），房与房之间用 `|` 分隔。
+# 见 scripts/jianpu-ly.py 的 docstring 与它 1745 行起的实现。
+_REPEAT_OPEN_RE = re.compile(r'^R(?:[1-9][0-9]*)?\{$')
+
+
 def _decode_note_or_dash(word: _Word) -> JianpuNote:
     m = _NOTE_RE.match(word.text)
     if m:
@@ -270,6 +276,18 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
             current_section.measures.append(current_measure)
         current_measure = []
 
+    def reject_unclosed_repeats(at: _Word | None) -> None:
+        """A repeat left open at a section boundary or at the end of the file.
+
+        jianpu-ly would carry it across `NextPart` into the next voice, which
+        is never what was meant; and the serializer has no boundary left to
+        write the missing `}` at. Refusing is the only honest answer."""
+        if not open_blocks:
+            return
+        line = at.line if at else 0
+        col = at.col if at else 0
+        raise JianpuParseError('反复括号没有闭合，缺少 }', line, col, '}')
+
     def reject_orphaned_marks() -> None:
         """A mark still waiting at the end of a section or of the input has no
         note left to attach to -- the one placement that really is lost."""
@@ -288,12 +306,68 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
         if current_measure:
             close_measure_on_bar()
 
+    # 反复括号栈：元素是 'R'（反复本体）或 'A'（跳跃房）。jianpu-ly 不支持嵌套，
+    # 栈最深就是一层，但用栈写出来比用两个布尔量更容易读懂闭合规则。
+    open_blocks: list[str] = []
+
+    def record_repeat(token: str, closes_measure: bool = False) -> None:
+        """Pin a structural word to the boundary it sits at.
+
+        `}` doubles as a barline: jianpu-ly writes `R{ 1 1 1 1 }` with no `|`
+        before the brace, so the measure inside the block ends there. The
+        opening words do not — a block that starts in the middle of a measure
+        has no boundary to be pinned to, and the model could not write it back.
+        """
+        if current_section is None:
+            raise JianpuParseError('反复记号出现在拍号声明之前', word.line, word.col, word.text)
+        if current_measure:
+            if not closes_measure:
+                raise JianpuParseError('反复记号只能写在小节边界上，不能写在小节中间',
+                                       word.line, word.col, word.text)
+            close_measure_on_bar()
+        current_section.repeats.append({'at': len(current_section.measures), 'token': token})
+
     for word in words:
         text = word.text
         if text == '|':
+            # `A{ }` 里的 `|` 分隔的是两个跳跃房，不是普通小节线——jianpu-ly 读到
+            # 它会把小节位置**倒回**房子开头（见其 1767 行起），而不是往后推进。
+            # 模型这边两件事都要记：它照样结束一个小节（一房二房在谱面上就是相邻
+            # 的两小节，这样"跳到第 N 小节"的编号才与看到的一致），同时记下这个
+            # 边界是房子分隔符，序列化时才写得回 `A{ ... | ... }` 而不是多一条
+            # 小节线。
+            if open_blocks and open_blocks[-1] == 'A':
+                close_measure_on_bar()
+                if current_section is not None:
+                    current_section.repeats.append(
+                        {'at': len(current_section.measures), 'token': '|'})
+                continue
             close_measure_on_bar()
             continue
+        if _REPEAT_OPEN_RE.match(text):
+            record_repeat(text)
+            open_blocks.append('R')
+            continue
+        if text == 'A{':
+            # jianpu-ly 的 `A{` 直接改写它上一个 `}` 写进去的那一行，所以房子
+            # 必须紧跟在反复本体的 `}` 后面，中间不能夹小节。
+            last = current_section.repeats[-1] if (current_section and current_section.repeats) else None
+            if (current_section is None or not last or last['token'] != '}'
+                    or last['at'] != len(current_section.measures)):
+                raise JianpuParseError('A{ 必须紧跟在反复段落的 } 后面',
+                                       word.line, word.col, word.text)
+            record_repeat(text)
+            open_blocks.append('A')
+            continue
+        if text == '}':
+            if not open_blocks:
+                raise JianpuParseError('多出来的 }，前面没有 R{ 或 A{ 与它配对',
+                                       word.line, word.col, word.text)
+            record_repeat(text, closes_measure=True)
+            open_blocks.pop()
+            continue
         if text == 'NextPart':
+            reject_unclosed_repeats(word)
             reject_orphaned_marks()
             flush_pending_defensively()
             current_section = None
@@ -316,6 +390,7 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
         if m:
             # 拍号总是开启一个新 section——真实文件里 NextPart 后一定紧跟一条
             # 拍号行（§1.6 更正），开局第一条拍号行同理开启第 0 个 section。
+            reject_unclosed_repeats(word)
             reject_orphaned_marks()
             flush_pending_defensively()
             current_section = JianpuSection(time_sig=text)
@@ -344,6 +419,7 @@ def parse_jianpu_ly_text(body: str) -> JianpuDoc:
             _attach_mark(note, mark)
         pending_marks.clear()
 
+    reject_unclosed_repeats(words[-1] if words else None)
     reject_orphaned_marks()
     flush_pending_defensively()
 

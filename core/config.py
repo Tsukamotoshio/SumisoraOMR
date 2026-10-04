@@ -158,6 +158,19 @@ class JianpuSection:
     """
     time_sig: str
     measures: list[list[JianpuNote]] = field(default_factory=list)
+    # Body-level repeat structure: the ``R{`` / ``R3{`` / ``A{`` / ``}`` words
+    # and the alternative separators, as ``{'at': <measure index>, 'token':
+    # <word>}`` in reading order. ``at`` is the measure the word comes *before*
+    # (``len(measures)`` for one trailing the last measure), so the notes stay
+    # plain measures and nothing about addressing a note changes.
+    #
+    # Separate from ``JianpuDoc.repeat_barlines``, which is the OMR bypass: a
+    # barline *glyph* injected into the .ly afterwards. These are the real
+    # thing -- jianpu-ly turns them into ``\repeat volta`` and
+    # ``\alternative``, which repeat in the MIDI and can carry 1./2. brackets.
+    # Which of the two survives is 6.2c's decision; this field only has to
+    # make a file that uses the body syntax openable and writable again.
+    repeats: list[dict] = field(default_factory=list)
 
 
 @dataclass
