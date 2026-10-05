@@ -16,7 +16,8 @@ Audiveris 修复（fix_with_dl）— 两层
 
 homr 修复（fix_homr_output）— 仅安全操作，不修改时值
 ------------------------------------------------------
-    • 删除零时值（无效）音符 / 休止符（与 Audiveris 共用安全操作）
+    • 删除零时值（无效）音符 / 休止符（与 Audiveris 共用安全操作）；装饰音除外，
+      它在 music21 里的时值本来就是 0
     • 移除 print-object="no" 的全小节占位休止符（homr 内部多声部结构产生的 artifact）
     • 孤立连音线清理：删除末尾无 stop 对应的 tie start，以及无 start 的孤立 tie stop
     ⚠ 故意不做时值补全/截断：homr Transformer 输出时值与拍号存在正常浮点差，
@@ -315,6 +316,11 @@ def _homr_rule_based_fix(
     --------
     1. 删除 quarterLength ≤ 0 的无效音符 / 休止符。
        （homr 极少产生，但防御性保留）
+       装饰音不算：它的 quarterLength 本来就是 0。以前把它们一并删掉，
+       MIDI 和存档 MusicXML 里的装饰音全丢了，而且装饰音连到主音的那条短弧
+       只剩终点，延音线重建会把它当成延音线的一半（音乐的瞬间：5 条错误延音线）。
+       简谱画不出装饰音、music21 也写不对它们的 MIDI，所以只留在 MusicXML 里，
+       由 generate_jianpu_pdf_from_mxl 在生成简谱和 MIDI 之前另行去掉。
 
     2. 移除 print-object="no" 的全小节占位休止符。
        homr 在输出多声部结构时，会在某些小节插入不可见的全小节休止符
@@ -351,7 +357,7 @@ def _homr_rule_based_fix(
                 # ── 修复 1：删除零时值元素 ─────────────────────────
                 zero_dur = [
                     el for el in measure.notesAndRests
-                    if el.duration.quarterLength <= 0
+                    if el.duration.quarterLength <= 0 and not el.duration.isGrace
                 ]
                 for el in zero_dur:
                     measure.remove(el)

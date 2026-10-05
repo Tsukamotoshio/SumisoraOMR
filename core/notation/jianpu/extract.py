@@ -21,6 +21,23 @@ from .measure import (
 )
 
 
+def strip_grace_notes(score) -> int:
+    """Remove grace notes from *score* in place and return how many were removed.
+
+    Jianpu output has no grace-note notation, and the extractors treat every note
+    as sounding: a grace note left in is laid out as an extra note and pushes the
+    rest of its measure off the beat. music21's MIDI export mishandles them too (the
+    first one sounds for a full beat and shifts everything after it; the rest are
+    dropped), so the renderer strips them before writing either.
+    """
+    removed = 0
+    for container in score.recurse(streamsOnly=True, includeSelf=True):
+        for el in [e for e in container.notes if e.duration.isGrace]:
+            container.remove(el)
+            removed += 1
+    return removed
+
+
 def _canonical_offset(seen: dict[int, float], offset: float) -> float:
     """Collapse float-epsilon variants of one musical onset onto a single dict key.
 

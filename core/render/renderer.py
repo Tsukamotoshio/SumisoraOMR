@@ -21,6 +21,7 @@ from ..notation.jianpu import (
     choose_measures_per_line,
     format_jianpu_note_text,
     get_duration_render,
+    strip_grace_notes,
 )
 from .lilypond_runner import (
     _fix_adjacent_backward_repeats_in_mxl,
@@ -955,6 +956,13 @@ def generate_jianpu_pdf_from_mxl(
                     tempo_bpm = int(round(_tempos[0].number))
             except Exception:
                 pass
+
+        # 装饰音只留在 MusicXML 里（存档给移调器、五线谱渲染用），简谱和 MIDI 都不要：
+        # - 简谱没有装饰音记法，留着会被当成普通音符排进小节、把后面的音挤出节拍；
+        # - music21 写 MIDI 时把第一个装饰音当成一整拍、其余的丢掉，后面的音全部后移。
+        _graces = strip_grace_notes(source_score)
+        if _graces:
+            log_message(f'[jianpu] 简谱与 MIDI 不含装饰音，已略去 {_graces} 个', logging.DEBUG)
 
         # Use the original parsed score for MIDI — preserves all parts and voices.
         if midi_output_path is not None:

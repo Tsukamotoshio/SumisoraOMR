@@ -41,6 +41,7 @@ from .extract import (
     _secondary_voice_overlaps_primary,
     extract_jianpu_measures,
     extract_strict_jianpu_measures,
+    strip_grace_notes,
 )
 
 from ...config import JianpuNote  # re-export for callers that import it from here
