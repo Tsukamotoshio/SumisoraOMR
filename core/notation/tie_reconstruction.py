@@ -24,9 +24,11 @@
      同声部无装饰:         +1
      第二音符有装饰/动态:   -3
      beam 组边界:         -2
-     完全无曲线证据:       -6（a 无 slurStart 且 b 无 slurStop —— 模型没看到
-                              任何曲线；相邻同音重复音远多于漏检的延音线）
-     单侧曲线:             0（换行悬挂或半漏检，不加分不扣分）
+     无起点曲线证据:       -6（a 无 slurStart —— 模型没看到从 a 出发的曲线；
+                              相邻同音重复音远多于漏检的延音线。b 上单独的
+                              slurStop 不算证据：那条曲线起点在别处，如倚音短弧）
+     仅 a 有 slurStart:    0（换行悬挂或半漏检，不加分不扣分）
+     装饰音不参与候选。
      阈值: score>=2 → tie; score<=-2 → no_tie; else → ambiguous（保守不写）
 
 与 homr 上游的职责划分（2026-09，合并上游 457e7c6 之后）
@@ -89,11 +91,12 @@ _W_BEAM_BOUNDARY   = -2   # beam 组边界（独立发音证据）
 # 必然输出曲线。因此"两端都没有任何曲线"是强负证据：相邻同音高重复音
 # （伴奏音型、旋律重复音）在真实谱面中远多于被模型漏检的延音线。
 # -6 使无曲线对即使集齐全部正向证据（跨小节+时值对齐+无装饰 = +6）也无法
-# 过阈——启发式层实际只对"单侧曲线"对（换行悬挂/半漏检）保留判定能力。
+# 过阈——启发式层实际只对"a 有 slurStart、b 无 slurStop"的对（换行悬挂/半漏检）
+# 保留判定能力。下面的评测数字是 2026-10 收紧之前（b 单侧 slurStop 也算中性）测的。
 # 金样退化评测（Audiveris 金样 tie→slur，9 个真实谱面）：
 #   -6: 曲线全检出 P=1.000 R=0.930；70% 检出 P=1.000 R=0.814
 #   -4: 曲线全检出 P=0.748（同音重复音被误连），旧算法 P=0.448
-_W_NO_CURVE        = -6   # a 无 slurStart 且 b 无 slurStop（模型未看到曲线）
+_W_NO_CURVE        = -6   # a 无 slurStart（模型未看到从 a 出发的曲线）
 
 _THRESHOLD_TIE     =  2   # score >= 2 → 必然延音
 _THRESHOLD_NON_TIE = -2   # score <= -2 → 必然非延音
@@ -211,6 +214,10 @@ def _parse_score(root: ET.Element, ns: str) -> list[_NoteNode]:
                         cumulative_tick += duration_ticks
 
                     if is_rest:
+                        continue
+                    # 装饰音不占时值、也不会是延音线的一端；它和主音同 tick，
+                    # 留在候选里会打乱同音高组内的相邻关系。
+                    if child.find(f'{ns}grace') is not None:
                         continue
 
                     pitch_e = child.find(f'{ns}pitch')
@@ -367,10 +374,13 @@ def _heuristic_score(a: _NoteNode, b: _NoteNode) -> float:
     if a.beam_end and b.beam_begin:
         score += _W_BEAM_BOUNDARY
 
-    # 完全无曲线证据：模型没在这对音符上画任何曲线（强负证据）。
-    # 单侧曲线（仅 a.slurStart 或仅 b.slurStop）保持中性：可能是换行处
-    # 悬挂的半条延音线，也可能是乐句连奏线的一端，证据不足不加不减。
-    if not a.has_slur_start and not b.has_slur_stop:
+    # 没有从 a 出发的曲线：模型没在 a 上看到延音线的起点（强负证据）。
+    # 只有 a.slurStart（b 无 slurStop）保持中性：可能是换行处悬挂的半条延音线。
+    # 只有 b.slurStop 不算证据：终点落在 b 的曲线起点在别处——装饰音连到主音的
+    # 短弧、或从更早音符开始的乐句线。以前它也算中性，音乐的瞬间里 5 对
+    # "各带倚音、重新发音的同音高音符"因此被连成延音线，21 份样例中
+    # 启发式层的命中全是这一类。
+    if not a.has_slur_start:
         score += _W_NO_CURVE
 
     return score
