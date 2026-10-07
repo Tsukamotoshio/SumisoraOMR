@@ -26,6 +26,9 @@ _TIMESIG_RE = re.compile(r'^(\d+)/(\d+)')
 # same speed it was created at.
 DEFAULT_PLAYBACK_TEMPO = 120
 
+# JianpuNote.accidental -> the renderer's numeric code (its ACCIDENTAL_TEXT index).
+_ACCIDENTAL_CODE = {'': 0, '#': 1, 'b': 2}
+
 
 def _parse_time_sig(time_sig: str) -> tuple[int, int]:
     """Parse a 'num/denom[,pickup]' time signature string; fall back to 4/4."""
@@ -100,6 +103,15 @@ def jianpu_section_to_render_json(
                     # to keep in step. JianpuRender ignores fields it does not
                     # know about, so this rides along harmlessly.
                     'ref': {'measure': measure_index, 'index': note_index},
+                    # How the note is written, so the drawing shows what the
+                    # text says (and what jianpu-ly prints). Left to itself
+                    # the renderer re-derives all three from `pitch` with its
+                    # own octave convention and spelling, and disagreed with
+                    # the text on 5887 of 6980 notes in editor-workspace/ --
+                    # an extra octave dot in every key but C, #5 drawn as b6.
+                    'jianpuNumber': int(note.symbol),
+                    'octaveDot': note.upper_dots - note.lower_dots,
+                    'accidental': _ACCIDENTAL_CODE[note.accidental],
                 }
                 # Only when there is one: the renderer treats absent and empty
                 # alike, and leaving the key out keeps the payload of a score
@@ -130,7 +142,8 @@ def jianpu_section_to_render_json(
         # jianpu_info.ts `totalLength`).
         'totalLength': start,
         # `key` is the relative-major pitch class, which is what the renderer
-        # needs to map MIDI back to a digit — but it is strictly less than the
+        # would map MIDI back to a digit with (only a fallback now: every
+        # note carries its written form above) — but it is strictly less than the
         # header says. A minor key reduces to its relative major (`6=A` and
         # `1=C` both become 0), and a pitch class has no spelling (`1=Bb`
         # becomes 10, which reads back as A#). Rebuilding the caption from the

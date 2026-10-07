@@ -11,14 +11,19 @@ def _ref(measure, index):
     return {'measure': measure, 'index': index}
 
 
+def _written(digit, dots=0, accidental=0):
+    """The written-form keys every drawn note carries (stage V0)."""
+    return {'jianpuNumber': digit, 'octaveDot': dots, 'accidental': accidental}
+
+
 def test_simple_measure_produces_one_note_per_token():
     doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 |\n')
     render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
     assert render['notes'] == [
-        {'start': 0.0, 'length': 1.0, 'pitch': 60, 'intensity': 80, 'ref': _ref(0, 0)},
-        {'start': 1.0, 'length': 1.0, 'pitch': 62, 'intensity': 80, 'ref': _ref(0, 1)},
-        {'start': 2.0, 'length': 1.0, 'pitch': 64, 'intensity': 80, 'ref': _ref(0, 2)},
-        {'start': 3.0, 'length': 1.0, 'pitch': 65, 'intensity': 80, 'ref': _ref(0, 3)},
+        {'start': 0.0, 'length': 1.0, 'pitch': 60, 'intensity': 80, 'ref': _ref(0, 0), **_written(1)},
+        {'start': 1.0, 'length': 1.0, 'pitch': 62, 'intensity': 80, 'ref': _ref(0, 1), **_written(2)},
+        {'start': 2.0, 'length': 1.0, 'pitch': 64, 'intensity': 80, 'ref': _ref(0, 2), **_written(3)},
+        {'start': 3.0, 'length': 1.0, 'pitch': 65, 'intensity': 80, 'ref': _ref(0, 3), **_written(4)},
     ]
 
 
@@ -30,8 +35,8 @@ def test_rests_become_gaps_not_note_entries():
     # Note the refs: the second drawn note is model index 2, not 1. That gap
     # between drawn position and model position is exactly why the ref exists.
     assert render['notes'] == [
-        {'start': 0.0, 'length': 1.0, 'pitch': 60, 'intensity': 80, 'ref': _ref(0, 0)},
-        {'start': 2.0, 'length': 1.0, 'pitch': 62, 'intensity': 80, 'ref': _ref(0, 2)},
+        {'start': 0.0, 'length': 1.0, 'pitch': 60, 'intensity': 80, 'ref': _ref(0, 0), **_written(1)},
+        {'start': 2.0, 'length': 1.0, 'pitch': 62, 'intensity': 80, 'ref': _ref(0, 2), **_written(2)},
     ]
 
 
@@ -41,7 +46,7 @@ def test_dash_continuations_extend_the_previous_note_length():
     # Four q (eighth-note, 0.5ql) tokens tied together -> one note, length 2.0.
     # The ref points at the note that was struck, not at any of the dashes.
     assert render['notes'] == [
-        {'start': 0.0, 'length': 2.0, 'pitch': 60, 'intensity': 80, 'ref': _ref(0, 0)},
+        {'start': 0.0, 'length': 2.0, 'pitch': 60, 'intensity': 80, 'ref': _ref(0, 0), **_written(1)},
     ]
 
 
@@ -242,3 +247,50 @@ def test_a_hairpin_and_a_dynamic_can_share_one_note():
     first, last = render['notes'][0], render['notes'][3]
     assert (first['dynamic'], first['hairpinStart']) == ('p', '<')
     assert last['dynamic'] == 'f'
+
+
+# ── the written form reaching the renderer (stage V0) ────────────────────────
+# The renderer used to re-derive digit, octave dots and accidental from
+# `pitch` with its own conventions, and disagreed with the text on 5887 of the
+# 6980 notes in editor-workspace/. These pin that every drawn note now says
+# exactly how it is written.
+
+def _written_of(render):
+    return [(n['jianpuNumber'], n['octaveDot'], n['accidental']) for n in render['notes']]
+
+
+def test_written_form_follows_the_text_in_a_key_other_than_c():
+    # The renderer's own convention put an extra dot on every one of these.
+    doc = parse_jianpu_ly_text("title=T\n1=D\n4/4\n\n2 2' 5, b7 |\n")
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _written_of(render) == [(2, 0, 0), (2, 1, 0), (5, -1, 0), (7, 0, 2)]
+
+
+def test_written_form_in_a_minor_key_header_keeps_the_true_pitch_alongside():
+    # Scarborough Fair (6=B): `2 - 2` is printed without dots, and must be
+    # drawn without dots; `pitch` stays the real sounding pitch for playback.
+    doc = parse_jianpu_ly_text('title=T\n6=B\n3/4\n\n2 - 2 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _written_of(render) == [(2, 0, 0), (2, 0, 0)]
+    assert [n['pitch'] for n in render['notes']] == [64, 64]
+
+
+def test_written_form_keeps_the_spelling_of_enharmonic_notes():
+    # #5 and b6 sound the same; the renderer alone would draw both as b6.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n#5 b6 #4 b5 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _written_of(render) == [(5, 0, 1), (6, 0, 2), (4, 0, 1), (5, 0, 2)]
+    assert render['notes'][0]['pitch'] == render['notes'][1]['pitch']
+
+
+def test_written_form_counts_every_octave_dot():
+    doc = parse_jianpu_ly_text("title=T\n1=C\n4/4\n\n1'' 1,, 1''' 1 |\n")
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert [n['octaveDot'] for n in render['notes']] == [2, -2, 3, 0]
+
+
+def test_written_form_of_a_sustained_note_is_that_of_the_struck_note():
+    doc = parse_jianpu_ly_text("title=T\n1=G\n4/4\n\nq#4' q- q- q- 0 0 |\n")
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert len(render['notes']) == 1
+    assert _written_of(render) == [(4, 1, 1)]
