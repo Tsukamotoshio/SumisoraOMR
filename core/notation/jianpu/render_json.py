@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from .primitives import key_header_tonic_semitone
+from .primitives import jianpu_token_shape, key_header_tonic_semitone
 
 if TYPE_CHECKING:
     from ...config import JianpuSection
@@ -81,12 +81,19 @@ def jianpu_section_to_render_json(
             # to type into. `start` is what ties a slot back to something on
             # screen — it is the same quarter-note clock the renderer lays its
             # blocks out on.
+            # How the slot is written (stage V1c): what a renderer needs to draw
+            # the token itself -- `q1.` as one underline and a dot -- rather
+            # than re-deriving a notation from the duration on its own.
+            lines, dots, dashes = jianpu_token_shape(note)
             slots.append({
                 'start': start,
                 'ref': {'measure': measure_index, 'index': note_index},
                 'duration': note.duration,
                 'is_rest': note.is_rest,
                 'is_dash': note.symbol == '-',
+                'lines': lines,
+                'dots': dots,
+                'dashes': dashes,
             })
             if note.is_rest:
                 sustained = None

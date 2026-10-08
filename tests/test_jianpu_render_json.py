@@ -344,3 +344,43 @@ def test_drawn_notes_and_rests_add_up_to_the_score_length():
     sounding = sum(length for _, length in _spans(render))
     silent = 1 + 1 + 1 + 1 + 1        # 0 - - in bar 2, then 0 - in bar 3
     assert sounding + silent == render['totalLength'] == 12.0
+
+
+# ── how each slot is written (stage V1c) ─────────────────────────────────────
+
+def _shapes(render):
+    return [(s['lines'], s['dots'], s['dashes']) for s in render['slots']]
+
+
+def test_slots_say_how_each_note_is_written():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 q1 s1 d1 1. q1. s1. d1. |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _shapes(render) == [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0),
+                               (0, 1, 0), (1, 1, 0), (2, 1, 0), (3, 1, 0)]
+
+
+def test_rests_and_dashes_carry_their_own_underlines_and_dots():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n0 q0 s0. 1 - q- -. |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _shapes(render) == [(0, 0, 0), (1, 0, 0), (2, 1, 0),
+                               (0, 0, 0), (0, 0, 0), (1, 0, 0), (0, 1, 0)]
+
+
+def test_a_flat_is_not_mistaken_for_a_duration_prefix():
+    doc = parse_jianpu_ly_text("title=T\n1=C\n4/4\n\nb3, #5' qb3, sb7'. |\n")
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _shapes(render) == [(0, 0, 0), (0, 0, 0), (1, 0, 0), (2, 1, 0)]
+
+
+def test_a_note_lengthened_by_an_edit_is_written_with_dashes():
+    # The parser gives every `-` a note of its own, but a graphical edit can
+    # set one note to two, three or four beats, which the serializer writes as
+    # `1 -`, `1 - -`, `1 - - -`. The slot has to say so, or nothing would know
+    # to draw those dashes.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 |\n')
+    notes = doc.sections[0].measures[0]
+    for note, length in zip(notes, (2.0, 3.0, 4.0, 1.5), strict=True):
+        note.duration = length
+    notes[3].duration_dots = 1
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _shapes(render) == [(0, 0, 1), (0, 0, 2), (0, 0, 3), (0, 1, 0)]

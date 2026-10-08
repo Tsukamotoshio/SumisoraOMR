@@ -514,6 +514,21 @@ def jianpu_note_token(note: JianpuNote) -> str:
     return ' '.join([head, *marks] + ([tail] if tail else []))
 
 
+def jianpu_token_shape(note: JianpuNote) -> tuple[int, int, int]:
+    """How a note is written: (underlines, augmentation dots, trailing dashes).
+
+    Read off the very text the serializer writes for the note, so whatever
+    draws the note from these numbers draws what the text says. ``q``/``s``/``d``
+    are one, two and three underlines; a trailing ``.`` is one dot. Trailing
+    dashes are the ``-`` tokens written after the head, which only happens for
+    a note longer than a dotted quarter (``1 -`` for a half note) -- never for
+    a note the parser read, where every ``-`` is a note of its own.
+    """
+    head, *tail = _jianpu_note_token_bare(note).split(' ')
+    lines = {'q': 1, 's': 2, 'd': 3}.get(head[0], 0)
+    return lines, int(head.endswith('.')), len(tail)
+
+
 def _jianpu_note_token_bare(note: JianpuNote) -> str:
     """The token for pitch, octave marker and duration only — no dynamic."""
     if note.is_rest:
