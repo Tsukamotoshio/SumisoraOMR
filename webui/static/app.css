@@ -326,8 +326,11 @@ button { font-family: inherit; cursor: default; }
 /* ── 预览页（简谱/五线谱）─────────────────────────────────────────────── */
 .content.two { grid-template-columns: 320px minmax(0,1fr); }
 /* 编辑页：参考图/简谱预览 与 文本编辑 各占一半（对应旧 Flet 版两侧 expand=True
-   等权重的 Row 布局），不该用 .content.two 那套「窄侧栏 + 主区」的文件列表比例。 */
-.content.editor { grid-template-columns: 1fr 1fr; }
+   等权重的 Row 布局），不该用 .content.two 那套「窄侧栏 + 主区」的文件列表比例。
+   必须是 minmax(0,1fr) 而不是 1fr：1fr 的下限是内容的最小宽度，图形谱是一整行、
+   上万像素宽，会把左栏撑到同样宽，结果滚动的是整页而不是谱面窗格——跳到第 N 小节、
+   播放跟随都失效，缩放按钮被挤出屏幕（5.6b-1 起如此，V1b 冒烟测试发现）。 */
+.content.editor { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
 .previewbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
 .previewbar .lbl { margin-left: auto; }
 
@@ -566,7 +569,8 @@ pre.license {
 .toast.clickable:hover { border-color: var(--accent); }
 
 @media (max-width: 880px) {
-  .content, .content.two, .content.editor { grid-template-columns: 1fr; }
+  .content, .content.two { grid-template-columns: 1fr; }
+  .content.editor { grid-template-columns: minmax(0,1fr); }   /* 同上：不让谱面撑宽单列 */
   .preview .stage { min-height: 260px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
