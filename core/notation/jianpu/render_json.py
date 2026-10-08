@@ -47,11 +47,13 @@ def jianpu_section_to_render_json(
     JianpuRender auto-fills the gaps between notes as rests (see its
     ``jianpu_model.ts:infoToBlocks()``'s "Fill Rests" step), so rests need no
     explicit representation here. A dash-continuation note (``symbol='-'``)
-    extends the *previous* emitted note's ``length`` instead of becoming a
-    note of its own — that's what a tie/sustain means in jianpu-ly, not a
-    new attack, and it's why ``JianpuNote.midi`` is left ``None`` for dashes
-    (see primitives.jianpu_note_to_midi's docstring): there's nothing here
-    for a dash to contribute beyond duration.
+    extends whatever it follows instead of becoming a note of its own —
+    that's what a sustain means in jianpu-ly, not a new attack, and it's why
+    ``JianpuNote.midi`` is left ``None`` for dashes (see
+    primitives.jianpu_note_to_midi's docstring). After a note it lengthens
+    that note's entry; after a rest it lengthens the rest, which has no entry
+    here, so it only advances the clock. ``0 - -`` is how the pipeline writes
+    a long rest, so the second case is common.
 
     *tempo* is the document-level quarter-notes-per-minute (``JianpuDoc.tempo``);
     0 or absent means the file declared none. It is emitted as a ``tempos``
@@ -63,6 +65,12 @@ def jianpu_section_to_render_json(
     notes: list[dict] = []
     slots: list[dict] = []
     start = 0.0
+    # The entry the next `-` lengthens: the note it follows, or None after a
+    # rest or a note that is not drawn. Tracking it explicitly rather than
+    # reaching for notes[-1] is the whole point -- notes[-1] is still the last
+    # note *before* the rest, so `1 - | 0 - -` used to stretch the 1 over the
+    # rest and playback held it right through (552 tokens in 27 local scores).
+    sustained: dict | None = None
     for measure_index, measure in enumerate(section.measures):
         for note_index, note in enumerate(measure):
             # One entry per model note, including the rests and continuation
@@ -81,13 +89,15 @@ def jianpu_section_to_render_json(
                 'is_dash': note.symbol == '-',
             })
             if note.is_rest:
+                sustained = None
                 start += note.duration
                 continue
             if note.symbol == '-':
-                if notes:
-                    notes[-1]['length'] += note.duration
+                if sustained is not None:
+                    sustained['length'] += note.duration
                 start += note.duration
                 continue
+            sustained = None
             if note.midi is not None:
                 entry = {
                     'start': start, 'length': note.duration,
@@ -127,6 +137,7 @@ def jianpu_section_to_render_json(
                 if note.hairpin_end:
                     entry['hairpinEnd'] = True
                 notes.append(entry)
+                sustained = entry
             start += note.duration
 
     numerator, denominator = _parse_time_sig(section.time_sig)

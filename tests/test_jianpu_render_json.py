@@ -294,3 +294,53 @@ def test_written_form_of_a_sustained_note_is_that_of_the_struck_note():
     render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
     assert len(render['notes']) == 1
     assert _written_of(render) == [(4, 1, 1)]
+
+
+# ── a `-` after a rest lengthens the rest (stage V1a) ────────────────────────
+# It used to lengthen notes[-1] -- the last note *before* the rest -- so the
+# note sounded right through the rest in playback and swallowed it on screen.
+
+def _spans(render):
+    return [(n['start'], n['length']) for n in render['notes']]
+
+
+def test_a_dash_after_a_rest_does_not_stretch_the_note_before_it():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n3 1 - - | - 0 - - |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    # 1 starts on beat 2 and is held to the end of beat 1 of bar 2: 4 beats,
+    # not 6 -- the two dashes after the rest belong to the rest.
+    assert _spans(render) == [(0.0, 1.0), (1.0, 4.0)]
+
+
+def test_the_note_after_a_lengthened_rest_starts_where_the_rest_ends():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 0 - 2 |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _spans(render) == [(0.0, 1.0), (3.0, 1.0)]
+
+
+def test_a_rest_lengthened_across_the_bar_line_stays_a_rest():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 - - - | 0 - 2 - |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _spans(render) == [(0.0, 4.0), (6.0, 2.0)]
+
+
+def test_dashes_in_a_rest_intro_before_any_note_are_still_harmless():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n0 - - - | 1 - - - |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _spans(render) == [(4.0, 4.0)]
+
+
+def test_a_note_held_across_the_bar_line_is_still_one_note():
+    # The other half of the rule must not move: a dash after a note, even in
+    # the next bar, keeps lengthening that note.
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 - - - | - 2 - - |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    assert _spans(render) == [(0.0, 5.0), (5.0, 3.0)]
+
+
+def test_drawn_notes_and_rests_add_up_to_the_score_length():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n3 1 - - | - 0 - - | 0 - 5 - |\n')
+    render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+    sounding = sum(length for _, length in _spans(render))
+    silent = 1 + 1 + 1 + 1 + 1        # 0 - - in bar 2, then 0 - in bar 3
+    assert sounding + silent == render['totalLength'] == 12.0
