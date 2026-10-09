@@ -384,3 +384,19 @@ def test_a_note_lengthened_by_an_edit_is_written_with_dashes():
     notes[3].duration_dots = 1
     render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
     assert _shapes(render) == [(0, 0, 1), (0, 0, 2), (0, 0, 3), (0, 1, 0)]
+
+
+# ── a declared pickup reaches the renderer (stage V1g) ───────────────────────
+
+def test_a_declared_pickup_is_sent_in_quarters():
+    # jianpu-ly counts the pickup measure's beats back from where a full bar
+    # would end; the renderer needs the length to group beams the same way.
+    for time_sig, quarters in (('2/4,8', 0.5), ('4/4,4', 1.0), ('3/4,4.', 1.5), ('6/8,8.', 0.75)):
+        doc = parse_jianpu_ly_text(f'title=T\n1=C\n{time_sig}\n\n1 |\n')
+        render = jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+        assert render['anacrusis'] == quarters, time_sig
+
+
+def test_no_pickup_means_no_anacrusis_key():
+    doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 |\n')
+    assert 'anacrusis' not in jianpu_section_to_render_json(doc.sections[0], doc.key_header)

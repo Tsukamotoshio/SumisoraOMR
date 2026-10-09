@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ...config import JianpuSection
 
 _TIMESIG_RE = re.compile(r'^(\d+)/(\d+)')
+_ANACRUSIS_RE = re.compile(r'^\d+/\d+,(\d+)(\.?)$')
 
 # Quarter-notes-per-minute assumed when a file declares no `4=N` tempo line.
 # Matches the default the "新建简谱" wizard fills in (webui/editor.py's
@@ -28,6 +29,19 @@ DEFAULT_PLAYBACK_TEMPO = 120
 
 # JianpuNote.accidental -> the renderer's numeric code (its ACCIDENTAL_TEXT index).
 _ACCIDENTAL_CODE = {'': 0, '#': 1, 'b': 2}
+
+
+def _anacrusis_quarters(time_sig: str) -> float:
+    """Length of a declared pickup (`4/4,8` -> 0.5), in quarters; 0 if none.
+
+    Read the way jianpu-ly's setAnac() reads it: `,N` is one 1/N note, a
+    trailing `.` dots it.
+    """
+    m = _ANACRUSIS_RE.match(time_sig)
+    if not m:
+        return 0.0
+    length = 4 / int(m.group(1))
+    return length * 1.5 if m.group(2) else length
 
 
 def _parse_time_sig(time_sig: str) -> tuple[int, int]:
@@ -148,7 +162,7 @@ def jianpu_section_to_render_json(
             start += note.duration
 
     numerator, denominator = _parse_time_sig(section.time_sig)
-    return {
+    out: dict = {
         'notes': notes,
         'slots': slots,
         # The score's real length in quarters, which is not what the notes add
@@ -176,3 +190,10 @@ def jianpu_section_to_render_json(
         'timeSignatures': [{'start': 0, 'numerator': numerator, 'denominator': denominator}],
         'tempos': [{'start': 0, 'qpm': tempo if tempo > 0 else DEFAULT_PLAYBACK_TEMPO}],
     }
+    # A declared pickup: jianpu-ly counts the beats of the first measure back
+    # from where a full bar would end, so beams there group as they do in the
+    # PDF. Absent when there is none, so other payloads stay as they were.
+    anacrusis = _anacrusis_quarters(section.time_sig)
+    if anacrusis:
+        out['anacrusis'] = anacrusis
+    return out
