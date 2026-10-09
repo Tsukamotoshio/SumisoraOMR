@@ -164,5 +164,6 @@ def test_the_golden_files_carry_that_newline():
     # They are what build_jianpu_ly_text wrote, so they are the evidence for
     # the third builder -- and for the files the pipeline leaves on disk.
     for path in glob.glob(os.path.join(GOLDEN_DIR, '*.jly.txt')):
-        text = open(path, encoding='utf-8').read()
+        with open(path, encoding='utf-8') as fh:
+            text = fh.read()
         assert text.endswith('\n') and not text.endswith('\n\n'), os.path.basename(path)
