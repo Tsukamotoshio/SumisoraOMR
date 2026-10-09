@@ -10,7 +10,7 @@ import {
   TIME_SIG_DENOMINATORS, blankSection, formatTimeSig, insertSectionCommands,
   noteRef, orderBatch, parseKeyHeader,
   parseTimeSig, pasteMeasuresCommands, pasteNotesCommands, prevRef, refEquals,
-  selectionSpan, steppedDuration,
+  heldNoteIndex, selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 function note(symbol, extra = {}) {
@@ -1512,4 +1512,27 @@ test('a mark rides along when the note is copied as a fragment', () => {
   const span = selectionSpan(doc, 0, noteRef(0, 0, 0), noteRef(0, 0, 0));
   const fragment = extractFragment(doc, 0, span);
   assert.equal(fragment.notes[0].dynamic, 'ff');
+});
+
+// ── a digit printed again after a barline belongs to its note (stage V1i) ───
+
+test('heldNoteIndex: finds the note held through the time at that pitch', () => {
+  // `5 - - | - 3`: the 5 sounds 0..4, and is printed again at 3 (after the barline).
+  const notes = [{ start: 0, length: 4, pitch: 67 }, { start: 4, length: 1, pitch: 64 }];
+  assert.equal(heldNoteIndex(notes, 3, 67), 0);
+});
+
+test('heldNoteIndex: the start of the note itself is not a reprint of it', () => {
+  // A click on the attack itself is found by its id; this lookup is only for reprints.
+  assert.equal(heldNoteIndex([{ start: 0, length: 4, pitch: 67 }], 0, 67), -1);
+});
+
+test('heldNoteIndex: another pitch, or a time after the note ends, finds nothing', () => {
+  const notes = [{ start: 0, length: 4, pitch: 67 }];
+  assert.equal(heldNoteIndex(notes, 3, 64), -1);
+  assert.equal(heldNoteIndex(notes, 4, 67), -1);
+});
+
+test('heldNoteIndex: no notes, no match', () => {
+  assert.equal(heldNoteIndex(undefined, 1, 60), -1);
 });

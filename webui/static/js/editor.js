@@ -12,7 +12,7 @@ import {
   EditHistory, KEY_TONICS, barQuarterLength, blankMeasureNotes, extractFragment,
   TIME_SIG_DENOMINATORS, formatKeyHeader, formatTimeSig, insertConsumingCommands,
   noteRef, orderBatch, parseKeyHeader, parseTimeSig, pasteMeasuresCommands,
-  pasteNotesCommands, selectionSpan, steppedDuration,
+  heldNoteIndex, pasteNotesCommands, selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
 const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
@@ -615,14 +615,25 @@ function edClearSelection() {
   edRenderSelection();
 }
 
+/** True when a drawn group shows a digit (a note or a reprint of one), not a dash or a rest. */
+function edIsDrawnDigit(g) {
+  return [...g.querySelectorAll('text')].some((el) => !el.hasAttribute('data-dynamic') && /^[1-7]$/.test(el.textContent));
+}
+
 $('ed-gr-container').addEventListener('click', (e) => {
   const g = e.target.closest ? e.target.closest('g[data-id]') : null;
   const staff = e.target.closest ? e.target.closest('.graphical-staff') : null;
   if (!g || !staff) { edClearSelection(); return; }   // 点空白处 = 取消选择
   const section = [...$('ed-gr-container').children].indexOf(staff);
-  const index = section >= 0 && edSectionIdIndex[section]
-    ? edSectionIdIndex[section].get(g.getAttribute('data-id'))
-    : undefined;
+  const id = g.getAttribute('data-id');
+  let index = section >= 0 && edSectionIdIndex[section] ? edSectionIdIndex[section].get(id) : undefined;
+  // 跨小节延续的音在小节线后被重印成数字（jianpu-ly 的印法，V1h）——它不是独立的音符，
+  // 点它就选中它延续的那个音（V1i）。只认画成数字的分组：横线不在此列。
+  if (index === undefined && section >= 0 && edIsDrawnDigit(g)) {
+    const cut = id.lastIndexOf('-');
+    const held = heldNoteIndex(edSectionNotes[section], parseFloat(id.slice(0, cut)), Number(id.slice(cut + 1)));
+    if (held >= 0) index = held;
+  }
   // 命中的可能是休止符块之类没有对应 render 音符的分组——那些不可选。
   if (index === undefined) { edClearSelection(); return; }
   edSetSelection(section, index, e.shiftKey);

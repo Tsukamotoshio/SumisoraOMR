@@ -80,6 +80,18 @@ export function noteRef(section, measure, index) {
   return { section, measure, index };
 }
 
+/**
+ * Index, in a section's drawn notes, of the note held through `start` at
+ * `pitch` — the note a digit printed after a barline continues. jianpu-ly
+ * prints a note held across a barline again on the far side, tied; that
+ * digit is drawn but is no note of its own (stage V1i), so a click on it
+ * selects the note it belongs to. -1 when no drawn note is held there.
+ */
+export function heldNoteIndex(notes, start, pitch) {
+  return (notes || []).findIndex((n) => n.pitch === pitch
+    && n.start < start - 1e-6 && start < n.start + n.length - 1e-6);
+}
+
 export function refEquals(a, b) {
   if (!a || !b) return a === b;
   return a.section === b.section && a.measure === b.measure && a.index === b.index;
