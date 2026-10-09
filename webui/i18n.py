@@ -430,6 +430,14 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.lint.warning_generic_at": {"zh": "第 {line} 行有需要注意的地方", "en": "Line {line} needs attention"},
     "w.ed.lint.warnings_generic": {"zh": "{n} 处需要注意", "en": "{n} places need attention"},
     "w.ed.lint.export_blocked": {"zh": "存在非法记号，请先修正后再导出", "en": "Fix the invalid token(s) before exporting"},
+    "w.ed.lint.crosses_barline_at": {
+        "zh": "第 {line} 行：“{token}” 越过了小节线——jianpu-ly 按拍号数小节、不看 |，会拒绝导出",
+        "en": "Line {line}: “{token}” runs across a barline — jianpu-ly counts bars by the time signature, not by |, and will refuse to export"},
+    "w.ed.lint.crosses_barline_n": {"zh": "{n} 个音越过了小节线，jianpu-ly 会拒绝导出",
+                                    "en": "{n} notes run across a barline; jianpu-ly will refuse to export"},
+    "w.ed.lint.export_blocked_crossing": {
+        "zh": "有音越过了小节线，jianpu-ly 无法导出这份谱——请先修正那一小节的拍数",
+        "en": "A note runs across a barline, so jianpu-ly cannot export this score — fix the beats of that measure first"},
 }
 
 

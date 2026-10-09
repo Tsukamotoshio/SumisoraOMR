@@ -161,6 +161,13 @@ function lintJianpuText(text) {
   let measureStartWord = null;
   let bracketDepth = 0;
   let bracketStartWord = null;
+  // jianpu-ly 怎么数小节（L1）：它按拍号累加时值，**不看文本里的 `|`**（`|` 只原样交给
+  // LilyPond 当小节检查，位置不对 LilyPond 也只是警告）。累加时某个音越过了它数出的小节线，
+  // jianpu-ly 直接报 "barcheck fail: note crosses barline" 并退出——整个文件导不出 PDF。
+  // 超拍/欠拍但恰好没有音越线的小节它照样放行（PDF 的小节线会落在它数出的位置）。
+  // 弱起：从「整小节长 − 弱起长」开始数（jianpu-ly 的 setAnac）。null = 数不清了
+  // （遇到反复、连音这类括号段——它们在这里被整段跳过），这一分段余下的不再判断，免得误报。
+  let barPos = 0;
 
   // 力度与渐强渐弱，规则与 core/notation/jianpu/parser.py 相同，每一条都是把写法
   // 拿真实 jianpu-ly + LilyPond 渲染、逐像素对比得出的，不是看警告文字推断的：
@@ -250,6 +257,7 @@ function lintJianpuText(text) {
     const word = w.text;
 
     if (bracketDepth > 0) {
+      barPos = null;
       if (BRACKET_CLOSE_SUFFIX_RE.test(word)) {
         bracketDepth--;
         if (bracketDepth === 0 && bracketStartWord) {
@@ -279,6 +287,7 @@ function lintJianpuText(text) {
       endOfPart();
       timesigUnits = 64;
       pendingAnacrusisUnits = null;
+      barPos = 0;
       measureStartWord = words[i + 1] || null;
       continue;
     }
@@ -297,6 +306,7 @@ function lintJianpuText(text) {
         endOfPart();   // 拍号行开启新分段，同 parser.py（开头或紧跟 NextPart 时是空操作）
         timesigUnits = 64 * Number(tm[1]) / Number(tm[2]);
         pendingAnacrusisUnits = tm[3] ? (ANACRUSIS_UNITS[tm[3]] ?? null) : null;
+        barPos = pendingAnacrusisUnits !== null ? timesigUnits - pendingAnacrusisUnits : 0;
       }
       continue;
     }
@@ -305,6 +315,7 @@ function lintJianpuText(text) {
     // （曾是真实 bug：4/4 表头行被连带标成 measure-warn 背景）。
     if (measureStartWord === null) measureStartWord = w;
     if (isExcludedWord(word)) {
+      barPos = null;   // 时值未知：这一分段余下的越线不再判断（同括号段）
       diagnostics.push({
         severity: 'error', code: 'excluded-token',
         start: w.offset, end: w.offset + w.text.length, line: w.line, col: w.col,
@@ -324,6 +335,7 @@ function lintJianpuText(text) {
     if (BRACKET_OPEN_SUFFIX_RE.test(word)) {
       bracketDepth = 1;
       bracketStartWord = w;
+      barPos = null;
       continue;
     }
     if (isDynamicWord(word) || isHairpinWord(word)) {
@@ -346,7 +358,16 @@ function lintJianpuText(text) {
       const prefix = (noteM || dashM)[1];
       const dotted = (noteM ? noteM[5] : dashM[3]) === '.';
       const base = PREFIX_UNITS[prefix] ?? 16;
-      measureUnits += dotted ? base * 1.5 : base;
+      const units = dotted ? base * 1.5 : base;
+      measureUnits += units;
+      if (barPos !== null) {
+        if (barPos + units > timesigUnits) {
+          pushAt(w, 'error', 'crosses-barline', 'w.ed.lint.crosses_barline_at', { token: word });
+        }
+        // 报过之后仍按 jianpu-ly 的网格接着数（它自己会在第一处就停下），
+        // 好把后面每一处越线也指出来。
+        barPos = (barPos + units) % timesigUnits;
+      }
       measureHasNote = true;
       noteCount += 1;
       noteMarks = { dynamic: false, start: false, end: false, index: noteCount };
@@ -355,6 +376,8 @@ function lintJianpuText(text) {
       continue;
     }
 
+    // 不认识的 token 时值未知，后面的位置全都数不准；jianpu-ly 也会就在这里停下。
+    barPos = null;
     diagnostics.push({
       severity: 'error', code: 'bad-token',
       start: w.offset, end: w.offset + w.text.length, line: w.line, col: w.col,

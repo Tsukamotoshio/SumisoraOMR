@@ -110,6 +110,16 @@ const WARNING_TOASTS = {
   generic: { one: 'w.ed.lint.warning_generic_at', many: 'w.ed.lint.warnings_generic' },
 };
 
+// 错误同理按种类给措辞，外加导出被拦时的那句话。"非法记号"只说得了真不认识的 token；
+// 一个合法的音越过了 jianpu-ly 数出的小节线是另一回事（L1），借那句话就是在说错话。
+const ERROR_TOASTS = {
+  'crosses-barline': {
+    one: 'w.ed.lint.crosses_barline_at', many: 'w.ed.lint.crosses_barline_n',
+    blocked: 'w.ed.lint.export_blocked_crossing',
+  },
+  generic: { one: 'w.ed.lint.error_at', many: 'w.ed.lint.errors_toast', blocked: 'w.ed.lint.export_blocked' },
+};
+
 // 汇总而非刷屏：同类问题合并计数一条 toast；诊断集合不变时不重复弹出。
 function edShowLintToasts(diagnostics) {
   const errors = diagnostics.filter((d) => d.severity === 'error');
@@ -117,15 +127,19 @@ function edShowLintToasts(diagnostics) {
   const key = `${errors.length}:${errors[0] ? errors[0].start : ''}:${warnings.length}:${warnings[0] ? warnings[0].start : ''}`;
   if (key === edLastToastKey) return;
   edLastToastKey = key;
-  if (errors.length === 1) {
-    const e = errors[0];
-    toast(t('w.ed.lint.error_at', { line: e.line, token: e.params.token || '' }), {
-      severity: 'error', onClick: () => edJumpTo(e.start, e.end),
-    });
-  } else if (errors.length > 1) {
-    toast(t('w.ed.lint.errors_toast', { n: errors.length }), {
-      severity: 'error', onClick: () => edJumpTo(errors[0].start, errors[0].end),
-    });
+  const errorGroups = new Map();
+  for (const eDiag of errors) {
+    const code = ERROR_TOASTS[eDiag.code] ? eDiag.code : 'generic';
+    if (!errorGroups.has(code)) errorGroups.set(code, []);
+    errorGroups.get(code).push(eDiag);
+  }
+  for (const [code, list] of errorGroups) {
+    const keys = ERROR_TOASTS[code];
+    const first = list[0];
+    const text = list.length === 1
+      ? t(keys.one, { line: first.line, token: first.params.token || '' })
+      : t(keys.many, { n: list.length });
+    toast(text, { severity: 'error', onClick: () => edJumpTo(first.start, first.end) });
   }
   // 警告按种类各弹一条：各类的措辞与参数都不同，混在一起只能说个笼统的数，
   // 而用"小节拍数不符"去概括一个力度位置问题就是在说错话。
@@ -1752,7 +1766,8 @@ $('ed-export').addEventListener('click', async () => {
   // 不阻断原则：校验只警告，唯独 🔴 级别的非法 token 在导出这一步硬拦截（见 B5 校验层）。
   const firstError = edDiagnostics.find((d) => d.severity === 'error');
   if (firstError) {
-    toast(t('w.ed.lint.export_blocked'), { severity: 'error', onClick: () => edJumpTo(firstError.start, firstError.end) });
+    const blocked = (ERROR_TOASTS[firstError.code] || ERROR_TOASTS.generic).blocked;
+    toast(t(blocked), { severity: 'error', onClick: () => edJumpTo(firstError.start, firstError.end) });
     return;
   }
   const r = await api().editor_export_to_output();

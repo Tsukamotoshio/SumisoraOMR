@@ -26,7 +26,10 @@ test('a well-formed 4/4 measure produces no diagnostics', () => {
 test('accepts every 🟢 note-token shape from docs/jianpu-ly-syntax.md §1.1', () => {
   const body = "1=C\n4/4\n\n1 0 b2 1' 4'' 1, q2'. s3' d1' 6,. |\n";
   const { diagnostics } = lintJianpuText(body);
-  assert.deepEqual(errorsOf(diagnostics), []);
+  // A catalogue of shapes, not a playable bar: its 8.625 beats do run the
+  // last note across a barline (crosses-barline, tested on its own below).
+  // What this pins is that every shape is a token the linter knows.
+  assert.deepEqual(errorsOf(diagnostics).filter((d) => d.code !== 'crosses-barline'), []);
 });
 
 test('accepts continuation dashes (§1.2) and does not miscount duration', () => {
@@ -326,4 +329,66 @@ test('48-file acceptance criterion (subset): zero false-positive errors or measu
     assert.deepEqual(errorsOf(diagnostics), [], `unexpected error(s) in ${f}`);
     assert.deepEqual(warningsOf(diagnostics), [], `unexpected measure warning(s) in ${f}`);
   }
+});
+
+
+// ── a note jianpu-ly will reject: it counts bars by the time signature (L1) ──
+// Every case below was run through the real jianpu-ly first; the verdict in
+// each test name is what jianpu-ly did, not what we expect it to do.
+
+function crossings(body) {
+  return lintJianpuText(body).diagnostics
+    .filter((d) => d.code === 'crosses-barline')
+    .map((d) => body.slice(d.start, d.end));
+}
+
+test('crosses-barline: an overfull measure whose note runs over the counted barline (jianpu-ly rejects)', () => {
+  assert.deepEqual(crossings("4/4\n1 2 3 4. q5 | 6 7 1' 2' |"), ['4.']);
+});
+
+test('crosses-barline: an underfull measure followed by a note across the counted barline (rejects)', () => {
+  assert.deepEqual(crossings("4/4\n1 2 3 | 4. q5 6 7 1' |"), ['4.']);
+});
+
+test('crosses-barline: an over- or underfull measure with no note across it is accepted', () => {
+  assert.deepEqual(crossings("4/4\n1 2 3 4 5 | 6 7 1' |"), []);
+  assert.deepEqual(crossings("4/4\n1 2 3 | 4 5 6 7 1' |"), []);
+});
+
+test('crosses-barline: a pickup is counted from the end of a whole bar (accepted)', () => {
+  assert.deepEqual(crossings('4/4,4\n5 | 1 2 3 4 | 5 6 7 |'), []);
+  assert.deepEqual(crossings('4/4,8\nq5 | 1 2 3 4 | 5 6 7 1 |'), []);
+  // the same eighth-note pickup undeclared: counted from 0 everything sits half a
+  // beat late, so the 4 runs over the first barline and the last 1 over the next
+  // (jianpu-ly stops at the 4; the linter points at every one)
+  assert.deepEqual(crossings('4/4\nq5 | 1 2 3 4 | 5 6 7 1 |'), ['4', '1']);
+});
+
+test('crosses-barline: it is an error (export is blocked) and names the note', () => {
+  const [d] = lintJianpuText("4/4\n1 2 3 4. q5 | 6 7 1' 2' |").diagnostics.filter((x) => x.code === 'crosses-barline');
+  assert.equal(d.severity, 'error');
+  assert.equal(d.messageKey, 'w.ed.lint.crosses_barline_at');
+  assert.equal(d.params.token, '4.');
+});
+
+test('crosses-barline: NextPart starts counting again', () => {
+  assert.deepEqual(crossings('4/4\n1 2 3 | NextPart\n4/4\n1 2 3 4 |'), []);
+});
+
+test('crosses-barline: after a bracket span the count is unknown, so nothing is flagged', () => {
+  // The linter skips what is inside R{...}; it cannot know where jianpu-ly's bars fall after it.
+  assert.deepEqual(crossings('4/4\nR{ 1 2 3 } 4. q5 6 7 |'), []);
+});
+
+test('crosses-barline: none of the golden fixtures trips it', () => {
+  for (const name of fs.readdirSync(GOLDEN_DIR).filter((n) => n.endsWith('.jly.txt'))) {
+    const body = fs.readFileSync(path.join(GOLDEN_DIR, name), 'utf8');
+    assert.deepEqual(crossings(body), [], name);
+  }
+});
+
+test('crosses-barline: after a token it cannot read, the count is unknown, so nothing is flagged', () => {
+  // jianpu-ly stops at the unreadable token too; any crossing reported after
+  // it would rest on a guessed duration.
+  assert.deepEqual(crossings('4/4\n1 2 3 4 | q.x 4. q5 6 7 |'), []);
 });
