@@ -107,12 +107,13 @@ def test_apply_doc_returns_renders_in_step_with_the_text(tmp_path):
     applied = service.apply_doc(doc)
     # Both projections come from the same document, so re-deriving the render
     # from the returned text must agree with the render that was returned.
-    from core.notation.jianpu.render_json import jianpu_section_to_render_json
+    from core.notation.jianpu.render_json import jianpu_section_to_render_json, score_header
     rebuilt = parse_jianpu_ly_text(applied['text'])
     expected = [
         jianpu_section_to_render_json(s, rebuilt.key_header, rebuilt.tempo)
         for s in rebuilt.sections
     ]
+    expected[0]['header'] = score_header(rebuilt)   # the title block rides on the first staff
     assert applied['renders'] == expected
 
 
@@ -335,3 +336,17 @@ def test_the_write_back_warning_renders_in_both_languages():
                                          what=render('w.ed.lossy_comments', 'en', n=2))
     assert '2 行注释' in render('w.ed.lossy_confirm', 'zh',
                                 what=render('w.ed.lossy_comments', 'zh', n=2))
+
+
+def test_only_the_first_staff_carries_the_title_block(tmp_path):
+    # The title block belongs to the score, drawn once above the first staff,
+    # as the PDF prints it once above the first system (stage V2a).
+    path = tmp_path / 'parts.jianpu.txt'
+    path.write_text('title=Two parts\ncomposer=Someone\n1=C\n4/4\n\n1 2 3 4 |\nNextPart\n4/4\n5 6 7 1 |\n',
+                    encoding='utf-8')
+    service = _new_service()
+    assert service.load(str(path))['ok']
+    renders = service.graphical_render_data()['renders']
+    assert len(renders) == 2
+    assert renders[0]['header'] == {'title': 'Two parts', 'composer': 'Someone'}
+    assert 'header' not in renders[1]

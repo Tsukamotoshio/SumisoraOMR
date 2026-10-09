@@ -895,7 +895,7 @@ function edCaretGeometry(staff, atStart) {
     // 根节点——`getBBox()` 给的是元素**局部坐标系**里的框，不含祖先 transform。
     // fork 把所有块放在 `g[data-id=music]` 里，而它外面套着
     // `g[data-id=main-content]`，后者带着 `translate(0, yBaseline + verticalPadding)`
-    // （= noteHeight × (1.5 + 1.65)，见 fork 的 jianpu_svg_render.ts）。
+    // （再加上谱头高度；见 fork 的 jianpu_svg_render.ts updateLayout）。
     // 插到根上就少了这一层平移：实测光标画在屏幕 y=189，而音符在 y=269，整整
     // 高了 80px（5.6c-2 量得）。这一条同时也解决了横向裁切——fork 每个谱表里
     // 有两个 SVG（固定 200px 宽的 overlay 与和乐谱等宽的主 SVG），插到 overlay

@@ -400,3 +400,18 @@ def test_a_declared_pickup_is_sent_in_quarters():
 def test_no_pickup_means_no_anacrusis_key():
     doc = parse_jianpu_ly_text('title=T\n1=C\n4/4\n\n1 2 3 4 |\n')
     assert 'anacrusis' not in jianpu_section_to_render_json(doc.sections[0], doc.key_header)
+
+
+# ── the title block above the first staff (stage V2a) ────────────────────────
+
+def test_score_header_carries_what_the_file_gives():
+    from core.notation.jianpu.render_json import score_header
+    doc = parse_jianpu_ly_text('title=Song\ncomposer=Someone\n1=C\n4/4\n4=88\n\n1 2 3 4 |\n')
+    assert score_header(doc) == {'title': 'Song', 'composer': 'Someone', 'tempo': 88}
+
+
+def test_score_header_leaves_out_what_the_file_does_not_say():
+    # No `4=N` line: the playback default must not be printed as if written.
+    from core.notation.jianpu.render_json import score_header
+    doc = parse_jianpu_ly_text('title=Song\n1=C\n4/4\n\n1 2 3 4 |\n')
+    assert score_header(doc) == {'title': 'Song'}

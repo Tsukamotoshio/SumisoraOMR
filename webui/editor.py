@@ -30,6 +30,7 @@ from core.notation.jianpu import (
     jianpu_doc_to_dict,
     jianpu_section_to_render_json,
     parse_jianpu_ly_text,
+    score_header,
 )
 from core.utils import log_message
 
@@ -328,10 +329,15 @@ class EditorService:
         return out
 
     def _renders_of(self, doc) -> list:
-        return [
+        renders = [
             jianpu_section_to_render_json(section, doc.key_header, doc.tempo)
             for section in doc.sections
         ]
+        # The title block belongs to the score, not to a part: only the first
+        # staff carries it, as only the first system of the PDF does (V2a).
+        if renders:
+            renders[0]['header'] = score_header(doc)
+        return renders
 
     def apply_doc(self, doc_raw: Any) -> dict:
         """Serialize an edited model back to text, and re-project it for drawing.

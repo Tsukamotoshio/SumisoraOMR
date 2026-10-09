@@ -31,6 +31,24 @@ DEFAULT_PLAYBACK_TEMPO = 120
 _ACCIDENTAL_CODE = {'': 0, '#': 1, 'b': 2}
 
 
+def score_header(doc) -> dict:
+    """What the renderer prints above the first staff (stage V2a): title,
+    composer and a declared tempo, as the PDF does.
+
+    Keys appear only when the file gives them -- ``tempo`` included: the
+    render JSON's ``tempos`` entry falls back to a playback default when the
+    file declares none, and a default must not be printed as if written.
+    """
+    header: dict = {}
+    if doc.title:
+        header['title'] = doc.title
+    if doc.composer:
+        header['composer'] = doc.composer
+    if doc.tempo and doc.tempo > 0:
+        header['tempo'] = doc.tempo
+    return header
+
+
 def _anacrusis_quarters(time_sig: str) -> float:
     """Length of a declared pickup (`4/4,8` -> 0.5), in quarters; 0 if none.
 
