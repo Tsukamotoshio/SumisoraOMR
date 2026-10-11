@@ -254,6 +254,7 @@ async function edDrawRenders(renders, { reload = true } = {}) {
   // （窄窗口的单列布局下也可能是外面的 stage）；横向那层（JianpuRender 自己套的 div）
   // 只在没法换行时（面板还没布局）才会滚。
   const scrollTops = [container.scrollTop, stage.scrollTop];
+  const anchor = edScrollAnchor();
   const scrollLefts = [...container.querySelectorAll('.graphical-staff > div')].map((d) => d.scrollLeft);
   container.replaceChildren();
   // 阶段3.5：每个 NextPart 分段各自一个独立 renderer 实例，纵向堆叠成多行
@@ -271,6 +272,7 @@ async function edDrawRenders(renders, { reload = true } = {}) {
       render, { noteHeight: Math.round(ED_NOTE_HEIGHT * edZoom), lineWidth: Math.floor(staff.clientWidth) }, staff);
   });
   [container.scrollTop, stage.scrollTop] = scrollTops;
+  edRestoreScrollAnchor(anchor);   // 重排以后像素位置对不上同一段音乐，再按块对一次
   edHighlighted = [];   // 实例全换了，上一轮记的"已高亮音符"作废
   // 阶段5.2：建 data-id → 该分段音符下标 的索引，供点击命中测试反查。
   // id 一律用 fork 自己的 noteElementId() 现算，不在这边另写一份同样的公式——
@@ -324,8 +326,8 @@ function edSyncZoomUI() {
  * 换一档缩放并就地重画。三件事必须一起做对：
  *
  * 1. **不惊动播放器**（reload=false）——缩放没有改动任何音乐内容。
- * 2. 滚动位置按**比例**还原，不是按像素：放大之后同一段音乐的 x 整体变大，
- *    照搬旧的 scrollLeft 会把视野甩到别处去。
+ * 2. 视野留在同一段音乐上，不是同一个像素位置：放大之后行数变了，照搬旧的
+ *    scrollTop 会把视野甩到别处去（阶段 V2e 起由 edDrawRenders 按块对齐）。
  * 3. 选中框与光标是重画时连同 DOM 一起被清掉的，要重新铺一遍。
  *
  * 它不进模型、不入撤销栈（B5）：缩放改的是"怎么看"，不是"是什么"。
@@ -333,18 +335,8 @@ function edSyncZoomUI() {
 async function edApplyZoom(zoom) {
   const next = ED_ZOOM_STEPS.includes(zoom) ? zoom : 1;
   if (next === edZoom || !edRenders) { edZoom = next; edSyncZoomUI(); return; }
-  const container = $('ed-gr-container');
-  const panes = () => [...container.querySelectorAll('.graphical-staff > div')];
-  const ratios = panes().map((d) => {
-    const range = d.scrollWidth - d.clientWidth;
-    return range > 0 ? d.scrollLeft / range : 0;
-  });
   edZoom = next;
-  await edDrawRenders(edRenders, { reload: false });
-  panes().forEach((d, i) => {
-    const range = d.scrollWidth - d.clientWidth;
-    if (range > 0 && ratios[i] !== undefined) d.scrollLeft = ratios[i] * range;
-  });
+  await edDrawRenders(edRenders, { reload: false });   // 它会把视野留在同一段音乐上
   edRenderSelection();
   edRenderCursor();
   edSyncZoomUI();
@@ -368,29 +360,83 @@ $('ed-gr-zoomreset').addEventListener('click', () => edApplyZoom(1));
 
 const ED_SCROLL_MARGIN = 24;
 
-/** 取某个谱表的横向滚动容器（fork 自己在谱表里套的那一层）。 */
-function edStaffPane(staff) {
-  return staff ? staff.querySelector(':scope > div') : null;
+/** The element's ancestors that can scroll, innermost first, each with the axes it scrolls on. */
+function edScrollers(el) {
+  const out = [];
+  for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) {
+    const cs = getComputedStyle(e);
+    const y = /^(auto|scroll)$/.test(cs.overflowY);
+    const x = /^(auto|scroll)$/.test(cs.overflowX);
+    if (x || y) out.push({ el: e, x, y });
+  }
+  return out;
 }
 
 /**
- * 把谱面上的一段 x 区间滚进可视区——**已经看得见就不动**。
+ * 把一个元素滚进可视区——**已经看得见就不动**。
  *
  * "不动"这一条是关键：这个函数会在每次重画、每次选区变化时被叫到，若无条件居中，
  * 用户手动拖到的位置会被不断扯回去。
+ *
+ * 阶段 V2e：谱面换行以后往下长，主要是**纵向**滚——滚的是谱面容器（#ed-gr-container），
+ * 窄窗口单列布局下外面几层也可能要滚，所以从里往外每一层能滚的都照顾到，每滚一层重新量一次
+ * 位置。横向那条也还在：面板还没布局、没法换行时，谱面仍是一长行。
+ * `lead`：目标不在视野里时放在哪——'nearest' 是贴着边缘挪最少的距离（选区、光标逐个移动时
+ * 用，视野不乱跳）；0–1 的数是离视野起点的比例（跳转、播放翻到下一行时用 0.25，后面几行
+ * 也看得见）。目标比视野还大时一律对齐起点。
  */
-function edScrollRangeIntoView(pane, x0, x1) {
-  if (!pane) return;
-  const view = pane.clientWidth;
-  const left = pane.scrollLeft;
-  if (x0 >= left + ED_SCROLL_MARGIN && x1 <= left + view - ED_SCROLL_MARGIN) return;
-  // 目标比视野还宽时只能对齐左边；否则留出一段前置余量，让用户看得到目标前面
-  // 那点上下文，而不是紧贴左边缘。
-  const lead = x1 - x0 >= view
-    ? ED_SCROLL_MARGIN
-    : Math.max(ED_SCROLL_MARGIN, (view - (x1 - x0)) / 3);
-  const max = Math.max(0, pane.scrollWidth - view);
-  pane.scrollLeft = Math.max(0, Math.min(x0 - lead, max));
+function edReveal(el, { lead = 'nearest' } = {}) {
+  if (!el) return;
+  for (const s of edScrollers(el)) {
+    for (const axis of ['y', 'x']) {
+      if (!s[axis]) continue;
+      const v = s.el.getBoundingClientRect();
+      const start = axis === 'y' ? v.top + s.el.clientTop : v.left + s.el.clientLeft;
+      const size = axis === 'y' ? s.el.clientHeight : s.el.clientWidth;
+      if ((axis === 'y' ? s.el.scrollHeight : s.el.scrollWidth) <= size + 1) continue;
+      const r = el.getBoundingClientRect();
+      const a = (axis === 'y' ? r.top : r.left) - start;
+      const b = (axis === 'y' ? r.bottom : r.right) - start;
+      const margin = Math.min(ED_SCROLL_MARGIN, size / 4);
+      if (a >= margin && b <= size - margin) continue;
+      let delta;
+      if (b - a >= size - 2 * margin) delta = a - margin;
+      else if (lead === 'nearest') delta = a < margin ? a - margin : b - (size - margin);
+      else delta = a - size * lead;
+      if (axis === 'y') s.el.scrollTop += delta;
+      else s.el.scrollLeft += delta;
+    }
+  }
+}
+
+/**
+ * 重画前后让视野停在同一段音乐上（阶段 V2e）：记下谱面容器视野里最上面的那个块
+ * （分段 + 起点）离视野上沿多远，画完把同一个块放回原处。只按像素还原的话，一旦重排
+ * （拉宽拉窄窗口、缩放）行数变了，同一个 scrollTop 看到的就是别的小节。
+ */
+function edScrollAnchor() {
+  const container = $('ed-gr-container');
+  if (container.scrollHeight <= container.clientHeight + 1) return null;
+  const top = container.getBoundingClientRect().top + container.clientTop;
+  const staffs = [...container.children];
+  for (let section = 0; section < staffs.length; section++) {
+    for (const b of edStaffBlocks(staffs[section])) {
+      const r = b.el.getBoundingClientRect();
+      if (r.height > 0 && r.bottom > top) return { section, start: b.start, offset: r.top - top };
+    }
+  }
+  return null;
+}
+
+function edRestoreScrollAnchor(anchor) {
+  if (!anchor) return;
+  const container = $('ed-gr-container');
+  const staff = container.children[anchor.section];
+  if (!staff) return;
+  const b = edStaffBlocks(staff).find((blk) => Math.abs(blk.start - anchor.start) < 1e-6);
+  if (!b) return;   // 那个块被这次编辑删掉了：留在按像素还原的位置
+  const top = container.getBoundingClientRect().top + container.clientTop;
+  container.scrollTop += b.el.getBoundingClientRect().top - top - anchor.offset;
 }
 
 /**
@@ -432,6 +478,7 @@ function edGotoMeasure(n) {
   clearTimeout(edJumpFlashTimer);
   container.querySelectorAll('.jp-jump-flash').forEach((el) => el.remove());
   let hit = false;
+  let reveal = null;
   [...container.children].forEach((staff, section) => {
     const span = edMeasureSpan(section, measure);
     if (!span) return;
@@ -448,7 +495,6 @@ function edGotoMeasure(n) {
       } catch (_e) { /* 未布局 */ }
     }
     hit = true;
-    edScrollRangeIntoView(edStaffPane(staff), a.x, x1);
     // 目标小节本来就在画面里时，不给点反馈就分不清到底跳没跳。
     const rect = document.createElementNS(SVGNS, 'rect');
     rect.setAttribute('class', 'jp-jump-flash');
@@ -459,8 +505,10 @@ function edGotoMeasure(n) {
     rect.setAttribute('rx', '3');
     // 垫到最底下，别盖住音符数字（与选中框同一套手法）。
     a.layer.insertBefore(rect, a.layer.firstChild);
+    if (section === 0 || !reveal) reveal = rect;   // 滚到第一个声部的这一小节
   });
   if (!hit) return null;
+  edReveal(reveal, { lead: 0.25 });
   edJumpFlashTimer = setTimeout(() => {
     container.querySelectorAll('.jp-jump-flash').forEach((el) => el.remove());
   }, 1200);
@@ -578,18 +626,29 @@ function edSyncTransport() {
 // renderer 高亮。**位置来自发声用的同一个时钟**，不是另起一套定时器自己数拍子——
 // 这正是"误差 < 1 帧"能成立的原因：高亮误差的上界就是一帧的间隔本身，掉帧只会
 // 让高亮少更新几次，不会让它跟声音越漂越远。
-// `redraw(note, true)` 的第二个参数就是 fork 自带的按需自动滚动。
+// `redraw(note, true)` 的第二个参数是 fork 自带的横向自动滚动——只在谱面没法换行、
+// 是一长行时起作用；换行后由 edUpdateHighlight 自己纵向跟随（阶段 V2e）。
 let edHighlighted = [];   // 每个分段上一帧高亮的音符（用来判断"变了没"，避免每帧重画）
 
 function edUpdateHighlight() {
   if (!edRenderers.length) return;
   const active = activeNotesAt(jianpuPlayer.notes, jianpuPlayer.positionSec);
+  let follow = null;
   for (let i = 0; i < edRenderers.length; i++) {
     const note = active.get(i);
     if (note === edHighlighted[i]) continue;   // 这一分段没换音符，不必重画
     edHighlighted[i] = note;
     if (note) edRenderers[i].redraw(note, true);
     else edRenderers[i].clearHighlight();
+    if (note && !follow) follow = { section: i, note };
+  }
+  // 阶段 V2e：换行后 fork 自己的横向跟随不起作用了，谱面要纵向跟着走。跟最上面那个声部
+  // （几个声部各自换行、上下隔得远时没法同时跟，V2h 合成谱表组后自然一起走）；放到离视野
+  // 上沿四分之一处，翻到新的一行时后面几行也看得见。
+  if (follow) {
+    const staff = $('ed-gr-container').children[follow.section];
+    const id = window.jr.noteElementId(follow.note.start, follow.note.pitch);
+    edReveal(staff && staff.querySelector(`g[data-id="${CSS.escape(id)}"]`), { lead: 0.25 });
   }
 }
 
@@ -617,7 +676,7 @@ function edRenderSelection() {
   const staff = container.children[range.section];
   if (!staff) return;
   const notes = edSectionNotes[range.section] || [];
-  let focusBox = null;
+  let focusG = null;
   for (let i = range.from; i <= range.to; i++) {
     const note = notes[i];
     if (!note) continue;
@@ -630,7 +689,7 @@ function edRenderSelection() {
       continue;   // 未布局的元素取 bbox 会抛，跳过即可
     }
     if (!box || box.width <= 0) continue;
-    if (i === edSelection.focus) focusBox = box;
+    if (i === edSelection.focus) focusG = g;
     const pad = 2;
     const rect = document.createElementNS(SVGNS, 'rect');
     rect.setAttribute('class', 'jp-sel-rect');
@@ -644,9 +703,7 @@ function edRenderSelection() {
   }
   // 阶段5.6c-2：方向键移选择、或编辑后重新落回某个音符时，把**焦点**那一个滚进来。
   // 只看焦点不看整个选区：整段比视野长时，用户关心的是自己刚走到的那一头。
-  if (focusBox) {
-    edScrollRangeIntoView(edStaffPane(staff), focusBox.x, focusBox.x + focusBox.width);
-  }
+  edReveal(focusG);
 }
 
 function edSetSelection(section, index, extend) {
@@ -989,7 +1046,7 @@ function edRenderCursor() {
   // 阶段5.6c-2：光标走到哪谱面跟到哪。不跟的话，往右敲几下就在看不见的地方录入
   // 了——阶段5.6c-1 刚把光标从会被裁掉的 overlay 里救出来，它才刚刚变得"画得
   // 出来"；要真能用，还得能"跟得上"。
-  edScrollRangeIntoView(edStaffPane(staff), geom.x - 1, geom.x + 1);
+  edReveal(rect);
 }
 
 /** 工具条上的模式标签：模式 + 当前时值/八度/临时记号，一眼看全录入状态。 */
