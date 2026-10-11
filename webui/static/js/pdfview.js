@@ -50,6 +50,7 @@ export class PdfView {
     this.pageNo = 1;
     this.scale = null;      // null = fit-width
     this._renderToken = 0;
+    this._task = null;      // 正在画的那一页（pdf.js RenderTask），新的一次开画前先取消它
     // A4 画框随窗口尺寸变化（窗口化↔最大化、任意 resize）→ fit 模式下重渲当前页，
     // 让页面始终恰好填满新的画框（业界惯用做法：观察容器尺寸，防抖重排）。
     this._resizeTimer = 0;
@@ -101,6 +102,14 @@ export class PdfView {
     const token = ++this._renderToken;
     const page = await this.doc.getPage(this.pageNo);
     if (token !== this._renderToken) return;
+    // 上一次还没画完就又来一次（连着两次改窗口大小、画到一半最大化）：pdf.js 不许两个
+    // render 同时用一块 canvas，会抛错。先把上一个取消掉、等它真正停下，再改 canvas 尺寸、画这一次
+    // （改尺寸会清空画布，不能让上一个还在往上画）。
+    if (this._task) {
+      this._task.cancel();
+      try { await this._task.promise; } catch (_e) { /* 被取消的那次会以 RenderingCancelledException 结束 */ }
+      if (token !== this._renderToken) return;
+    }
     // 先取消隐藏再测量：canvas.hidden 时 A4 画框 display:none，宽度为 0
     this.canvas.classList.remove('hidden');
     const scale = this.scale ?? this._fitScale(page);
@@ -110,7 +119,16 @@ export class PdfView {
     this.canvas.height = vp.height;
     this.canvas.style.width = `${vp.width / dpr}px`;
     this.canvas.style.height = `${vp.height / dpr}px`;
-    await page.render({ canvas: this.canvas, viewport: vp }).promise;
+    const task = page.render({ canvas: this.canvas, viewport: vp });
+    this._task = task;
+    try {
+      await task.promise;
+    } catch (e) {
+      if (e && e.name === 'RenderingCancelledException') return;   // 被更新的一次顶替了
+      throw e;
+    } finally {
+      if (this._task === task) this._task = null;
+    }
     if (this.pageInfoEl) this.pageInfoEl.textContent = t('w.pv.page_info', { n: this.pageNo, t: this.doc.numPages });
   }
 
