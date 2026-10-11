@@ -168,6 +168,10 @@ button { font-family: inherit; cursor: default; }
    表单后实测表头占 134–197、谱面占 169–350，相交 28px（播放条与谱面同样相交）。
    `.hidden` 带 !important，所以这条 id 规则不会妨碍隐藏。 */
 #ed-gr-stage { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; }
+/* 阶段 V2d：谱面按面板宽度换行，宽度一变就重排。纵向滚的是谱面容器自己；它的滚动条
+   出现与消失会让宽度跟着变 15px 左右——不预留位置的话，量宽度时还没有滚动条、画完多出
+   一条，谱面就宽出 15px 要横着滚；重排又改变高度、滚动条再出没，来回打转。 */
+#ed-gr-container { scrollbar-gutter: stable; }
 /* 调号就地编辑的浮层（阶段5.6b-2）。定位到被点中的那个调号字样旁边，
    所以父级 #ed-gr-stage 需要 position: relative 作定位参照。 */
 .keypop { position: absolute; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 8px;

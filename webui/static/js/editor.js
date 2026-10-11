@@ -248,21 +248,29 @@ async function edDrawRenders(renders, { reload = true } = {}) {
   const jr = await edLoadJianpuRenderLib();
   edRenders = renders;
   const container = $('ed-gr-container');
-  // 重绘会重建全部 DOM，横向滚动位置会归零；先记下来再还原，否则用户每敲一个
-  // 字都会被弹回谱面开头。JianpuRender 自己在容器里套了一层可滚动 div。
+  const stage = $('ed-gr-stage');
+  // 重绘会重建全部 DOM，滚动位置会归零；先记下来再还原，否则用户每敲一个字都会被
+  // 弹回谱面开头。阶段 V2d 起谱面按面板宽度换行、往下长，纵向滚的是谱面容器自己
+  // （窄窗口的单列布局下也可能是外面的 stage）；横向那层（JianpuRender 自己套的 div）
+  // 只在没法换行时（面板还没布局）才会滚。
+  const scrollTops = [container.scrollTop, stage.scrollTop];
   const scrollLefts = [...container.querySelectorAll('.graphical-staff > div')].map((d) => d.scrollLeft);
   container.replaceChildren();
   // 阶段3.5：每个 NextPart 分段各自一个独立 renderer 实例，纵向堆叠成多行
   // 谱表——JianpuRender 本身没有"同一谱表多声部叠放"的概念（见 B9.3.1 spike
   // 结论），这是本项目自己在外层做的编排，不是改 fork 内部。
+  edLayoutWidth = container.clientWidth;
   edRenderers = renders.map((render) => {
     const staff = document.createElement('div');
     staff.className = 'graphical-staff';
     container.appendChild(staff);
+    // 阶段 V2d：按 LilyPond 的规则排版、按面板宽度换行（fork 的 lineWidth，V2b–V2c′）。
+    // 面板还没布局（宽 0）时给 0 = 不换行；它一有宽度，ResizeObserver 会按真实宽度重排。
     // 留住实例：阶段4.2 的播放高亮要对每个分段调它自己的 redraw(note, true)。
     return new jr.JianpuSVGRender(
-      render, { noteHeight: Math.round(ED_NOTE_HEIGHT * edZoom) }, staff);
+      render, { noteHeight: Math.round(ED_NOTE_HEIGHT * edZoom), lineWidth: Math.floor(staff.clientWidth) }, staff);
   });
+  [container.scrollTop, stage.scrollTop] = scrollTops;
   edHighlighted = [];   // 实例全换了，上一轮记的"已高亮音符"作废
   // 阶段5.2：建 data-id → 该分段音符下标 的索引，供点击命中测试反查。
   // id 一律用 fork 自己的 noteElementId() 现算，不在这边另写一份同样的公式——
@@ -284,6 +292,26 @@ async function edDrawRenders(renders, { reload = true } = {}) {
   if (reload) jianpuPlayer.load(renders);
   edSyncTransport();
 }
+
+// ── 面板宽度变了就重排（阶段 V2d）───────────────────────────────────────────
+// 谱面按面板宽度换行，所以窗口拉宽拉窄、单列/双列布局切换、图形页从隐藏到显示，
+// 都要按新宽度重画一遍。只看宽度：重画会改变谱面高度，高度变化不该再触发重画。
+// 防抖：拖动窗口边缘时宽度连续变，等它停下来再画。
+let edLayoutWidth = 0;
+let edRelayoutTimer = 0;
+const ED_RELAYOUT_DEBOUNCE_MS = 120;
+
+new ResizeObserver(() => {
+  const width = $('ed-gr-container').clientWidth;
+  if (!edRenders || !width || Math.abs(width - edLayoutWidth) < 1) return;
+  clearTimeout(edRelayoutTimer);
+  edRelayoutTimer = setTimeout(async () => {
+    if (!edRenders || $('ed-gr-stage').classList.contains('hidden')) return;
+    await edDrawRenders(edRenders, { reload: false });   // 音乐没变，不惊动播放器
+    edRenderSelection();
+    edRenderCursor();
+  }, ED_RELAYOUT_DEBOUNCE_MS);
+}).observe($('ed-gr-container'));
 
 /** 把当前档位反映到按钮上（百分比读数 + 到顶/到底时置灰）。 */
 function edSyncZoomUI() {
@@ -408,16 +436,25 @@ function edGotoMeasure(n) {
     const span = edMeasureSpan(section, measure);
     if (!span) return;
     const a = edCaretGeometry(staff, span.start);
-    const b = edCaretGeometry(staff, span.end);
-    if (!a || !b || !a.layer) return;
+    if (!a || !a.layer) return;
+    // 闪光盖住这一小节自己的块。不再拿下一小节的起点当右边界：换行以后它可能
+    // 在下一行（V2d）。
+    let x1 = a.x + 1;
+    for (const b of edStaffBlocks(staff)) {
+      if (b.start < span.start - 1e-9 || b.start >= span.end - 1e-9) continue;
+      try {
+        const bb = edBoxIn(b.el, a.layer);
+        x1 = Math.max(x1, bb.x + bb.width);
+      } catch (_e) { /* 未布局 */ }
+    }
     hit = true;
-    edScrollRangeIntoView(edStaffPane(staff), a.x, Math.max(b.x, a.x + 1));
+    edScrollRangeIntoView(edStaffPane(staff), a.x, x1);
     // 目标小节本来就在画面里时，不给点反馈就分不清到底跳没跳。
     const rect = document.createElementNS(SVGNS, 'rect');
     rect.setAttribute('class', 'jp-jump-flash');
     rect.setAttribute('x', `${a.x - 2}`);
     rect.setAttribute('y', `${a.y}`);
-    rect.setAttribute('width', `${Math.max(4, b.x - a.x + 4)}`);
+    rect.setAttribute('width', `${Math.max(4, x1 - a.x + 4)}`);
     rect.setAttribute('height', `${a.height}`);
     rect.setAttribute('rx', '3');
     // 垫到最底下，别盖住音符数字（与选中框同一套手法）。
@@ -860,49 +897,73 @@ function edCursorStart() {
  * 可能只对应一个块；不插值的话四个光标位置会叠在同一个 x 上，看起来像没动。
  * 块长从下一个块的起点推出来，全程只依赖 DOM，不去猜 fork 内部怎么切块。
  */
-function edCaretGeometry(staff, atStart) {
-  const groups = [...staff.querySelectorAll('[data-block-start]')]
+/**
+ * An element's bounding box in another element's coordinates (both in one SVG).
+ * `getBBox()` alone is in the element's own coordinates, and since the score is
+ * laid out in lines (stage V2b–V2c′) every line, measure and block carries a
+ * transform of its own: a box taken in one group is not a position in another.
+ */
+function edBoxIn(el, layer) {
+  const box = el.getBBox();
+  const m = layer.getCTM().inverse().multiply(el.getCTM());
+  const a = new DOMPoint(box.x, box.y).matrixTransform(m);
+  const b = new DOMPoint(box.x + box.width, box.y + box.height).matrixTransform(m);
+  return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
+}
+
+/** A staff's blocks (`data-block-start` groups), sorted by start. */
+function edStaffBlocks(staff) {
+  return [...staff.querySelectorAll('[data-block-start]')]
     .map((el) => ({ el, start: parseFloat(el.getAttribute('data-block-start')) }))
     .filter((b) => Number.isFinite(b.start))
     .sort((a, b) => a.start - b.start);
-  if (!groups.length) return null;
+}
 
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const b of groups) {
-    try {
-      b.box = b.el.getBBox();
-    } catch (_e) {
-      b.box = null;                 // 未布局的元素取 bbox 会抛
-    }
-    if (b.box && b.box.height > 0) {
-      minY = Math.min(minY, b.box.y);
-      maxY = Math.max(maxY, b.box.y + b.box.height);
-    }
-  }
-  if (!Number.isFinite(minY)) return null;
+function edCaretGeometry(staff, atStart) {
+  const groups = edStaffBlocks(staff);
+  if (!groups.length) return null;
 
   let i = 0;
   while (i + 1 < groups.length && groups[i + 1].start <= atStart + 1e-9) i++;
   const block = groups[i];
-  if (!block.box) return null;
+  // 覆盖层图元（光标、跳转闪光）必须插进**块自己所在的那个分组**，而不是 SVG
+  // 根节点：fork 把所有块放在 `g[data-id=music]` 里，它外面套着
+  // `g[data-id=main-content]`，带着 `translate(0, yBaseline + verticalPadding)`
+  // （再加上谱头高度；见 fork 的 jianpu_svg_render.ts updateLayout）。插到根上就少
+  // 了这一层平移：实测光标画在屏幕 y=189，而音符在 y=269，整整高了 80px（5.6c-2
+  // 量得）。这一条同时也解决了横向裁切——fork 每个谱表里有两个 SVG（固定 200px 宽
+  // 的 overlay 与和乐谱等宽的主 SVG），插到 overlay 根上的话 x 一超过 200 就被
+  // overflow:hidden 裁掉（5.6c-1 实测）。换行以后（V2d）块的父分组是它所在的小节；
+  // 各个块又各自带着对齐平移，所以位置一律经 edBoxIn 换算到这一层的坐标里。
+  const layer = block.el.parentElement;
+  // 光标的上下边界只看同一行：换行后每行的局部 y 都一样，混进别的行只会让高度
+  // 跟着别处的八度点、连线忽高忽低。没换行时没有行分组，就看全部。
+  const line = block.el.closest('g[data-line]');
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let box = null;
+  for (const b of groups) {
+    if (line && !line.contains(b.el)) continue;
+    let bb;
+    try {
+      bb = edBoxIn(b.el, layer);
+    } catch (_e) {
+      continue;                     // 未布局的元素取 bbox 会抛
+    }
+    if (b === block) box = bb;
+    if (bb.height > 0) {
+      minY = Math.min(minY, bb.y);
+      maxY = Math.max(maxY, bb.y + bb.height);
+    }
+  }
+  if (!box || !Number.isFinite(minY)) return null;
   const next = groups[i + 1];
   const span = next ? next.start - block.start : 0;
   const ratio = span > 1e-9 ? Math.min(1, Math.max(0, (atStart - block.start) / span)) : 0;
   const pad = 4;
   return {
-    // 覆盖层图元（光标、跳转闪光）必须插进**块自己所在的那个分组**，而不是 SVG
-    // 根节点——`getBBox()` 给的是元素**局部坐标系**里的框，不含祖先 transform。
-    // fork 把所有块放在 `g[data-id=music]` 里，而它外面套着
-    // `g[data-id=main-content]`，后者带着 `translate(0, yBaseline + verticalPadding)`
-    // （再加上谱头高度；见 fork 的 jianpu_svg_render.ts updateLayout）。
-    // 插到根上就少了这一层平移：实测光标画在屏幕 y=189，而音符在 y=269，整整
-    // 高了 80px（5.6c-2 量得）。这一条同时也解决了横向裁切——fork 每个谱表里
-    // 有两个 SVG（固定 200px 宽的 overlay 与和乐谱等宽的主 SVG），插到 overlay
-    // 根上的话 x 一超过 200 就被 overflow:hidden 裁掉（5.6c-1 实测：x=135 画得
-    // 出来、x=555 一个像素都没有）。块的父分组两件事都天然对。
-    layer: block.el.parentElement,
-    x: block.box.x + ratio * block.box.width,
+    layer,
+    x: box.x + ratio * box.width,
     y: minY - pad,
     height: (maxY - minY) + pad * 2,
   };
