@@ -162,12 +162,12 @@ button { font-family: inherit; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .jp-jump-flash { animation: none; opacity: .18; } }
 .grtransport .inputmode { color: var(--accent); font-size: 12px; font-weight: 600;
   border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; }
-.grtransport { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 /* 图形页自己按列排。父级 `.preview .stage` 是 `display:grid; place-items:center`，
    内容总高一旦超过它的 min-height，行会被压缩，子元素就**互相重叠**——加上表头
    表单后实测表头占 134–197、谱面占 169–350，相交 28px（播放条与谱面同样相交）。
    `.hidden` 带 !important，所以这条 id 规则不会妨碍隐藏。 */
 #ed-gr-stage { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; }
+#ed-gr-stage { padding: 14px 16px; }   /* 8.0c：谱面是主画布，四周的留白让给它 */
 /* 阶段 V2d：谱面按面板宽度换行，宽度一变就重排。纵向滚的是谱面容器自己；它的滚动条
    出现与消失会让宽度跟着变 15px 左右——不预留位置的话，量宽度时还没有滚动条、画完多出
    一条，谱面就宽出 15px 要横着滚；重排又改变高度、滚动条再出没，来回打转。 */
@@ -183,14 +183,21 @@ button { font-family: inherit; cursor: default; }
    强调色铺底 + 反白前景，不另造一套语义。 */
 .keypop .pvbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* 表头字段（阶段5.6b-1）。调号与拍号不在这里——它们画在 SVG 上，点谱面直接改
-   （5.6b-2/b-3）；只有标题/作曲/速度在谱面上没有对应图元，才需要表单。 */
-.grheader { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-.grheader .field { flex: 1 1 160px; min-width: 0; }
-.grheader .field.narrow { flex: 0 0 88px; }
-.grheader .grjump { margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px; }
-.grheader .grjump .lbl { margin-bottom: 0; }
-.grheader .grzoom { flex: none; }
+/* 谱面工具条（阶段 8.0c）：主画布自己的一行——左边播放，右边表头、跳转、力度、缩放。
+   只在有谱面时出现。播放键在音频没准备好时置灰而不隐藏：以前播放条画在谱面下方、
+   音频就绪才冒出来，一冒出来谱面视口就矮一截。 */
+.grtoolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.grtoolbar .grtransport { display: flex; align-items: center; gap: 8px; }
+/* 右边这组整块折行：两栏布局下谱面卡片最窄约 400 px，放不下一行时它整组落到第二行、仍靠右，
+   不会一个个零散地掉下去。 */
+.grtoolbar .grtools { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.grtoolbar .grjump { flex: none; display: flex; align-items: center; gap: 6px; }
+.grtoolbar .grjump .lbl { margin-bottom: 0; white-space: nowrap; }
+.grtoolbar .grjump .textinput { width: 64px; height: 28px; padding: 4px 8px; font-size: 12.5px; }   /* 与按钮同高 */
+.grtoolbar .grzoom { flex: none; }
+/* 表头浮层：标题/作曲/速度。工具条上的「表头」按钮或点谱面上画出的标题、作曲打开。 */
+.hdrpop { flex-direction: column; align-items: stretch; gap: 10px; width: min(280px, calc(100% - 8px)); padding: 12px; }
+.hdrpop .field.narrow { width: 96px; }
 .pvbtn.wide { width: 52px; font-size: 11px; font-variant-numeric: tabular-nums; }
 .grtransport .num { color: var(--muted); font-size: 12px; }
 .preview .placeholder { color: var(--faint); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
@@ -350,6 +357,7 @@ button { font-family: inherit; cursor: default; }
 .edside .drawer-close { display: none; }   /* 只在窄屏抽屉里出现（宽屏下用主画布上的开关） */
 .chipbtn[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .edtext > .edtext-head { padding: 6px 10px; }
+.edtext-head #ed-symbols { margin-left: auto; }   /* 符号参考随文本栏走（8.0c） */
 .edtext .chev { transition: transform .15s; }
 .edtext .ed-body { flex: none; height: clamp(140px, 30vh, 340px); }
 .edtext.collapsed > .edtext-head { border-bottom: none; }
@@ -480,7 +488,8 @@ button { font-family: inherit; cursor: default; }
 }
 
 /* ── 简谱编辑页 ─────────────────────────────────────────────────────────── */
-.tabgroup .tab { width: auto; padding: 0 14px; font-size: 12.5px; }
+.tabgroup { flex: none; }   /* 标签不让位给旁边的文件名（8.0c：1000 px 下被挤成两行字） */
+.tabgroup .tab { width: auto; padding: 0 14px; font-size: 12.5px; white-space: nowrap; }
 .tabgroup .tab[aria-selected="true"] { background: var(--accent-tint); color: var(--accent); border-color: var(--accent); z-index: 1; }
 #ed-ref-stage img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: var(--shadow); background: #fff; object-fit: contain; }
 .dirty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); flex: none; }

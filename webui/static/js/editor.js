@@ -15,7 +15,8 @@ import {
   heldNoteIndex, pasteNotesCommands, selectionSpan, steppedDuration,
 } from './jianpu-edit.js';
 
-const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), $('ed-pv-pageinfo'));
+// 页码不交给 PdfView 自己写：两个视图共用侧栏底部那一条，由 edSyncPdfBar 按当前标签填。
+const edPvView = new PdfView($('ed-pv-canvas'), $('ed-pv-stage'), null);
 const edRefView = new PdfView($('ed-ref-canvas'), $('ed-ref-stage'), null);
 let edDirty = false;
 let edLoaded = false;
@@ -200,10 +201,30 @@ function edShowTab(which, { reveal = false } = {}) {
   $('ed-tab-pv').setAttribute('aria-selected', String(which === 'pv'));
   $('ed-ref-stage').classList.toggle('hidden', which !== 'ref');
   $('ed-pv-stage').classList.toggle('hidden', which !== 'pv');
+  edSyncPdfBar();
   if (reveal) edSetSide(true);
 }
 $('ed-tab-ref').addEventListener('click', () => edShowTab('ref'));
 $('ed-tab-pv').addEventListener('click', () => edShowTab('pv'));
+
+// 侧栏底部的翻页/缩放（阶段 8.0c）跟着当前标签走：参考图是 PDF 时管参考图，预览标签管预览；
+// 当前视图里没有 PDF（参考是图片、还没渲染预览）就收起。以前它只认预览——在参考图标签下点，
+// 翻的是看不见的那份预览，多页的参考 PDF 反倒翻不了页。
+
+/** The PDF view the side panel is showing, or null when that view holds no PDF. */
+function edActivePdfView() {
+  const view = $('ed-tab-pv').getAttribute('aria-selected') === 'true' ? edPvView : edRefView;
+  return view.doc ? view : null;
+}
+
+function edSyncPdfBar() {
+  const view = edActivePdfView();
+  $('ed-pv-bar').classList.toggle('hidden', !view);
+  if (!view) return;
+  $('ed-pv-pageinfo').textContent = t('w.pv.page_info', { n: view.pageNo, t: view.doc.numPages });
+  $('ed-pv-prev').disabled = view.pageNo <= 1;
+  $('ed-pv-next').disabled = view.pageNo >= view.doc.numPages;
+}
 
 // ── 工作区（阶段 8.0a）─────────────────────────────────────────────────────
 // 谱面常驻主画布；参考侧栏与文本底栏各自开关。两者都只切 CSS 类、不碰 DOM，
@@ -697,8 +718,10 @@ function edFmtTime(sec) {
 }
 
 function edSyncTransport() {
-  const bar = $('ed-gr-transport');
-  bar.classList.toggle('hidden', !jianpuPlayer.duration);
+  // 播放条在谱面工具条里常驻（8.0c），音频没准备好时置灰，不隐藏——隐藏会让工具条跳动。
+  const ready = !!jianpuPlayer.duration;
+  $('ed-gr-play').disabled = !ready;
+  $('ed-gr-stop').disabled = !ready;
   const playing = jianpuPlayer.isPlaying;
   const btn = $('ed-gr-play');
   btn.innerHTML = playing
@@ -816,6 +839,8 @@ function edIsDrawnDigit(g) {
 }
 
 $('ed-gr-container').addEventListener('click', (e) => {
+  // 点表头、调号、拍号是去改它们（下面另有监听器开浮层），不是点空白处——选区留着。
+  if (e.target.closest && e.target.closest('[data-header], [data-signature]')) return;
   const g = e.target.closest ? e.target.closest('g[data-id]') : null;
   const staff = e.target.closest ? e.target.closest('.graphical-staff') : null;
   if (!g || !staff) { edClearSelection(); return; }   // 点空白处 = 取消选择
@@ -1337,8 +1362,8 @@ const ED_HEADER_FIELDS = [
 
 /** 用模型的值刷新表单。**跳过正在编辑的那个框**，否则会把用户打了一半的字冲掉。 */
 function edSyncHeaderForm() {
-  $('ed-gr-header').classList.toggle('hidden', !edDoc);
-  if (!edDoc) return;
+  $('ed-gr-toolbar').classList.toggle('hidden', !edDoc);
+  if (!edDoc) { edCloseHdrPop(); return; }
   edSyncZoomUI();
   const measures = Math.max(...edDoc.sections.map((sec) => sec.measures.length), 0);
   $('ed-gr-goto').max = String(Math.max(1, measures));
@@ -1382,6 +1407,50 @@ async function edCommitHeaderField(spec) {
 for (const spec of ED_HEADER_FIELDS) {
   $(spec.input).addEventListener('change', () => edCommitHeaderField(spec));
 }
+
+// ── 表头浮层（阶段 8.0c）──────────────────────────────────────────────────────
+// 标题/作曲/速度原是谱面上方常驻的一排表单，占去约 130 px 谱面高度（窄屏还折成两行）。
+// 改成浮层：工具条上的「表头」按钮打开，点谱面上画出的标题或作曲也能打开——与调号、
+// 拍号的就地编辑同一个手势。提交仍走各输入框的 change（失焦或回车），一次编辑一条撤销。
+let edHdrPopOpen = false;
+
+function edCloseHdrPop() {
+  edHdrPopOpen = false;
+  $('ed-hdrpop').classList.add('hidden');
+}
+
+/** `focus` names the field to put the caret in: the one the user clicked on the score. */
+function edOpenHdrPop(target, focus = 'ed-hdr-title') {
+  if (!edDoc) return;
+  edSyncHeaderForm();
+  edPositionPopover($('ed-hdrpop'), target);
+  edHdrPopOpen = true;
+  const el = $(focus);
+  el.focus();
+  if (el.select) el.select();
+}
+
+$('ed-gr-hdr').addEventListener('click', (e) => {
+  const wasOpen = edHdrPopOpen;
+  edClosePopovers();
+  if (!wasOpen) edOpenHdrPop(e.currentTarget);
+});
+
+// 回车：change 已经提交了，收起浮层回到谱面。Esc：放弃没提交的输入、收起。两者都把焦点
+// 交还给页面，键盘编辑接着可用。截住冒泡——document 上的 Esc 监听器会清选区。
+$('ed-hdrpop').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== 'Escape') return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === 'Escape') {
+    for (const { input, field } of ED_HEADER_FIELDS) {
+      const value = edDoc ? edDoc[field] : null;
+      $(input).value = value === null || value === undefined ? '' : String(value);
+    }
+  }
+  if (document.activeElement) document.activeElement.blur();   // 回车时这一下触发 change
+  edCloseHdrPop();
+});
 
 // ── 调号就地编辑（阶段5.6b-2）────────────────────────────────────────────────
 // 用户已定：点谱面上画出来的调号直接改，用下拉栏而不是自由文本，且**不提供
@@ -1435,9 +1504,12 @@ function edOpenKeyPop(target) {
 /** 把浮层摆到被点中的那个字样下方（位置相对 #ed-gr-stage，它是定位参照）。 */
 function edPositionPopover(pop, target) {
   pop.classList.remove('hidden');
-  const stage = $('ed-gr-stage').getBoundingClientRect();
+  const stageEl = $('ed-gr-stage');
+  const stage = stageEl.getBoundingClientRect();
   const box = target.getBoundingClientRect();
-  pop.style.left = `${Math.max(4, box.left - stage.left)}px`;
+  // 按钮在工具条右端（力度、表头）时，左对齐会让浮层伸出谱面卡片——收回到右边界以内。
+  const maxLeft = stageEl.clientWidth - pop.offsetWidth - 4;
+  pop.style.left = `${Math.max(4, Math.min(box.left - stage.left, maxLeft))}px`;
   pop.style.top = `${box.bottom - stage.top + 6}px`;
 }
 
@@ -1483,6 +1555,7 @@ function edClosePopovers() {
   edCloseKeyPop();
   edCloseTimePop();
   edCloseDynPop();
+  edCloseHdrPop();
 }
 
 function edOpenTimePop(target) {
@@ -1615,6 +1688,14 @@ $('ed-gr-dyn').addEventListener('click', (e) => edToggleDynPop(e.currentTarget))
 // <text>，没有任何可命中的属性）。两者会同时画在固定 overlay 与可滚动层
 // 里，两处都带这个标记，点哪个都算。
 $('ed-gr-container').addEventListener('click', (e) => {
+  const header = e.target.closest ? e.target.closest('[data-header]') : null;
+  if (header) {
+    e.stopPropagation();
+    const wasOpen = edHdrPopOpen;
+    edClosePopovers();
+    if (!wasOpen) edOpenHdrPop(header, header.getAttribute('data-header') === 'composer' ? 'ed-hdr-composer' : 'ed-hdr-title');
+    return;
+  }
   const hit = e.target.closest ? e.target.closest('[data-signature]') : null;
   if (!hit) return;
   e.stopPropagation();   // 别让它冒泡成"点空白处取消选择"
@@ -1627,9 +1708,9 @@ $('ed-gr-container').addEventListener('click', (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  if (!edKeyPopOpen && !edTimePopOpen && !edDynPopOpen) return;
-  // 力度浮层的开关按钮自己会 toggle，别让这里抢在前头把它关掉又打开。
-  if (e.target.closest && e.target.closest('#ed-keypop, #ed-timepop, #ed-dynpop, #ed-gr-dyn')) return;
+  if (!edKeyPopOpen && !edTimePopOpen && !edDynPopOpen && !edHdrPopOpen) return;
+  // 力度、表头浮层的开关按钮自己会 toggle，别让这里抢在前头把它关掉又打开。
+  if (e.target.closest && e.target.closest('#ed-keypop, #ed-timepop, #ed-dynpop, #ed-gr-dyn, #ed-hdrpop, #ed-gr-hdr')) return;
   edClosePopovers();
 });
 
@@ -1888,7 +1969,7 @@ export function edApplyLoad(r) {
   } else if (r.source && r.source.kind === 'pdf') {
     ph.parentElement.classList.add('hidden');
     $('ed-left-name').textContent = r.source.path.split(/[\\/]/).pop();
-    edRefView.open(`/file?path=${encodeURIComponent(r.source.path)}`).catch(() => {});
+    edRefView.open(`/file?path=${encodeURIComponent(r.source.path)}`).then(edSyncPdfBar, () => {});
   } else {
     ph.parentElement.classList.remove('hidden');
     ph.textContent = t('w.ed.no_source');
@@ -1963,6 +2044,7 @@ $('ed-render').addEventListener('click', async () => {
   edSetDirty(false);        // render 内部已保存
   edShowTab('pv', { reveal: true });
   edPvView.close();
+  edSyncPdfBar();
   $('ed-pv-ph').parentElement.classList.remove('hidden');
   $('ed-pv-ph').textContent = t('w.tp.rendering');
 });
@@ -1974,7 +2056,8 @@ window.addEventListener('editor_preview_ready', (e) => {
   }
   $('ed-pv-ph').parentElement.classList.add('hidden');
   edShowTab('pv', { reveal: true });
-  edPvView.open(`/file?path=${encodeURIComponent(d.pdf)}`).catch((e2) => toast(t('w.pv.open_failed', { e: e2 })));
+  edPvView.open(`/file?path=${encodeURIComponent(d.pdf)}`)
+    .then(edSyncPdfBar, (e2) => toast(t('w.pv.open_failed', { e: e2 })));
 });
 
 $('ed-export').addEventListener('click', async () => {
@@ -2048,6 +2131,7 @@ $('ed-symbols').addEventListener('click', () => {
   }
   if (wasCollapsed) panel.classList.remove('hidden');
   else panel.classList.toggle('hidden');
+  $('ed-symbols').setAttribute('aria-pressed', String(!panel.classList.contains('hidden')));
 });
 // 参考图点击 → 按纵向比例映射到文本行（与 Flet 版同为粗略映射），定位光标并滚动到该行
 $('ed-ref-img').addEventListener('click', (e) => {
@@ -2067,8 +2151,17 @@ $('ed-ref-img').addEventListener('click', (e) => {
   edUpdateGutter();
 });
 
-$('ed-pv-prev').addEventListener('click', () => edPvView.prev());
-$('ed-pv-next').addEventListener('click', () => edPvView.next());
-$('ed-pv-zoomin').addEventListener('click', () => edPvView.zoom(1.2));
-$('ed-pv-zoomout').addEventListener('click', () => edPvView.zoom(1 / 1.2));
-$('ed-pv-zoomfit').addEventListener('click', () => edPvView.zoomFit());
+for (const [id, act] of [
+  ['ed-pv-prev', (v) => v.prev()],
+  ['ed-pv-next', (v) => v.next()],
+  ['ed-pv-zoomin', (v) => v.zoom(1.2)],
+  ['ed-pv-zoomout', (v) => v.zoom(1 / 1.2)],
+  ['ed-pv-zoomfit', (v) => v.zoomFit()],
+]) {
+  $(id).addEventListener('click', () => {
+    const view = edActivePdfView();
+    if (!view) return;
+    act(view);
+    edSyncPdfBar();
+  });
+}
