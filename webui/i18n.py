@@ -336,6 +336,7 @@ WEBUI_STRINGS: dict[str, dict[str, str]] = {
     "w.ed.preview_tab": {"zh": "简谱预览", "en": "Preview"},
     "w.ed.side_toggle": {"zh": "参考侧栏", "en": "Side panel"},
     "w.ed.side_toggle_tip": {"zh": "显示/隐藏参考图与 PDF 预览", "en": "Show or hide the reference image and PDF preview"},
+    "w.ed.side_close": {"zh": "关闭（Esc）", "en": "Close (Esc)"},
     "w.ed.text_bar": {"zh": "简谱文本", "en": "Jianpu text"},
     "w.ed.text_toggle_tip": {"zh": "展开/收起文本栏", "en": "Expand or collapse the text bar"},
     "w.ed.graphical_placeholder": {"zh": "加载中…", "en": "Loading…"},

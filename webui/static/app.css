@@ -347,6 +347,7 @@ button { font-family: inherit; cursor: default; }
 .content.editor > .edtext { grid-area: text; }
 .content.editor.side-off { grid-template-columns: minmax(0,1fr); grid-template-areas: "main" "text"; }
 .content.editor.side-off > .edside { display: none; }
+.edside .drawer-close { display: none; }   /* 只在窄屏抽屉里出现（宽屏下用主画布上的开关） */
 .chipbtn[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .edtext > .edtext-head { padding: 6px 10px; }
 .edtext .chev { transition: transform .15s; }
@@ -593,15 +594,22 @@ pre.license {
 
 @media (max-width: 880px) {
   .content, .content.two { grid-template-columns: 1fr; }
-  /* 同上：不让谱面撑宽单列。谱面给一个有界的高度，让它自己的容器纵向滚（V2e 跟随的就是它）；
-     侧栏的浮层抽屉在 8.0b。 */
-  /* 单列时谱面在上、底栏紧跟（收起时只有一条，始终在首屏里）、侧栏垫底，放不下就让页面滚——
-     侧栏的浮层抽屉在 8.0b。三条行都是定高或 max-content：auto 行在容器不够高时会被挤小
-     （.card 的 min-height: 0 允许它缩），实测侧栏被压到 165 px、里面 260 px 的参考图溢出到
-     底栏下面；minmax 行则会被压到下限。 */
-  .content.editor { grid-template-columns: minmax(0,1fr); grid-template-rows: max(420px,75vh) max-content max-content;
-    grid-template-areas: "main" "text" "side"; }
-  .content.editor.side-off { grid-template-rows: max(420px,75vh) max-content; grid-template-areas: "main" "text"; }
   .preview .stage { min-height: 260px; }
+  /* 阶段 8.0b：窄屏下谱面占满宽度、页面不滚——谱面卡片吃掉底栏以外的全部高度，纵向滚的只有
+     谱面容器自己（V2e 跟随的就是它）。侧栏改为盖在谱面上的浮层抽屉：不占栅格，所以开关它谱面
+     宽度不变、不重排，选区与滚动位置原封不动。底栏行用 max-content：auto 行在容器不够高时会被
+     挤小（.card 的 min-height: 0 允许它缩）。 */
+  .content.editor, .content.editor.side-off { position: relative; grid-template-columns: minmax(0,1fr);
+    grid-template-rows: minmax(0,1fr) max-content; grid-template-areas: "main" "text"; }
+  .content.editor > .edside, .content.editor.side-off > .edside {
+    display: flex; grid-area: auto; position: absolute; top: 16px; right: 16px; bottom: 16px; z-index: 20;
+    width: min(440px, calc(100% - 64px)); box-shadow: 0 12px 40px rgba(0,0,0,.28);
+    /* 关着时淡出、不 display:none：PDF 画框保持尺寸，打开时不必再等一次重排重绘。也不能整个移出
+       视野——带 transform 的元素照样算进滚动容器的溢出，实测停在右侧视野外时编辑页会横向滚动；
+       12px 的位移留在 .content 的 16px 内边距里。 */
+    opacity: 0; transform: translateX(12px); visibility: hidden; pointer-events: none;
+    transition: opacity .18s, transform .18s, visibility .18s; }
+  .content.editor.drawer-open > .edside { opacity: 1; transform: none; visibility: visible; pointer-events: auto; }
+  .edside .drawer-close { display: inline-grid; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

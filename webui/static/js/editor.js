@@ -253,15 +253,35 @@ function edKeepWorkInView(change) {
   });
 }
 
+// 阶段 8.0b：同一个开关在两种宽度下是两件事——宽屏是栅格里的一栏（side-off 收起），窄屏是盖在
+// 谱面上的抽屉（drawer-open 打开）。两个状态分开记：宽屏关掉侧栏后窗口变窄，抽屉照样能开；
+// 跨过断点时抽屉一律收起，免得窗口一变窄就有一块东西盖住谱面。断点与 app.css 的 @media 一致。
+const edNarrow = window.matchMedia('(max-width: 880px)');
+
+/** Whether the side panel is showing: its column on a wide window, the drawer on a narrow one. */
+function edSideOpen() {
+  const page = $('page-editor');
+  return edNarrow.matches ? page.classList.contains('drawer-open') : !page.classList.contains('side-off');
+}
+
+function edSyncSideToggle() {
+  $('ed-side-toggle').setAttribute('aria-pressed', String(edSideOpen()));
+}
+
 function edSetSide(open) {
   edKeepWorkInView(() => {
-    $('page-editor').classList.toggle('side-off', !open);
-    $('ed-side-toggle').setAttribute('aria-pressed', String(open));
+    if (edNarrow.matches) $('page-editor').classList.toggle('drawer-open', open);
+    else $('page-editor').classList.toggle('side-off', !open);
+    edSyncSideToggle();
   });
 }
-$('ed-side-toggle').addEventListener('click', () => {
-  edSetSide($('page-editor').classList.contains('side-off'));
+$('ed-side-toggle').addEventListener('click', () => edSetSide(!edSideOpen()));
+$('ed-side-close').addEventListener('click', () => edSetSide(false));
+edNarrow.addEventListener('change', () => {
+  $('page-editor').classList.remove('drawer-open');
+  edSyncSideToggle();
 });
+edSyncSideToggle();
 
 function edSetTextBar(open) {
   edKeepWorkInView(() => {
@@ -1707,6 +1727,14 @@ async function edPasteClipboard() {
 
 document.addEventListener('keydown', (e) => {
   if (!edEditorVisible()) return;
+  // 阶段 8.0b：窄屏抽屉开着时，Esc 只关抽屉——它是最上层的东西。不能顺带退出录入模式或清掉
+  // 选区（后面那个 Esc 监听器会清选区，所以要截住它）：用户只是想把参考图收回去接着改。
+  if (e.key === 'Escape' && edNarrow.matches && edSideOpen()) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    edSetSide(false);
+    return;
+  }
   // 文本框有它自己的键盘语义（也有自己的撤销栈），不抢。输入类控件同理，
   // 一个键都不能截。
   const target = e.target;
