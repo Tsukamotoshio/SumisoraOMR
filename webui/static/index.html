@@ -404,26 +404,23 @@
 
       <!-- ════ 简谱编辑页（从简谱预览进入） ════ -->
       <div class="content editor hidden" id="page-editor">
-        <section class="card preview" aria-label="参考与预览">
+        <section class="card preview edmain" aria-label="简谱编辑">
           <header>
-            <div class="btngroup tabgroup">
-              <button class="pvbtn tab" id="ed-tab-ref" aria-selected="true" data-i18n="w.ed.ref_tab">参考图</button>
-              <button class="pvbtn tab" id="ed-tab-pv" aria-selected="false" data-i18n="w.ed.preview_tab">简谱预览</button>
-              <button class="pvbtn tab" id="ed-tab-gr" aria-selected="false" data-i18n="w.ed.graphical_tab">图形预览</button>
-            </div>
-            <span class="count" id="ed-left-name"></span>
+            <button class="chipbtn" id="ed-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
+            <h2 data-i18n="w.ed.title">简谱编辑</h2>
+            <span class="count" id="ed-name"></span>
+            <span class="dirty-dot hidden" id="ed-dirty" title="未保存" data-i18n-title="w.ed.dirty"></span>
+            <button class="chipbtn" id="ed-side-toggle" aria-pressed="true" title="显示/隐藏参考侧栏" data-i18n-title="w.ed.side_toggle_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14"/></svg><span data-i18n="w.ed.side_toggle">参考侧栏</span></button>
           </header>
-          <div class="stage pdfstage" id="ed-ref-stage">
-            <div class="placeholder"><span id="ed-ref-ph" data-i18n="w.ed.no_source">未找到参考图（原始乐谱图像）</span></div>
-            <img id="ed-ref-img" class="hidden" alt="">
-            <div class="a4frame"><canvas id="ed-ref-canvas" class="hidden"></canvas></div>
+          <div class="toolrow">
+            <button class="chipbtn" id="ed-open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="w.ed.open">打开</span></button>
+            <button class="chipbtn" id="ed-save" title="保存 (Ctrl+S)" data-i18n-title="w.ed.save_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h11l3 3v11H5z M8 5v5h7V5 M8 20v-6h8v6" stroke-linejoin="round"/></svg><span data-i18n="w.ed.save">保存</span></button>
+            <button class="chipbtn accent" id="ed-render" title="" data-i18n-title="w.ed.render_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.ed.render">渲染预览</span></button>
+            <button class="chipbtn" id="ed-export" title="" data-i18n-title="w.ed.export_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.ed.export">导出到输出</span></button>
+            <button class="chipbtn" id="ed-symbols"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01" stroke-linecap="round"/></svg><span data-i18n="w.ed.symbols">符号参考</span></button>
           </div>
-          <div class="stage pdfstage hidden" id="ed-pv-stage">
-            <div class="placeholder"><span id="ed-pv-ph" data-i18n="w.ed.no_preview_yet">点「渲染预览」查看当前文本的排版效果</span></div>
-            <div class="a4frame"><canvas id="ed-pv-canvas" class="hidden"></canvas></div>
-          </div>
-          <div class="stage hidden" id="ed-gr-stage">
-            <div class="placeholder"><span id="ed-gr-ph" data-i18n="w.ed.graphical_placeholder">加载中…</span></div>
+          <div class="stage" id="ed-gr-stage">
+            <div class="placeholder"><span id="ed-gr-ph" data-i18n="w.ed.empty">从「简谱预览」页对某个文件点「编辑」进入，或点上方「打开」选择 .jianpu.txt</span></div>
             <div class="grheader hidden" id="ed-gr-header">
               <div class="field">
                 <span class="lbl" data-i18n="w.ed.hdr_title">标题</span>
@@ -476,6 +473,25 @@
               <span class="lbl inputmode hidden" id="ed-gr-mode"></span>
             </div>
           </div>
+        </section>
+
+        <section class="card preview edside" id="ed-side" aria-label="参考与预览">
+          <header>
+            <div class="btngroup tabgroup">
+              <button class="pvbtn tab" id="ed-tab-ref" aria-selected="true" data-i18n="w.ed.ref_tab">参考图</button>
+              <button class="pvbtn tab" id="ed-tab-pv" aria-selected="false" data-i18n="w.ed.preview_tab">简谱预览</button>
+            </div>
+            <span class="count" id="ed-left-name"></span>
+          </header>
+          <div class="stage pdfstage" id="ed-ref-stage">
+            <div class="placeholder"><span id="ed-ref-ph" data-i18n="w.ed.no_source">未找到参考图（原始乐谱图像）</span></div>
+            <img id="ed-ref-img" class="hidden" alt="">
+            <div class="a4frame"><canvas id="ed-ref-canvas" class="hidden"></canvas></div>
+          </div>
+          <div class="stage pdfstage hidden" id="ed-pv-stage">
+            <div class="placeholder"><span id="ed-pv-ph" data-i18n="w.ed.no_preview_yet">点「渲染预览」查看当前文本的排版效果</span></div>
+            <div class="a4frame"><canvas id="ed-pv-canvas" class="hidden"></canvas></div>
+          </div>
           <div class="previewbar">
             <span class="lbl num" id="ed-pv-pageinfo"></span>
             <div class="btngroup">
@@ -490,20 +506,10 @@
           </div>
         </section>
 
-        <section class="card" aria-label="简谱文本编辑">
-          <header>
-            <button class="chipbtn" id="ed-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.tp.back">返回</span></button>
-            <h2 data-i18n="w.ed.title">简谱编辑</h2>
-            <span class="count" id="ed-name"></span>
-            <span class="dirty-dot hidden" id="ed-dirty" title="未保存" data-i18n-title="w.ed.dirty"></span>
+        <section class="card edtext collapsed" id="ed-textbar" aria-label="简谱文本编辑">
+          <header class="edtext-head">
+            <button class="chipbtn" id="ed-text-toggle" aria-expanded="false" title="展开/收起文本栏" data-i18n-title="w.ed.text_toggle_tip"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.ed.text_bar">简谱文本</span></button>
           </header>
-          <div class="toolrow">
-            <button class="chipbtn" id="ed-open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span data-i18n="w.ed.open">打开</span></button>
-            <button class="chipbtn" id="ed-save" title="保存 (Ctrl+S)" data-i18n-title="w.ed.save_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5h11l3 3v11H5z M8 5v5h7V5 M8 20v-6h8v6" stroke-linejoin="round"/></svg><span data-i18n="w.ed.save">保存</span></button>
-            <button class="chipbtn accent" id="ed-render" title="" data-i18n-title="w.ed.render_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 5v6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.ed.render">渲染预览</span></button>
-            <button class="chipbtn" id="ed-export" title="" data-i18n-title="w.ed.export_tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 15V3M7 8l5-5 5 5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="w.ed.export">导出到输出</span></button>
-            <button class="chipbtn" id="ed-symbols"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01" stroke-linecap="round"/></svg><span data-i18n="w.ed.symbols">符号参考</span></button>
-          </div>
           <div class="ed-body">
             <div class="ed-editor" id="ed-editor-wrap">
               <div class="ed-gutter" id="ed-gutter"></div>

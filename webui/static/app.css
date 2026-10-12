@@ -334,7 +334,26 @@ button { font-family: inherit; cursor: default; }
    必须是 minmax(0,1fr) 而不是 1fr：1fr 的下限是内容的最小宽度，图形谱是一整行、
    上万像素宽，会把左栏撑到同样宽，结果滚动的是整页而不是谱面窗格——跳到第 N 小节、
    播放跟随都失效，缩放按钮被挤出屏幕（5.6b-1 起如此，V1b 冒烟测试发现）。 */
-.content.editor { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+/* 阶段 8.0a：谱面做主画布。左上谱面、右上参考侧栏（参考图 / PDF 预览），文本是横跨两列的底栏。
+   侧栏与底栏都只用 CSS 显隐、不重建 DOM——选区、光标、撤销栈因此原样保住；侧栏开关
+   改变谱面宽度，由 V2d 的 ResizeObserver 重排、V2e 的滚动锚点把视野留在同一段音乐上。 */
+.content.editor {
+  grid-template-columns: minmax(0,3fr) minmax(0,2fr);
+  grid-template-rows: minmax(0,1fr) auto;
+  grid-template-areas: "main side" "text text";
+}
+.content.editor > .edmain { grid-area: main; }
+.content.editor > .edside { grid-area: side; }
+.content.editor > .edtext { grid-area: text; }
+.content.editor.side-off { grid-template-columns: minmax(0,1fr); grid-template-areas: "main" "text"; }
+.content.editor.side-off > .edside { display: none; }
+.chipbtn[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.edtext > .edtext-head { padding: 6px 10px; }
+.edtext .chev { transition: transform .15s; }
+.edtext .ed-body { flex: none; height: clamp(140px, 30vh, 340px); }
+.edtext.collapsed > .edtext-head { border-bottom: none; }
+.edtext.collapsed .chev { transform: rotate(-90deg); }
+.edtext.collapsed > .ed-body, .edtext.collapsed > .ed-status { display: none; }
 .previewbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
 .previewbar .lbl { margin-left: auto; }
 
@@ -574,7 +593,15 @@ pre.license {
 
 @media (max-width: 880px) {
   .content, .content.two { grid-template-columns: 1fr; }
-  .content.editor { grid-template-columns: minmax(0,1fr); }   /* 同上：不让谱面撑宽单列 */
+  /* 同上：不让谱面撑宽单列。谱面给一个有界的高度，让它自己的容器纵向滚（V2e 跟随的就是它）；
+     侧栏的浮层抽屉在 8.0b。 */
+  /* 单列时谱面在上、底栏紧跟（收起时只有一条，始终在首屏里）、侧栏垫底，放不下就让页面滚——
+     侧栏的浮层抽屉在 8.0b。三条行都是定高或 max-content：auto 行在容器不够高时会被挤小
+     （.card 的 min-height: 0 允许它缩），实测侧栏被压到 165 px、里面 260 px 的参考图溢出到
+     底栏下面；minmax 行则会被压到下限。 */
+  .content.editor { grid-template-columns: minmax(0,1fr); grid-template-rows: max(420px,75vh) max-content max-content;
+    grid-template-areas: "main" "text" "side"; }
+  .content.editor.side-off { grid-template-rows: max(420px,75vh) max-content; grid-template-areas: "main" "text"; }
   .preview .stage { min-height: 260px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

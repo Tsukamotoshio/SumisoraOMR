@@ -89,6 +89,7 @@ function edSyncHighlightScroll() {
 function edJumpTo(start, end) {
   const ta = $('ed-text');
   if (ta.disabled) return;
+  edSetTextBar(true);   // 收着的底栏里 textarea 拿不到焦点，下面按 clientHeight 算的滚动也会是 0
   ta.focus();
   ta.setSelectionRange(start, end);
   const lineIdx = (ta.value.slice(0, start).match(/\n/g) || []).length;
@@ -189,23 +190,87 @@ function edUpdateGutter() {
   $('ed-linecol').textContent = t('w.ed.line_col', { l: cur, c: col });
 }
 
-function edShowTab(which) {
+/**
+ * Switch the side panel between the reference image and the PDF preview.
+ * `reveal` also opens the panel if the user had closed it -- only for actions
+ * whose whole point is to show that view (rendering a preview).
+ */
+function edShowTab(which, { reveal = false } = {}) {
   $('ed-tab-ref').setAttribute('aria-selected', String(which === 'ref'));
   $('ed-tab-pv').setAttribute('aria-selected', String(which === 'pv'));
-  $('ed-tab-gr').setAttribute('aria-selected', String(which === 'gr'));
   $('ed-ref-stage').classList.toggle('hidden', which !== 'ref');
   $('ed-pv-stage').classList.toggle('hidden', which !== 'pv');
-  $('ed-gr-stage').classList.toggle('hidden', which !== 'gr');
-  // 离开图形 tab 就停播：播放控件此刻已不可见，让声音在看不见的地方继续响
-  // （而且用户找不到暂停按钮）是明显的坏交互。
-  if (which !== 'gr') jianpuPlayer.stop();
+  if (reveal) edSetSide(true);
 }
 $('ed-tab-ref').addEventListener('click', () => edShowTab('ref'));
 $('ed-tab-pv').addEventListener('click', () => edShowTab('pv'));
-$('ed-tab-gr').addEventListener('click', () => {
-  edShowTab('gr');
-  // 切到本 tab 时如果期间有过编辑（edGraphicalStale），或者干脆还没渲染过，就拉一次
-  if (edGraphicalStale || !$('ed-gr-container').firstChild) edRenderGraphical();
+
+// ── 工作区（阶段 8.0a）─────────────────────────────────────────────────────
+// 谱面常驻主画布；参考侧栏与文本底栏各自开关。两者都只切 CSS 类、不碰 DOM，
+// 所以选区、光标、撤销栈、滚动锚点都不受影响——谱面宽度变了由 V2d 的
+// ResizeObserver 重排，视野由 V2e 的滚动锚点留在同一段音乐上。
+
+/** True while the editor page is on screen (the score itself is never hidden now). */
+function edEditorVisible() {
+  return !$('page-editor').classList.contains('hidden');
+}
+
+/** What the user is working on: the caret in input mode, else the selection's focus note. */
+function edWorkingElement() {
+  const container = $('ed-gr-container');
+  const caret = container.querySelector('rect.jp-caret');
+  if (caret) return caret;
+  if (!edSelection) return null;
+  const note = (edSectionNotes[edSelection.section] || [])[edSelection.focus];
+  const staff = container.children[edSelection.section];
+  if (!note || !staff) return null;
+  return staff.querySelector(`g[data-id="${CSS.escape(window.jr.noteElementId(note.start, note.pitch))}"]`);
+}
+
+/** Whether `el` lies inside the score's visible height. */
+function edInScoreView(el) {
+  const c = $('ed-gr-container');
+  const top = c.getBoundingClientRect().top + c.clientTop;
+  const r = el.getBoundingClientRect();
+  return r.top >= top - 1 && r.bottom <= top + c.clientHeight + 1;
+}
+
+/**
+ * Apply a workspace layout change without losing the note being worked on: if it
+ * was in view before, it is still in view after. Only then -- someone who has
+ * scrolled away from it on purpose is not pulled back.
+ */
+function edKeepWorkInView(change) {
+  const before = edWorkingElement();
+  const wasInView = !!before && edInScoreView(before);
+  change();
+  if (!wasInView) return;
+  // 展开底栏只改了谱面高度、宽度不变，V2d 的重排不会触发，没人替它把焦点滚回来——
+  // 实测 1280×900 下谱面视口从约 456 px 缩到约 148 px，选中的音直接掉出视野。
+  requestAnimationFrame(() => {
+    const el = edWorkingElement();
+    if (el && !edInScoreView(el)) edReveal(el);
+  });
+}
+
+function edSetSide(open) {
+  edKeepWorkInView(() => {
+    $('page-editor').classList.toggle('side-off', !open);
+    $('ed-side-toggle').setAttribute('aria-pressed', String(open));
+  });
+}
+$('ed-side-toggle').addEventListener('click', () => {
+  edSetSide($('page-editor').classList.contains('side-off'));
+});
+
+function edSetTextBar(open) {
+  edKeepWorkInView(() => {
+    $('ed-textbar').classList.toggle('collapsed', !open);
+    $('ed-text-toggle').setAttribute('aria-expanded', String(open));
+  });
+}
+$('ed-text-toggle').addEventListener('click', () => {
+  edSetTextBar($('ed-textbar').classList.contains('collapsed'));
 });
 
 // ── 图形化渲染（阶段3.2 只读渲染 + 阶段3.5 多声部 + 阶段3.6 实时更新）────────
@@ -305,10 +370,12 @@ const ED_RELAYOUT_DEBOUNCE_MS = 120;
 
 new ResizeObserver(() => {
   const width = $('ed-gr-container').clientWidth;
+  // 编辑页隐藏期间有过改动（edScheduleGraphicalRender 记下的），页面一露面就补画。
+  if (width && edGraphicalStale && edEditorVisible()) { edRenderGraphical(); return; }
   if (!edRenders || !width || Math.abs(width - edLayoutWidth) < 1) return;
   clearTimeout(edRelayoutTimer);
   edRelayoutTimer = setTimeout(async () => {
-    if (!edRenders || $('ed-gr-stage').classList.contains('hidden')) return;
+    if (!edRenders || !edEditorVisible()) return;
     await edDrawRenders(edRenders, { reload: false });   // 音乐没变，不惊动播放器
     edRenderSelection();
     edRenderCursor();
@@ -549,8 +616,8 @@ let edLossyAcked = false;       // 本文件已经问过并被确认，不再重
 
 function edScheduleGraphicalRender() {
   if (!edLoaded) return;
-  if ($('ed-gr-stage').classList.contains('hidden')) {
-    edGraphicalStale = true;  // 当前看不见，不浪费一次桥调用；切回来时再补
+  if (!edEditorVisible()) {
+    edGraphicalStale = true;  // 当前看不见，不浪费一次桥调用；露面时再补
     return;
   }
   clearTimeout(edGraphicalTimer);
@@ -1639,7 +1706,7 @@ async function edPasteClipboard() {
 }
 
 document.addEventListener('keydown', (e) => {
-  if ($('ed-gr-stage').classList.contains('hidden')) return;
+  if (!edEditorVisible()) return;
   // 文本框有它自己的键盘语义（也有自己的撤销栈），不抢。输入类控件同理，
   // 一个键都不能截。
   const target = e.target;
@@ -1766,7 +1833,7 @@ $('ed-gr-stop').addEventListener('click', () => jianpuPlayer.stop());
 // 只在图形 tab 可见时接管，免得抢了别处的 Esc。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if ($('ed-gr-stage').classList.contains('hidden')) return;
+  if (!edEditorVisible()) return;
   edClearSelection();
 });
 
@@ -1827,6 +1894,9 @@ export function edApplyLoad(r) {
   $('ed-gr-ph').textContent = t('w.ed.graphical_placeholder');
   edShowTab(r.source ? 'ref' : 'pv');
   showPage('editor');
+  // 谱面是主画布，打开即画（以前要等用户点「图形预览」标签）。页面刚露面、面板
+  // 宽度此刻已经量得到，所以第一次就按真实宽度换行，不会先画一遍长行再重排。
+  edRenderGraphical();
 }
 
 export async function edOpenForPdf(pdfPath) {
@@ -1863,7 +1933,7 @@ $('ed-render').addEventListener('click', async () => {
   const r = await api().editor_render_preview($('ed-text').value);
   if (!r.ok) { toast(t('w.ed.save_failed', { e: r.error || '' })); return; }
   edSetDirty(false);        // render 内部已保存
-  edShowTab('pv');
+  edShowTab('pv', { reveal: true });
   edPvView.close();
   $('ed-pv-ph').parentElement.classList.remove('hidden');
   $('ed-pv-ph').textContent = t('w.tp.rendering');
@@ -1875,7 +1945,7 @@ window.addEventListener('editor_preview_ready', (e) => {
     return;
   }
   $('ed-pv-ph').parentElement.classList.add('hidden');
-  edShowTab('pv');
+  edShowTab('pv', { reveal: true });
   edPvView.open(`/file?path=${encodeURIComponent(d.pdf)}`).catch((e2) => toast(t('w.pv.open_failed', { e: e2 })));
 });
 
@@ -1917,6 +1987,10 @@ edTa.addEventListener('keydown', (e) => {
 // 符号参考面板（键复用 gui/strings 的 jianpu_editor.symbol_*）
 $('ed-symbols').addEventListener('click', () => {
   const panel = $('ed-symbols-panel');
+  // 符号参考在文本底栏里：底栏收着时点它，意思是「给我看参考」，展开并确保显示，
+  // 而不是照常切换——那样面板原本开着的话，展开的同时反倒把它关了。
+  const wasCollapsed = $('ed-textbar').classList.contains('collapsed');
+  edSetTextBar(true);
   if (panel.childElementCount === 0) {
     const SECTIONS = [
       ['jianpu_editor.symbol_section_notes',
@@ -1944,7 +2018,8 @@ $('ed-symbols').addEventListener('click', () => {
       }
     }
   }
-  panel.classList.toggle('hidden');
+  if (wasCollapsed) panel.classList.remove('hidden');
+  else panel.classList.toggle('hidden');
 });
 // 参考图点击 → 按纵向比例映射到文本行（与 Flet 版同为粗略映射），定位光标并滚动到该行
 $('ed-ref-img').addEventListener('click', (e) => {
@@ -1956,6 +2031,7 @@ $('ed-ref-img').addEventListener('click', (e) => {
   const target = Math.floor(frac * lines.length);
   let pos = 0;
   for (let i = 0; i < target; i++) pos += lines[i].length + 1;
+  edSetTextBar(true);
   ta.focus();
   ta.setSelectionRange(pos, pos + (lines[target] ? lines[target].length : 0));
   const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 21;
