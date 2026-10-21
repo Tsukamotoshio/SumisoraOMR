@@ -5,6 +5,17 @@ All notable changes to SumisoraOMR are documented here. Format follows
 `APP_VERSION` in `core/config.py` (the single source of truth — run
 `python scripts/sync_version.py` after bumping it).
 
+## [Unreleased]
+
+### Security
+- **Bundled CA certificates updated (certifi 2026.7.22 → 2026.10.19).** After
+  the private keys of eight eMudhra (emSign) intermediate CAs were found to be
+  recoverable, certifi dropped their root, emSign ECC Root CA - G3. Packaged
+  builds ship certifi's bundle and hand it to requests, so the old bundle kept
+  that root trusted even with the OS trust store active. None of the model
+  download sources (ModelScope, GitHub, Zenodo) use an emSign chain, so
+  downloads are unaffected, and downloaded weights were already SHA256-checked.
+
 ## [0.5.3] - 2026-09-29
 
 Recognition-quality work on the HOMR engine, which moves to upstream's latest
