@@ -1,0 +1,280 @@
+# section 0
+header: {"title": "卡农（多声部）"}
+keySignatures:
+  {"key": 5, "label": "1=F", "start": 0}
+notes:
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.0, "octaveDot": 0, "pitch": 72, "ref": {"index": 0, "measure": 1}, "start": 3.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 1.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 1, "measure": 1}, "start": 4.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 2.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 2, "measure": 1}, "start": 5.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 1.0, "octaveDot": -1, "pitch": 64, "ref": {"index": 1, "measure": 2}, "start": 7.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 2.0, "octaveDot": -1, "pitch": 64, "ref": {"index": 3, "measure": 2}, "start": 8.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 1.0, "octaveDot": 0, "pitch": 67, "ref": {"index": 2, "measure": 3}, "start": 10.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 0.5, "octaveDot": -1, "pitch": 64, "ref": {"index": 3, "measure": 3}, "start": 11.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 0.5, "octaveDot": 0, "pitch": 65, "ref": {"index": 0, "measure": 4}, "start": 12.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 0.5, "octaveDot": -1, "pitch": 64, "ref": {"index": 1, "measure": 4}, "start": 12.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 0.5, "octaveDot": 0, "pitch": 65, "ref": {"index": 2, "measure": 4}, "start": 13.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 3, "measure": 4}, "start": 13.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 1.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 4, "measure": 4}, "start": 14.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 1, "measure": 5}, "start": 15.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 0.5, "octaveDot": 0, "pitch": 72, "ref": {"index": 2, "measure": 5}, "start": 16.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 0.5, "octaveDot": 0, "pitch": 72, "ref": {"index": 3, "measure": 5}, "start": 16.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 4, "measure": 5}, "start": 17.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 5, "measure": 5}, "start": 17.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 0, "measure": 6}, "start": 18.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 1, "measure": 6}, "start": 18.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 2, "measure": 6}, "start": 19.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 0.5, "octaveDot": 0, "pitch": 72, "ref": {"index": 3, "measure": 6}, "start": 19.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 1.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 4, "measure": 6}, "start": 20.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 0, "measure": 7}, "start": 21.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 1, "measure": 7}, "start": 21.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 2, "measure": 7}, "start": 22.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 3, "measure": 7}, "start": 22.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 4, "measure": 7}, "start": 23.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 5, "measure": 7}, "start": 23.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 0, "measure": 8}, "start": 24.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 1, "measure": 8}, "start": 24.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 2, "measure": 8}, "start": 25.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 3, "measure": 8}, "start": 25.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 1.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 4, "measure": 8}, "start": 26.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 3.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 0, "measure": 9}, "start": 27.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 2.0, "octaveDot": 0, "pitch": 67, "ref": {"index": 0, "measure": 10}, "start": 30.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 3, "measure": 10}, "start": 32.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.5, "octaveDot": -1, "pitch": 60, "ref": {"index": 0, "measure": 11}, "start": 33.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.5, "octaveDot": -1, "pitch": 60, "ref": {"index": 2, "measure": 11}, "start": 34.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.0, "octaveDot": 0, "pitch": 72, "ref": {"index": 0, "measure": 12}, "start": 36.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.0, "octaveDot": -1, "pitch": 60, "ref": {"index": 1, "measure": 12}, "start": 37.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 1.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 2, "measure": 12}, "start": 38.0}
+slots:
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": true, "lines": 0, "ref": {"index": 0, "measure": 0}, "start": 0.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 0}, "start": 1.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 0}, "start": 2.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 1}, "start": 3.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 1}, "start": 4.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 1}, "start": 5.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 2}, "start": 6.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 2}, "start": 7.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": true, "lines": 1, "ref": {"index": 2, "measure": 2}, "start": 8.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 2}, "start": 8.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 3}, "start": 9.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": true, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 3}, "start": 10.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 3}, "start": 10.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 3}, "start": 11.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 0, "measure": 4}, "start": 12.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 4}, "start": 12.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 4}, "start": 13.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 4}, "start": 13.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 4, "measure": 4}, "start": 14.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": true, "is_rest": false, "lines": 1, "ref": {"index": 0, "measure": 5}, "start": 15.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 5}, "start": 15.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 5}, "start": 16.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 5}, "start": 16.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 4, "measure": 5}, "start": 17.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 5, "measure": 5}, "start": 17.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 0, "measure": 6}, "start": 18.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 6}, "start": 18.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 6}, "start": 19.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 6}, "start": 19.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 4, "measure": 6}, "start": 20.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 0, "measure": 7}, "start": 21.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 7}, "start": 21.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 7}, "start": 22.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 7}, "start": 22.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 4, "measure": 7}, "start": 23.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 5, "measure": 7}, "start": 23.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 0, "measure": 8}, "start": 24.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 8}, "start": 24.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 8}, "start": 25.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 8}, "start": 25.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 4, "measure": 8}, "start": 26.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 9}, "start": 27.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 9}, "start": 28.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 9}, "start": 29.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 10}, "start": 30.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 10}, "start": 31.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": true, "lines": 1, "ref": {"index": 2, "measure": 10}, "start": 32.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 10}, "start": 32.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 11}, "start": 33.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": true, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 11}, "start": 34.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 11}, "start": 34.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": true, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 11}, "start": 35.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 12}, "start": 36.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 12}, "start": 37.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 12}, "start": 38.0}
+tempos:
+  {"qpm": 120, "start": 0}
+timeSignatures:
+  {"denominator": 4, "numerator": 3, "start": 0}
+totalLength: 39.0
+# section 1
+keySignatures:
+  {"key": 5, "label": "1=F", "start": 0}
+notes:
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 3.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 0, "measure": 1}, "start": 3.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 1.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 0, "measure": 2}, "start": 6.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 2, "measure": 2}, "start": 8.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 3, "measure": 2}, "start": 8.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.5, "octaveDot": -1, "pitch": 60, "ref": {"index": 0, "measure": 3}, "start": 9.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 6, "length": 1.0, "octaveDot": -1, "pitch": 62, "ref": {"index": 2, "measure": 3}, "start": 10.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 0.5, "octaveDot": -1, "pitch": 64, "ref": {"index": 3, "measure": 3}, "start": 11.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 3.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 0, "measure": 4}, "start": 12.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 3.0, "octaveDot": 0, "pitch": 72, "ref": {"index": 0, "measure": 5}, "start": 15.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 1.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 0, "measure": 6}, "start": 18.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 0.5, "octaveDot": 0, "pitch": 72, "ref": {"index": 1, "measure": 6}, "start": 19.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 6, "length": 1.0, "octaveDot": 0, "pitch": 74, "ref": {"index": 2, "measure": 6}, "start": 20.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 3.0, "octaveDot": 0, "pitch": 70, "ref": {"index": 0, "measure": 7}, "start": 21.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 1.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 0, "measure": 8}, "start": 24.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 1, "measure": 8}, "start": 25.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.0, "octaveDot": 0, "pitch": 72, "ref": {"index": 2, "measure": 8}, "start": 26.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 3.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 0, "measure": 9}, "start": 27.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 1.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 0, "measure": 10}, "start": 30.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 2, "measure": 10}, "start": 32.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 3, "measure": 10}, "start": 32.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.5, "octaveDot": -1, "pitch": 60, "ref": {"index": 0, "measure": 11}, "start": 33.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 6, "length": 1.0, "octaveDot": -1, "pitch": 62, "ref": {"index": 2, "measure": 11}, "start": 34.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 0.5, "octaveDot": -1, "pitch": 64, "ref": {"index": 3, "measure": 11}, "start": 35.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 3.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 0, "measure": 12}, "start": 36.0}
+slots:
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": true, "lines": 0, "ref": {"index": 0, "measure": 0}, "start": 0.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 0}, "start": 1.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 0}, "start": 2.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 1}, "start": 3.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 1}, "start": 4.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 1}, "start": 5.0}
+  {"dashes": 0, "dots": 1, "duration": 1.5, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 2}, "start": 6.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": true, "lines": 1, "ref": {"index": 1, "measure": 2}, "start": 7.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 2}, "start": 8.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 2}, "start": 8.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 3}, "start": 9.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": true, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 3}, "start": 10.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 3}, "start": 10.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 3}, "start": 11.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 4}, "start": 12.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 4}, "start": 13.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 4}, "start": 14.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 5}, "start": 15.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 5}, "start": 16.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 5}, "start": 17.0}
+  {"dashes": 0, "dots": 1, "duration": 1.5, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 6}, "start": 18.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 6}, "start": 19.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 6}, "start": 20.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 7}, "start": 21.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 7}, "start": 22.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 7}, "start": 23.0}
+  {"dashes": 0, "dots": 1, "duration": 1.5, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 8}, "start": 24.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 8}, "start": 25.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 8}, "start": 26.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 9}, "start": 27.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 9}, "start": 28.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 9}, "start": 29.0}
+  {"dashes": 0, "dots": 1, "duration": 1.5, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 10}, "start": 30.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": true, "lines": 1, "ref": {"index": 1, "measure": 10}, "start": 31.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 10}, "start": 32.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 10}, "start": 32.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 11}, "start": 33.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": true, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 11}, "start": 34.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 11}, "start": 34.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 11}, "start": 35.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 12}, "start": 36.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 12}, "start": 37.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 12}, "start": 38.0}
+tempos:
+  {"qpm": 120, "start": 0}
+timeSignatures:
+  {"denominator": 4, "numerator": 3, "start": 0}
+totalLength: 39.0
+# section 2
+keySignatures:
+  {"key": 5, "label": "1=F", "start": 0}
+notes:
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.0, "octaveDot": -1, "pitch": 60, "ref": {"index": 2, "measure": 0}, "start": 2.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 3.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 0, "measure": 1}, "start": 3.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 1.0, "octaveDot": 0, "pitch": 67, "ref": {"index": 0, "measure": 2}, "start": 6.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 2.0, "octaveDot": -1, "pitch": 60, "ref": {"index": 1, "measure": 2}, "start": 7.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 3.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 0, "measure": 3}, "start": 9.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 1.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 0, "measure": 4}, "start": 12.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 1.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 1, "measure": 4}, "start": 13.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 2.0, "octaveDot": 0, "pitch": 72, "ref": {"index": 2, "measure": 4}, "start": 14.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 1, "measure": 5}, "start": 16.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 0.5, "octaveDot": 0, "pitch": 72, "ref": {"index": 2, "measure": 5}, "start": 16.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 3, "measure": 5}, "start": 17.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 0.5, "octaveDot": 0, "pitch": 72, "ref": {"index": 4, "measure": 5}, "start": 17.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 1.0, "octaveDot": 0, "pitch": 70, "ref": {"index": 0, "measure": 6}, "start": 18.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 1.0, "octaveDot": 0, "pitch": 67, "ref": {"index": 1, "measure": 6}, "start": 19.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 2.0, "octaveDot": 0, "pitch": 70, "ref": {"index": 2, "measure": 6}, "start": 20.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 1, "measure": 7}, "start": 22.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 2, "measure": 7}, "start": 22.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 3, "measure": 7}, "start": 23.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 4, "measure": 7}, "start": 23.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 2.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 0, "measure": 8}, "start": 24.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.0, "octaveDot": 0, "pitch": 72, "ref": {"index": 2, "measure": 8}, "start": 26.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 0.5, "octaveDot": 1, "pitch": 77, "ref": {"index": 0, "measure": 9}, "start": 27.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 0.5, "octaveDot": 0, "pitch": 76, "ref": {"index": 1, "measure": 9}, "start": 27.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 6, "length": 0.5, "octaveDot": 0, "pitch": 74, "ref": {"index": 2, "measure": 9}, "start": 28.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 0.5, "octaveDot": 0, "pitch": 72, "ref": {"index": 3, "measure": 9}, "start": 28.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 4, "measure": 9}, "start": 29.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 5, "measure": 9}, "start": 29.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 5, "length": 1.0, "octaveDot": 0, "pitch": 72, "ref": {"index": 0, "measure": 10}, "start": 30.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 1.0, "octaveDot": 0, "pitch": 70, "ref": {"index": 1, "measure": 10}, "start": 31.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 1.0, "octaveDot": 0, "pitch": 69, "ref": {"index": 2, "measure": 10}, "start": 32.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 0.5, "octaveDot": -1, "pitch": 64, "ref": {"index": 0, "measure": 11}, "start": 33.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 0.5, "octaveDot": 0, "pitch": 65, "ref": {"index": 1, "measure": 11}, "start": 33.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 2, "length": 0.5, "octaveDot": 0, "pitch": 67, "ref": {"index": 2, "measure": 11}, "start": 34.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 3, "length": 0.5, "octaveDot": 0, "pitch": 69, "ref": {"index": 3, "measure": 11}, "start": 34.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 4, "length": 0.5, "octaveDot": 0, "pitch": 70, "ref": {"index": 4, "measure": 11}, "start": 35.0}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 7, "length": 0.5, "octaveDot": -1, "pitch": 64, "ref": {"index": 5, "measure": 11}, "start": 35.5}
+  {"accidental": 0, "intensity": 80, "jianpuNumber": 1, "length": 3.0, "octaveDot": 0, "pitch": 65, "ref": {"index": 0, "measure": 12}, "start": 36.0}
+slots:
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": true, "lines": 0, "ref": {"index": 0, "measure": 0}, "start": 0.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 0}, "start": 1.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 0}, "start": 2.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 1}, "start": 3.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 1}, "start": 4.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 1}, "start": 5.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 2}, "start": 6.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 2}, "start": 7.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 2}, "start": 8.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 3}, "start": 9.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 3}, "start": 10.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 3}, "start": 11.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 4}, "start": 12.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 4}, "start": 13.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 4}, "start": 14.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 5}, "start": 15.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 5}, "start": 16.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 5}, "start": 16.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 5}, "start": 17.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 4, "measure": 5}, "start": 17.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 6}, "start": 18.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 6}, "start": 19.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 6}, "start": 20.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 7}, "start": 21.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 7}, "start": 22.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 7}, "start": 22.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 7}, "start": 23.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 4, "measure": 7}, "start": 23.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 8}, "start": 24.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 8}, "start": 25.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 8}, "start": 26.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 0, "measure": 9}, "start": 27.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 9}, "start": 27.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 9}, "start": 28.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 9}, "start": 28.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 4, "measure": 9}, "start": 29.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 5, "measure": 9}, "start": 29.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 10}, "start": 30.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 10}, "start": 31.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 10}, "start": 32.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 0, "measure": 11}, "start": 33.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 1, "measure": 11}, "start": 33.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 2, "measure": 11}, "start": 34.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 3, "measure": 11}, "start": 34.5}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 4, "measure": 11}, "start": 35.0}
+  {"dashes": 0, "dots": 0, "duration": 0.5, "is_dash": false, "is_rest": false, "lines": 1, "ref": {"index": 5, "measure": 11}, "start": 35.5}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": false, "is_rest": false, "lines": 0, "ref": {"index": 0, "measure": 12}, "start": 36.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 1, "measure": 12}, "start": 37.0}
+  {"dashes": 0, "dots": 0, "duration": 1.0, "is_dash": true, "is_rest": false, "lines": 0, "ref": {"index": 2, "measure": 12}, "start": 38.0}
+tempos:
+  {"qpm": 120, "start": 0}
+timeSignatures:
+  {"denominator": 4, "numerator": 3, "start": 0}
+totalLength: 39.0

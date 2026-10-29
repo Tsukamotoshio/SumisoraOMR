@@ -26,7 +26,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # 长期功能分支也跑，免得问题攒到合并 main 时才暴露
+    branches: [main, 'feat/**']
   pull_request:
     branches: [main]
 

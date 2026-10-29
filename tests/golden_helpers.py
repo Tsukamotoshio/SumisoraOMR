@@ -34,4 +34,43 @@ def generate_outputs(musicxml_path: Path) -> dict[str, str]:
             + ('/hp=!' if n.hairpin_end else '')
             for n in m
         ))
-    return {'.jly.txt': jly, '.measures.txt': '\n'.join(lines)}
+    return {
+        '.jly.txt': jly,
+        '.measures.txt': '\n'.join(lines),
+        '.render.txt': render_json_text(jly),
+    }
+
+
+def render_json_text(jly: str) -> str:
+    """What the graphical editor hands JianpuRender for this text.
+
+    Mirrors ``webui.editor.EditorService._renders_of`` (one render per section,
+    the title block on the first) without importing webui. The golden pins the
+    parser and the render projection on real scores, the input half of every
+    graphical-editor layout fix.
+    """
+    import json
+
+    from core.notation.jianpu import jianpu_section_to_render_json, score_header
+    from core.notation.jianpu.parser import parse_jianpu_ly_text
+
+    doc = parse_jianpu_ly_text(jly)
+    renders = [jianpu_section_to_render_json(s, doc.key_header, doc.tempo) for s in doc.sections]
+    if renders:
+        renders[0]['header'] = score_header(doc)
+
+    # 每个音符/slot 一行：比逐字段缩进小约 8 倍，diff 仍能定位到单个音符。
+    def one(value) -> str:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+    out = []
+    for i, render in enumerate(renders):
+        out.append(f'# section {i}')
+        for key in sorted(render):
+            value = render[key]
+            if isinstance(value, list):
+                out.append(f'{key}:')
+                out.extend(f'  {one(item)}' for item in value)
+            else:
+                out.append(f'{key}: {one(value)}')
+    return '\n'.join(out) + '\n'

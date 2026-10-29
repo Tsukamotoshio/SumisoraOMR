@@ -19,9 +19,11 @@ from __future__ import annotations
 import json
 import queue
 import threading
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-import webview
+# 仅用于类型标注：运行时不导入，CI 测试环境（无 pywebview）才能导入 EventPusher。
+if TYPE_CHECKING:
+    import webview
 
 
 class EventPusher:
